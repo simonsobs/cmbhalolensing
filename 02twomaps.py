@@ -1,15 +1,55 @@
-from pixell import enmap, reproject, enplot
-from astropy.io import fits
-from orphics import maps
 import numpy as np
 import matplotlib.pyplot as plt
-import symlens
-import time
+from astropy.io import fits
+from pixell import enmap, reproject, enplot
+from orphics import maps, mpi, io, stats
 from scipy.optimize import curve_fit
+from numpy import save
+import symlens
 import healpy as hp
+import os, sys
+import time as t
+
+start = t.time() 
+
+# new ACT catalogue yeahhhh (3200) 
+catalogue_name = "data/AdvACT_190220_confirmed.fits" 
+hdu = fits.open(catalogue_name)
+ras = hdu[1].data['RADeg']
+decs = hdu[1].data['DECDeg']
+snr = hdu[1].data['SNR']
 
 
-start_total = time.time() 
+# excluding massive clusters (2909)
+ras0 = []
+decs0 = []
+
+for i in range(ras.size):
+	if snr[i] < 10:
+		ras0.append(ras[i])
+		decs0.append(decs[i])
+
+ras = np.array(ras0)
+decs = np.array(decs0)	
+
+
+N_cluster = len(ras) 
+N_stamp = []
+#N_cluster = 10
+
+nsims = N_cluster
+nsims_rd = N_cluster + 5000
+
+# MPI paralellization! 
+comm, rank, my_tasks = mpi.distribute(nsims)
+comm_rd, rank_rd, my_tasks_rd = mpi.distribute(nsims_rd)
+print('cluster stamp', rank)
+print('random stamp', rank_rd)
+
+s = stats.Stats(comm)
+s_rd = stats.Stats(comm_rd)
+
+
 
 # Planck tSZ deprojected map; so sz sources have been projected out
 plc_map = "data/COM_CMB_IQU-smica-nosz_2048_R3.00_full.fits"
@@ -19,41 +59,39 @@ hmap = hp.read_map(plc_map)
 plc_mask = "data/COM_Mask_CMB-common-Mask-Int_2048_R3.00.fits"
 hmask = hp.read_map(plc_mask)
 
-# now the map is masked 
+# now Planck map is masked 
 pmap = hmap*hmask
 
 
-# ACT coadd map;
+# ACT coadd map
 act_map = '/global/project/projectdirs/act/data/coadds/act_s08_s18_cmb_f150_daynight_srcfree_map.fits'
 amap = enmap.read_map(act_map)
 print(amap.shape)
 
+# corresponding inverse-variance map
 ivar_map = '/global/project/projectdirs/act/data/coadds/act_s08_s18_cmb_f150_daynight_srcfree_ivar.fits'
 imap = enmap.read_map(ivar_map)
 
-#enplot.show(enplot.plot(amap[0], downgrade=4, colorbar=True))
-#plot = enplot.plot(amap[0], downgrade=4, colorbar=True)
-#enplot.write("coadd_map", plot)
 
 
-# new ACT catalogue yeahhhh 3200 clusters
-catalogue_name = "data/AdvACT_190220_confirmed.fits" 
-hdu = fits.open(catalogue_name)
-ras = hdu[1].data['RADeg']
-decs = hdu[1].data['DECDeg']
+# bin size and range for 1D binned power spectrum 
+act_edges = np.arange(100,8001,20)
+plc_edges = np.arange(20,4001,20)
 
-N_cluster = len(ras) 
-N_stamp = []
-
-N_cluster = 10
-
-
-def fit_p1d(cents, p1d):
+# function for fitting 1D power spectrum of given stamp 
+def fit_p1d(cents, p1d, which):
 
     # remove nans in cls (about 10%)        
     mask_nan = ~np.isnan(p1d) 
     ells = cents[mask_nan]
     cltt = p1d[mask_nan]
+
+    clarr = np.zeros(ells.size)  
+
+    '''
+    #####################
+    # two parameter fit #
+    #####################
 
     logy = np.log10(cltt)
        
@@ -61,295 +99,280 @@ def fit_p1d(cents, p1d):
         return a*0.999**x + b
 
     popt, pcov = curve_fit(line, ells, logy, maxfev=1000)
-    print(popt)
-
-
-    # fill in the cls 
-    clarr = np.zeros(ells.size)       
+    #perr = np.sqrt(np.diag(pcov))
+    #print(popt, pcov, perr)
 
     i = 0
     for i in range(ells.size):          
         clarr[i] = line(ells[i], *popt)
 
-    clarr = 10.**clarr
+    clarr = 10.**clarr 
+    '''
 
-    #plt.plot(ells, ells*(ells+1)*clarr1/(2*np.pi), 'k--', alpha=0.5)
-    #plt.plot(ells, ells*(ells+1)*clarr2/(2*np.pi), 'k--', alpha=0.5)
-    plt.plot(ells, ells*(ells+1)*clarr/(2*np.pi), 'r-')
-    plt.yscale('log')
-    plt.xlabel("$\ell$")
-    plt.ylabel("$\ell(\ell+1)C_{\ell}/2\pi\,$ [$\mu$K$^2$]") 
-    #plt.ylim([1, 5e4])
-    #plt.title('%d' % (count+1))
-    #plt.savefig('plots/why/%d_ps.png' % (count+1)); plt.clf()
-    plt.show()
+    ######################
+    # four parameter fit #
+    ######################
+
+    if which == 'act':
+        cut1 = np.argmax(ells > 4000)  
+        cut2 = np.argmax(ells > 5000) 
+
+    elif which == 'plc':
+        cut1 = np.argmax(ells > 3000)  
+        cut2 = np.argmax(ells > 2000) 
+
+    logx1 = np.log10(ells[:cut1])
+    logy1 = np.log10(cltt[:cut1])
+    logx2 = np.log10(ells[cut2:])
+    logy2 = np.log10(cltt[cut2:])
+
+    def line(x, a, b):
+        return a*x + b
+
+    popt1, pcov1 = curve_fit(line, logx1, logy1)
+    popt2, pcov2 = curve_fit(line, logx2, logy2)
+
+    ## logy = a*logx + b
+    ## y = 10**b * x**a    
+
+    amp1 = 10.**popt1[1]
+    amp2 = 10.**popt2[1]
+    ind1 = popt1[0]
+    ind2 = popt2[0]    
+    
+    i = 0
+    for i in range(ells.size):          
+        clarr[i] = amp1*ells[i]**ind1 +  amp2*ells[i]**ind2
+
+    #if which == 'plc':
+    #    plt.plot(ells, ells*(ells+1)*clarr/(2*np.pi), 'r-')
+    #    plt.yscale('log')
+    #    plt.xlabel("$\ell$")
+    #    plt.ylabel("$\ell(\ell+1)C_{\ell}/2\pi\,$ [$\mu$K-rad]$^2$")
+    #    plt.show()
 
     return ells, clarr
 
 
 
-def stacking(N, ras, decs):
-    
-    start_stack = time.time()   
-    
-    stack = 0
+# stamp size and resolution 
+stamp_width = 120.
+pixel = 0.5
+
+# beam and FWHM 
+act_beam = 1.4 
+plc_beam = 5.
+act_fwhm = np.deg2rad(act_beam/60.)
+plc_fwhm = np.deg2rad(plc_beam/60.)
+
+# Planck stamp mask
+xlmin=100
+xlmax=2000
+
+# ACT stamp mask
+ylmin=500
+ylmax=6000
+lxcut=20
+lycut=20
+
+# kmask
+klmin=40
+klmax=5000
+
+
+
+def stacking(N, ras, decs, which, k_iter=None):
+
+    i = 0
     count = 0
-    weights = 0
-    
-    for i in range(N):
-    
+
+    for i in N:
         ## extract a postage stamp from a larger map
         ## by reprojecting to a coordinate system centered on the given position 
-        ## (a tangent plane projection) 
-        
-        stamp_width = 120.
-        pixel = 0.5
 
+        # cut out a stamp from the ACT map (CAR -> gnomonic) 
         stamp = reproject.postage_stamp(amap, ras[i], decs[i], stamp_width, pixel)    
         ivar = reproject.postage_stamp(imap, ras[i], decs[i], stamp_width, pixel)
-
-        ## R.A. and Dec. are in degrees
-        ## width_arcmin : stamp dimension in arcmin
-        ## res_arcmin : width of pixel in arcmin
-        ## therefore this makes a stamp of 120 x 120 arcmin (2 x 2 degree)
-        ## consisting of 240 x 240 pixels of width 0.5 arcmins
-        ## each pixel represents half arcmin
-                 
+               
         if stamp is None: continue
         ivar = ivar[0]
 
+        ##### temporary 1: avoid weird noisy ACT stamps
         if np.any(ivar <= 1e-4): continue
         astamp = stamp[0]
-        
-        # remove noisy stamps due to the galaxy
-        if np.any(astamp >= 1000): continue
-        #print(ras[i], decs[i])
+        if np.any(astamp >= 1e3): continue
 
-        #plt.imshow(astamp); plt.colorbar(); plt.savefig('plots/why/%d_stamp.png' % (count+1)); plt.clf() # plt.show()
-        #plt.imshow(ivar); plt.colorbar(); plt.savefig('plots/why/%d_ivar.png' % (count+1)); plt.clf() # plt.show()
-        #plt.imshow(astamp); plt.colorbar(); plt.show()
-  
-        ## if we want to do any sort of harmonic analysis 
-        ## we require periodic boundary conditions
-        ## we can prepare an edge taper map on the same footprint as our map of interest
-
-        # get an edge taper map and apodize
-        taper = maps.get_taper(astamp.shape, taper_percent=12.0, pad_percent=3.0, weight=None)
-        taper = taper[0]
-
-        # applying this to the stamp makes it have a nice zeroed edge!    
-        act_stamp = astamp*taper
-        
-        ## all outputs are 2D arrays in Fourier space
-        ## so you will need some way to bin it in annuli
-        ## a map of the absolute wavenumbers is useful for this : enmap.modlmap
-    
-        # get geometry and Fourier info
-        shape, wcs = astamp.shape, astamp.wcs
-        modlmap = enmap.modlmap(shape, wcs)
-        
-        # build a Gaussian beam transfer function 
-        act_beam = 1.4 
-        act_fwhm = np.deg2rad(act_beam/60.)
-        
-        # evaluate the beam on an isotropic Fourier grid 
-        act_kbeam2d = np.exp(-(act_fwhm**2.)*(modlmap**2.)/(16.*np.log(2.)))    
-    
-        ## lensing noise curves require CMB power spectra
-        ## this could be from camb theory data or actual map
-        ## it is from camb at the moment 
-    
-        # get theory spectrum - this should be the lensed spectrum!
-        ells, dltt = np.loadtxt("data/camb_theory.dat", usecols=(0,1), unpack=True)
-        cltt = dltt/ells/(ells + 1.)*2.*np.pi
-
-        # measure the binned power spectrum from given stamp 
-        act_edges = np.arange(100,8001,20)
-        act_cents, act_p1d = maps.binned_power(astamp, bin_edges=act_edges, mask=taper) 
-
-        plt.plot(act_cents, act_cents*(act_cents+1)*act_p1d/(2.*np.pi), 'k.', marker='o', ms=4, mfc='none') 
-
-        # fit 1D power spectrum 
-        act_ells, act_cltt = fit_p1d(act_cents, act_p1d)
-
-        # cut out stamp from given Planck map as well
+        # cut out a stamp from the Planck map (healpix -> gnomonic) 
         pstamp = maps.get_planck_cutout(pmap, ras[i], decs[i], stamp_width, pixel)
 
+        # unit: K -> uK 
         if pstamp is None: continue
+        pstamp = pstamp*1e6
                  
-	# checking stamps - would 80% be good enough? 
+        ##### temporary 2: avoid weird noisy Planck stamps - would 80% be good enough? 
         true = np.nonzero(pstamp)[0]
         ntrue = true.size
         req = 0.8*(2.*stamp_width)**2.
         if ntrue < req: continue
 
-        # K -> uK 
-        pstamp = pstamp*1e6
+        ## if we want to do any sort of harmonic analysis 
+        ## we require periodic boundary conditions
+        ## we can prepare an edge taper map on the same footprint as our map of interest
 
-        #plt.imshow(pstamp); plt.colorbar(); plt.show()
+        # get an edge taper map and apodize
+        taper = maps.get_taper(astamp.shape, astamp.wcs, taper_percent=12.0, pad_percent=3.0, weight=None)
+        taper = taper[0]
 
-        # taper the stamp for Fourier transform 
+        # applying this to the stamp makes it have a nice zeroed edge!    
+        act_stamp = astamp*taper
         plc_stamp = pstamp*taper
-        
-         # build a Gaussian beam transfer function 
-        plc_beam = 5.
-        plc_fwhm = np.deg2rad(plc_beam/60.)
 
-        # evaluate the beam on an isotropic Fourier grid 
+        ## all outputs are 2D arrays in Fourier space
+        ## so you will need some way to bin it in annuli
+        ## a map of the absolute wavenumbers is useful for this : enmap.modlmap
+
+        # get geometry and Fourier info
+        shape, wcs = astamp.shape, astamp.wcs
+        modlmap = enmap.modlmap(shape, wcs)
+        
+        # evaluate the 2D Gaussian beam on an isotropic Fourier grid 
+        act_kbeam2d = np.exp(-(act_fwhm**2.)*(modlmap**2.)/(16.*np.log(2.)))
         plc_kbeam2d = np.exp(-(plc_fwhm**2.)*(modlmap**2.)/(16.*np.log(2.)))  
 
-        # measure the binned power spectrum from given stamp 
-        plc_edges = np.arange(20,4001,20)
-        plc_cents, plc_p1d = maps.binned_power(pstamp, bin_edges=plc_edges, mask=taper)  
+        ## lensing noise curves require CMB power spectra
+        ## this could be from theory (CAMB) or actual map
 
-        plt.plot(plc_cents, plc_cents*(plc_cents+1)*plc_p1d/(2.*np.pi), 'k.', marker='o', ms=4, mfc='none')
+        # get theory spectrum - this should be the lensed spectrum!
+        ells, dltt = np.loadtxt("data/camb_theory.dat", usecols=(0,1), unpack=True)
+        cltt = dltt/ells/(ells + 1.)*2.*np.pi
+
+        # measure the binned power spectrum from given stamp 
+        act_cents, act_p1d = maps.binned_power(astamp, bin_edges=act_edges, mask=taper) 
+        plc_cents, plc_p1d = maps.binned_power(pstamp, bin_edges=plc_edges, mask=taper)  
+        #plt.plot(act_cents, act_cents*(act_cents+1)*act_p1d/(2.*np.pi), 'k.', marker='o', ms=4, mfc='none') 
+        #plt.plot(plc_cents, plc_cents*(plc_cents+1)*plc_p1d/(2.*np.pi), 'k.', marker='o', ms=4, mfc='none')
 
         # fit 1D power spectrum 
-        plc_ells, plc_cltt = fit_p1d(plc_cents, plc_p1d) 
-  
+        act_ells, act_cltt = fit_p1d(act_cents, act_p1d, 'act')
+        plc_ells, plc_cltt = fit_p1d(plc_cents, plc_p1d, 'plc') 
+
         ## interpolate ells and cltt 1D power spectrum specification 
         ## isotropically on to the Fourier 2D space grid
-    	
-        # build interpolated 2D Fourier CMB theory 
+	    
+        # build interpolated 2D Fourier CMB from theory and maps 
         ucltt = maps.interp(ells, cltt)(modlmap)
         tclaa = maps.interp(act_ells, act_cltt)(modlmap)
         tclpp = maps.interp(plc_ells, plc_cltt)(modlmap)
 
         ## total TT spectrum includes beam-deconvolved noise
         ## so create a total beam-deconvolved spectrum using a Gaussian beam func.
+
         tclaa = tclaa/(act_kbeam2d**2.)
         tclpp = tclpp/(plc_kbeam2d**2.)
-  	
-        # total power spectrum for filters 
-        #noise_arcmin = 10.
-        #cl_noise = (noise_arcmin*np.pi/180./60.)**2.
-        #tcltt2d = ucltt2d + np.nan_to_num(cl_noise/kbeam2d**2.)
-   	
-        ## need to have a Fourier space mask in hand 
-        ## that enforces what multipoles in the CMB map are included 
-
-        # build a Fourier space mask    
-        xmask = maps.mask_kspace(shape, wcs, lmin=100, lmax=2000)
-        ymask = maps.mask_kspace(shape, wcs, lmin=500, lmax=6000, lxcut=20, lycut=20)
-        kmask = maps.mask_kspace(shape, wcs, lmin=40, lmax=5000)
 
         ## the noise was specified for a beam deconvolved map 
         ## so we deconvolve the beam from our map
 
         # get a beam deconvolved Fourier map
-        plc_kmap = np.nan_to_num(enmap.fft(plc_stamp, normalize='phys')/plc_kbeam2d)
         act_kmap = np.nan_to_num(enmap.fft(act_stamp, normalize='phys')/act_kbeam2d)
-    
+        plc_kmap = np.nan_to_num(enmap.fft(plc_stamp, normalize='phys')/plc_kbeam2d)
+
         # build symlens dictionary 
         feed_dict = {
-            'uC_T_T' : ucltt, # goes in the lensing response func = lensed theory 
+            'uC_T_T' : ucltt,     # goes in the lensing response func = lensed theory 
             'tC_A_T_A_T' : tclaa, # the fit ACT power spectrum with ACT beam deconvolved
             'tC_P_T_P_T' : tclpp, # approximate Planck power spectrum with Planck beam deconvolved 
             'tC_A_T_P_T' : ucltt, # same lensed theory as above, no instrumental noise  
-            'X' : plc_kmap, # Planck map
-            'Y' : act_kmap  # ACT map
+            'X' : plc_kmap,       # Planck map
+            'Y' : act_kmap        # ACT map
         }
-    
+
+        ## need to have a Fourier space mask in hand 
+        ## that enforces what multipoles in the CMB map are included 
+
+        # build a Fourier space mask    
+        xmask = maps.mask_kspace(shape, wcs, lmin=xlmin, lmax=xlmax)
+        ymask = maps.mask_kspace(shape, wcs, lmin=ylmin, lmax=ylmax, lxcut=lxcut, lycut=lycut)
+        kmask = maps.mask_kspace(shape, wcs, lmin=klmin, lmax=klmax)
+
         # ask for reconstruction in Fourier space
         krecon = symlens.reconstruct(shape, wcs, feed_dict, estimator='hdv', XY='TT', xmask=xmask, ymask=ymask, field_names=['P','A'], xname='X_l1', yname='Y_l2', kmask=kmask, physical_units=True)
-
-    
-        #pr2d = (krecon*np.conj(krecon)).real
-        #plt.imshow(np.log10(np.fft.fftshift(pr2d))); plt.colorbar(); plt.show()
 
         # transform to real space
         kappa = enmap.ifft(krecon, normalize='phys').real
 
-        #print(maps.minimum_ell(shape, wcs)) : 180
-
-        kedges = np.arange(20,8001,400)
-        kcents, kp1d = maps.binned_power(kappa, bin_edges=kedges)   
-
-        #print(kp1d)
-        #plt.plot(kcents, kcents*(kcents+1)*kp1d/(2.*np.pi)); plt.show()
-
-        if np.any(np.abs(kappa) > 15): continue    # clusters 
-        #print(count+1, 'kappa max =', np.max(np.abs(kappa)))
-
-
-        # noise weighting and staking the stamps
-        ivmean = np.mean(ivar)
-        ivmean = 1./ivmean    
-        stack += kappa*ivmean
-        weights += ivmean
+        ##### temporary 3: to get rid of stamps with tSZ cluster in random locations
+        if np.any(np.abs(kappa) > 15): continue 
 
         # stacking the stamps   
-        # stack += kappa
+        if which == 'cluster':
+            s.add_to_stack('kmap', kappa)  
+        elif which == 'random':
+            s_rd.add_to_stack('mean%s'%k, kappa)    
 
-        # to  check actually how many stamp are cut
+        # check actually how many stamps are cut out of given map
         count += 1
 
-        #plt.imshow(kappa); plt.colorbar(); plt.savefig('plots/why/%d_kappa.png' % count); plt.clf() #plt.show()
-        #plt.imshow(kappa); plt.colorbar(); plt.show()
+        # for mean field stacking counts to be same as the ones from cluster loc 
+        if which == 'random' and count == N_stamp: break
 
-        # for mean field stacking counts 
-        if N_stamp is not None and count == N_stamp: break
-
-    # averging the stack of stamps
-    # stack /= count
-    stack /= weights 
-
-    #plt.imshow(stack); plt.show()
-    
-    elapsed_stack = time.time() - start_stack
-    print("\r ::: stacking took %.1f seconds " % elapsed_stack)
-
-    return(stack, count, stamp_width)
+    return(count)
 
 
-# staking at cluster positions 
-field, N_stamp, stamp_width = stacking(N_cluster, ras, decs)
-print("\r ::: number of stamps of clusters : %d " % N_stamp)
+# stacking at cluster positions 
+N_stamp = stacking(my_tasks, ras, decs, 'cluster')
 
 
-# to find random positions in the map
+# random positions in the map
 dec0, dec1, ra0, ra1 = [-62.0, 22.0, -180.0, 180.0]
-width = stamp_width/60.
+deg_width = stamp_width/60.
+
+# the number of mean field we want 
+N_iter = 100
+
+k = 0
+for k in range(N_iter):
+
+    #np.random.seed(k) 
+    # generate random positions 
+    decs_rd = np.random.rand(nsims_rd)*(dec1 - dec0 - deg_width) + dec0 + deg_width/2.
+    ras_rd = np.random.rand(nsims_rd)*(ra1 - ra0 - deg_width) + ra0 + deg_width/2.
+        
+    # stacking at random positions 
+    N_stamp_rd = stacking(my_tasks_rd, ras_rd, decs_rd, 'random', k)
 
 
-# iterations for mean field
-N_iterations = 4
-meanf = np.zeros(field.shape)
+# collect from all MPI cores and calculate stacks
+s.get_stacks()
+s_rd.get_stacks()
 
-# in case that a stamp is not created in a given location 
-N_bigger = N_stamp + 5000
+# and/or ?
+if rank==0 and rank_rd==0: 
 
-k = 0  
-# stacking at random positions 
-while (k < N_iterations):
+    kmap = s.stacks['kmap']
+
+    all_cl = s.stack_count['kmap']
+    print("\r ::: number of cluster stamps : %d" %all_cl)
+
+    mean = np.zeros(kmap.shape)
+
+    i = 0
+    for i in range(N_iter):
+        mean += s_rd.stacks['mean%s'%i]
+        all_rd = s_rd.stack_count['mean%s'%i]
+        print("\r ::: number of random stamps %d in %d : %d" %(i+1, N_iter, all_rd))   
     
-    rd_decs = np.random.rand(N_bigger)*(dec1 - dec0 - width) + dec0 + width/2.
-    rd_ras = np.random.rand(N_bigger)*(ra1 - ra0 - width) + ra0 + width/2.
-    
-    rd_field, N_rd_stamp, _ = stacking(N_bigger, rd_ras, rd_decs)
-    print("\r ::: number of stamps of random positions : %d " % N_rd_stamp)
+    mean /= N_iter
+    final = kmap - mean
 
-    #enmap.write_fits('test/%d_iter.fits'% (k+1), rd_field)
-    print("\r ::: iteration complete: %d of %d  " % ((k+1), N_iterations))
-	
-    meanf += rd_field
+    io.plot_img(kmap,'plots/00kmap.png',flip=False,ftsize=12,ticksize=10)
+    io.plot_img(mean,'plots/01mean.png',flip=False,ftsize=12,ticksize=10)
+    io.plot_img(final,'plots/02final.png',flip=False,ftsize=12,ticksize=10)
+    io.plot_img(final[100:140,100:140],'plots/03zoom.png',flip=False,ftsize=12,ticksize=10)
 
-    k += 1
-    #plt.imshow(meanf); plt.colorbar(); plt.savefig('plots/why/mean.png') #plt.show()
+    save('pdata.npy',final)
 
-
-# averging over the number of iterations
-meanf /= N_iterations
-
-# mean field subtraction
-final = field - meanf
-
-elapsed_total = int((time.time() - start_total)/60.0)
-print("\r ::: entire run took {} minutes ".format(elapsed_total))
-
-plt.imshow(field); plt.title('stacked lensing reconstruction'); plt.colorbar(); plt.savefig('plots/70field_noise.png'); plt.clf() 
-plt.imshow(meanf); plt.title('mean field (%d iterations)' % N_iterations); plt.colorbar(); plt.savefig('plots/71meanf_noise.png'); plt.clf()
-plt.imshow(final); plt.title('after mean field subtraction'); plt.colorbar(); plt.savefig('plots/72final_noise.png'); plt.clf()
-plt.imshow(final[100:140,100:140]); plt.title('zoom'); plt.colorbar(); plt.savefig('plots/73zoom_noise.png'); plt.clf()
+    elapsed = t.time() - start
+    print("\r ::: entire run took %.1f seconds" %elapsed)
 
 

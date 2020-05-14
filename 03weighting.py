@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from astropy.io import fits
-from pixell import enmap, reproject, enplot
+from pixell import enmap, reproject, enplot, utils
 from orphics import maps, mpi, io, stats
 from scipy.optimize import curve_fit
 from numpy import save
@@ -12,7 +12,7 @@ import time as t
 
 start = t.time() 
 
-# AdvACT catalogue
+# ACT catalogue :D
 catalogue_name = "data/AdvACT_S18Clusters_v1.0-beta.fits" #[4024] 
 hdu = fits.open(catalogue_name)
 ras = hdu[1].data['RADeg']
@@ -34,8 +34,10 @@ ras = np.array(ras0)
 decs = np.array(decs0)	
 mass = np.array(mass0)
 
-N_cluster = len(ras) 
-N_stamp = []
+N_cluster = len(ras)
+#N_stamp = []
+#N_stamp = 3883   # for original ACT coadd map 
+#N_stamp = 3895   # for tSZ subtracted map
 
 nsims = N_cluster
 nsims_rd = N_cluster + 6000
@@ -53,28 +55,29 @@ s = stats.Stats(comm)
 s_rd = stats.Stats(comm_rd)
 
 
-# Planck tSZ deprojected map; so sz sources have been projected out
+# Planck tSZ deprojected map
 plc_map = "data/COM_CMB_IQU-smica-nosz_2048_R3.00_full.fits"
-hmap = hp.read_map(plc_map)
 
 # Planck binary mask
 plc_mask = "data/COM_Mask_CMB-common-Mask-Int_2048_R3.00.fits"
-hmask = hp.read_map(plc_mask)
 
-# now Planck map is masked 
-pmap = hmap*hmask
+# reproject the Planck map (healpix -> CAR) 
+fshape, fwcs = enmap.fullsky_geometry(res=1.*utils.arcmin, proj='car')
+proj_map = reproject.enmap_from_healpix(plc_map, fshape, fwcs, ncomp=1, unit=1, lmax=6000, rot="gal,equ")
+proj_mask = reproject.enmap_from_healpix(plc_mask, fshape, fwcs, ncomp=1, unit=1, lmax=6000, rot="gal,equ")
+pmap = proj_map*proj_mask
+print(pmap.shape)
 
 
 # ACT coadd map
-act_map = '/global/project/projectdirs/act/data/coadds/act_s08_s18_cmb_f150_daynight_srcfree_map.fits'
-#act_map = 'data/modelSubtracted_updated.fits'
+#act_map = '/global/project/projectdirs/act/data/coadds/act_s08_s18_cmb_f150_daynight_srcfree_map.fits'
+act_map = 'data/modelSubtracted2default_150GHz.fits'
 amap = enmap.read_map(act_map)
 print(amap.shape)
 
 # corresponding inverse-variance map
 ivar_map = '/global/project/projectdirs/act/data/coadds/act_s08_s18_cmb_f150_daynight_srcfree_ivar.fits'
 imap = enmap.read_map(ivar_map)
-
 
 
 # bin size and range for 1D binned power spectrum 
@@ -159,7 +162,7 @@ def fit_p1d(cents, p1d, which):
 
 
 # stamp size and resolution 
-stamp_width = 120.
+stamp_width_deg = 120./60.
 pixel = 0.5
 
 # beam and FWHM 
@@ -168,19 +171,28 @@ plc_beam = 5.
 act_fwhm = np.deg2rad(act_beam/60.)
 plc_fwhm = np.deg2rad(plc_beam/60.)
 
-# Planck stamp mask
-xlmin=100
-xlmax=2000
+# Planck mask
+xlmin = 100
+xlmax = 2000
 
-# ACT stamp mask
-ylmin=500
-ylmax=6000
-lxcut=20
-lycut=20
+# ACT mask
+ylmin = 500
+ylmax = 6000
+lxcut = 20
+lycut = 20
 
-# kmask
-klmin=40
-klmax=5000
+# kappa mask
+klmin = 40
+klmax = 5000
+
+
+# for binned kappa profile 
+bin_edges = np.arange(0, 10., 1.5)
+centers = (bin_edges[1:] + bin_edges[:-1])/2.
+
+def bin(data, modrmap, bin_edges):
+    digitized = np.digitize(np.ndarray.flatten(modrmap), bin_edges, right=True)
+    return np.bincount(digitized,(data).reshape(-1))[1:-1]/np.bincount(digitized)[1:-1]
 
 
 def stacking(N, ras, decs, which, k_iter=None):
@@ -190,30 +202,39 @@ def stacking(N, ras, decs, which, k_iter=None):
 
     for i in N:
 
-        # cut out a stamp from the ACT map (CAR -> gnomonic) 
-        stamp = reproject.postage_stamp(amap, ras[i], decs[i], stamp_width, pixel)    
-        ivar = reproject.postage_stamp(imap, ras[i], decs[i], stamp_width, pixel)
+        ## extract a postage stamp from a larger map
+        ## by reprojecting to a coordinate system centered on the given position 
+
+        coords = np.array([decs[i], ras[i]])*utils.degree
+        maxr = stamp_width_deg*utils.degree/2.
+
+        # cut out a stamp from the ACT map (CAR -> plain) 
+        astamp = reproject.thumbnails(amap, coords, r=maxr, res=pixel*utils.arcmin, proj="plain", apod=0)
+        ivar = reproject.thumbnails_ivar(imap, coords, r=maxr, res=pixel*utils.arcmin, extensive=True)
                
-        if stamp is None: continue
+        if astamp is None: continue
         ivar = ivar[0]
 
         ##### temporary 1: avoid weird noisy ACT stamps
         if np.any(ivar <= 1e-4): continue
-        astamp = stamp[0]
         if np.any(astamp >= 1e3): continue
 
-        # cut out a stamp from the Planck map (healpix -> gnomonic) 
-        pstamp = maps.get_planck_cutout(pmap, ras[i], decs[i], stamp_width, pixel)
+        # cut out a stamp from the Planck map (CAR -> plain) 
+        pstamp = reproject.thumbnails(pmap, coords, r=maxr, res=pixel*utils.arcmin, proj="plain", apod=0)
 
         # unit: K -> uK 
         if pstamp is None: continue
-        pstamp = pstamp*1e6
+        pstamp = pstamp[0]*1e6
                  
         ##### temporary 2: avoid weird noisy Planck stamps - would 80% be good enough? 
         true = np.nonzero(pstamp)[0]
         ntrue = true.size
-        req = 0.8*(2.*stamp_width)**2.
+        req = 0.8*(2.*stamp_width_deg*60.)**2.
         if ntrue < req: continue
+
+        ## if we want to do any sort of harmonic analysis 
+        ## we require periodic boundary conditions
+        ## we can prepare an edge taper map on the same footprint as our map of interest
 
         # get an edge taper map and apodize
         taper = maps.get_taper(astamp.shape, astamp.wcs, taper_percent=12.0, pad_percent=3.0, weight=None)
@@ -221,15 +242,22 @@ def stacking(N, ras, decs, which, k_iter=None):
 
         # applying this to the stamp makes it have a nice zeroed edge!    
         act_stamp = astamp*taper
-        plc_stamp = pstamp*taper
+        plc_stamp = pstamp*taper 
 
-        # get geometry and Fourier info
-        shape, wcs = astamp.shape, astamp.wcs
+        ## all outputs are 2D arrays in Fourier space
+        ## so you will need some way to bin it in annuli
+        ## a map of the absolute wavenumbers is useful for this : enmap.modlmap
+        
+        shape = astamp.shape  
+        wcs = astamp.wcs
         modlmap = enmap.modlmap(shape, wcs)
         
         # evaluate the 2D Gaussian beam on an isotropic Fourier grid 
         act_kbeam2d = np.exp(-(act_fwhm**2.)*(modlmap**2.)/(16.*np.log(2.)))
         plc_kbeam2d = np.exp(-(plc_fwhm**2.)*(modlmap**2.)/(16.*np.log(2.)))  
+
+        ## lensing noise curves require CMB power spectra
+        ## this could be from theory (CAMB) or actual map
 
         # get theory spectrum - this should be the lensed spectrum!
         ells, dltt = np.loadtxt("data/camb_theory.dat", usecols=(0,1), unpack=True)
@@ -238,12 +266,15 @@ def stacking(N, ras, decs, which, k_iter=None):
         # measure the binned power spectrum from given stamp 
         act_cents, act_p1d = maps.binned_power(astamp, bin_edges=act_edges, mask=taper) 
         plc_cents, plc_p1d = maps.binned_power(pstamp, bin_edges=plc_edges, mask=taper)  
-        #plt.plot(act_cents, act_cents*(act_cents+1)*act_p1d/(2.*np.pi), 'k.', marker='o', ms=4, mfc='none') 
+        #plt.plot(act_cents, act_cents*(act_cents+1)*act_p1d/(2.*np.pi), 'k.', marker='o', ms=4, mfc='none')
         #plt.plot(plc_cents, plc_cents*(plc_cents+1)*plc_p1d/(2.*np.pi), 'k.', marker='o', ms=4, mfc='none')
 
         # fit 1D power spectrum 
         act_ells, act_cltt = fit_p1d(act_cents, act_p1d, 'act')
         plc_ells, plc_cltt = fit_p1d(plc_cents, plc_p1d, 'plc') 
+
+        ## interpolate ells and cltt 1D power spectrum specification 
+        ## isotropically on to the Fourier 2D space grid
 	    
         # build interpolated 2D Fourier CMB from theory and maps 
         ucltt = maps.interp(ells, cltt)(modlmap)
@@ -293,14 +324,26 @@ def stacking(N, ras, decs, which, k_iter=None):
         # inverse variance noise weighting
         ivmean = np.mean(ivar)
 
-        # stacking the stamps   
+        # stacking the stamps with weight 
         if which == 'cluster':
+
             weight = ivmean*mass[i] 
             stack = kappa*weight
             s.add_to_stack('kmap', stack)  
             s.add_to_stack('kw', weight)
-            
+
+            wbinned = bin(stack, stack.modrmap()*(180*60/np.pi), bin_edges)
+            s.add_to_stack('k1d', wbinned)
+
+            binned = bin(kappa, kappa.modrmap()*(180*60/np.pi), bin_edges)
+            empty = np.ones(binned.shape)
+            warr = weight*empty
+            s.add_to_stats('k1d', binned)
+            s.add_to_stats('kw', warr)
+           
+
         elif which == 'random':
+
             stack = kappa*ivmean
             s_rd.add_to_stack('mean%s'%k, stack)
             s_rd.add_to_stack('mw%s'%k, ivmean)  
@@ -318,15 +361,14 @@ N_stamp = stacking(my_tasks, ras, decs, 'cluster')
 
 # random positions in the map
 dec0, dec1, ra0, ra1 = [-62.0, 22.0, -180.0, 180.0]
-deg_width = stamp_width/60.
 
 # iteration for the mean field calculation 
 k = 0
 for k in range(N_iter):
 
     # generate random positions 
-    decs_rd = np.random.rand(nsims_rd)*(dec1 - dec0 - deg_width) + dec0 + deg_width/2.
-    ras_rd = np.random.rand(nsims_rd)*(ra1 - ra0 - deg_width) + ra0 + deg_width/2.
+    decs_rd = np.random.rand(nsims_rd)*(dec1 - dec0 - stamp_width_deg) + dec0 + stamp_width_deg/2.
+    ras_rd = np.random.rand(nsims_rd)*(ra1 - ra0 - stamp_width_deg) + ra0 + stamp_width_deg/2.
         
     # stacking at random positions 
     N_stamp_rd = stacking(my_tasks_rd, ras_rd, decs_rd, 'random', k)
@@ -334,6 +376,7 @@ for k in range(N_iter):
 
 # collect from all MPI cores and calculate stacks
 s.get_stacks()
+s.get_stats()
 s_rd.get_stacks()
 
 # and/or ?
@@ -362,14 +405,32 @@ if rank==0 and rank_rd==0:
    
     final = kmap - mean
 
-    io.plot_img(kmap,'plots/00kmap.png',flip=False,ftsize=12,ticksize=10)
-    io.plot_img(mean,'plots/01mean.png',flip=False,ftsize=12,ticksize=10)
-    io.plot_img(final,'plots/02final.png',flip=False,ftsize=12,ticksize=10)
-    io.plot_img(final[100:140,100:140],'plots/03zoom.png',flip=False,ftsize=12,ticksize=10)
+    io.plot_img(final,'plots/0final.png', flip=False, ftsize=12, ticksize=10)
+    io.plot_img(final[100:140,100:140],'plots/1zoom.png', flip=False, ftsize=12, ticksize=10)
 
-    save('plots/04pdata.npy',final)
+    save('plots/2pdata_kmap.npy', final)
+    
+
+    mean_binned = s.stacks['k1d']
+    mean_binned /= kweights 
+
+    binned = s.stats['k1d']['org']
+    bw = s.stats['kw']['org']
+    bw = bw[:,0]
+
+    covm = np.cov(binned, rowvar=False, aweights=bw)/N_stamp
+    errs = np.sqrt(np.diag(covm))
+    
+    pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
+    pl.add(centers, mean_binned)
+    pl.add_err(centers, mean_binned, yerr=errs)
+    pl.hline(y=0)
+    pl.done(f'plots/3prof.png')
+
+    save('plots/4pdata_mean.npy', mean_binned)
+    save('plots/5pdata_err.npy', errs)
+
 
     elapsed = t.time() - start
     print("\r ::: entire run took %.1f seconds" %elapsed)
-
 

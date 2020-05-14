@@ -4,7 +4,9 @@ from pixell import enmap,lensing as plensing
 import numpy as np
 import os,sys
 from symlens import qe
-from szar import counts
+#import HMFunc as hf
+#from szar import counts
+from HMFunc.cosmology import Cosmology
 
 px = 0.5
 width = 120./60.
@@ -19,8 +21,11 @@ lcltt2d = theory.lCl('TT',modlmap)
 mass = 2e14
 c = 3.2
 z = 0.7
-cc = counts.ClusterCosmology(skipCls=True,skipPower=True)
+#cc = counts.ClusterCosmology(skipCls=True,skipPower=True)
+cc = Cosmology()
 massOverh = mass / cc.h
+print(cc.h)
+
 
 # Generate its kappa
 kappa = lensing.nfw_kappa(massOverh,modrmap,cc,zL=z,concentration=c,overdensity=500.,critical=True,atClusterZ=True)

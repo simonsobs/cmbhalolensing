@@ -20,6 +20,7 @@ params['H0'] = h * 100.
 params['omch2'] = omch2
 params['ombh2'] = ombh2
 params['ns'] = ns
+params['mnu'] = 0.
 
 conc = 3.2
 cc = counts.ClusterCosmology(params,skipCls=True,skipPower=True,skip_growth=True)
@@ -28,7 +29,7 @@ mass = 2e14
 
 thetas = np.geomspace(0.1,10,1000)
 kappa = lensing.nfw_kappa(mass,thetas*utils.arcmin,cc,zL=z,concentration=conc,overdensity=180,critical=False,atClusterZ=False)
-hthetas,hkappa = np.loadtxt("hdv_unfiltered.csv",unpack=True,delimiter=',')
+hthetas,hkappa = np.loadtxt("data/hdv_unfiltered.csv",unpack=True,delimiter=',')
 
 pl = io.Plotter(xyscale='loglog', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
 pl.add(thetas,kappa)
@@ -47,7 +48,7 @@ kmask = maps.mask_kspace(shape,wcs,lmax=8095)
 bin_edges_arcmin= np.arange(0,15,0.4)
 cents,k1d = lensing.binned_nfw(mass,z,conc,cc,shape,wcs,bin_edges_arcmin,overdensity=180.,critical=False,at_cluster_z=False,kmask=kmask)
 
-hcents,hk1d = np.loadtxt("hdv_filtered_kappa.csv",unpack=True,delimiter=',')
+hcents,hk1d = np.loadtxt("data/hdv_filtered_kappa.csv",unpack=True,delimiter=',')
 
 pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
 pl.add(cents*180.*60/np.pi,k1d)

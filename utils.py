@@ -82,3 +82,38 @@ def plot(fname,stamp,stamp_width_arcmin,tap_per,pad_per,crop=None):
     print("Plotted extent : ",pwidth)
     io.plot_img(tmap,fname, flip=False, ftsize=12, ticksize=10,arc_width=pwidth,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)')
 
+
+def get_hdv_cc():
+    from szar import counts
+    ombh2 = 0.0223
+    om = 0.24
+    h = 0.73
+    ns = 0.958
+    omb = ombh2 / h**2
+    omc = om - omb
+    omch2 = omc * h**2.
+    As = cosmology.As_from_s8(sigma8 = 0.76,bounds=[1.9e-9,2.5e-9],rtol=1e-4,omegab = omb, omegac = omc, ns = ns, h = h)
+    print(As)
+    params = {}
+    params['As'] = As
+    params['H0'] = h * 100.
+    params['omch2'] = omch2
+    params['ombh2'] = ombh2
+    params['ns'] = ns
+    params['mnu'] = 0.0
+
+    conc = 3.2
+    cc = counts.ClusterCosmology(params,skipCls=True,skipPower=True,skip_growth=True)
+    return cc
+
+
+class Simulator(object):
+    
+    def __init__(self,stamp_width_arcmin,pix_arcmin):
+
+        """
+        
+        """
+        pass
+
+        

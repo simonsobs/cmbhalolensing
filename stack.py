@@ -19,7 +19,7 @@ import argparse
 parser = argparse.ArgumentParser(description='Stacked CMB lensing.')
 parser.add_argument("version", type=str,help='Version label.')
 parser.add_argument("cat_path", type=str,help='Catalog path relative to data directory.')
-parser.add_argument("-N", "--nmax",     type=int,  default=None,help="Limit number of objects used e.g. for debugging or quick tests.")
+parser.add_argument("-N", "--nmax",     type=int,  default=None,help="Limit number of objects used e.g. for debugging or quick tests, or for sim injections.")
 parser.add_argument("--plmin",     type=int,  default=200,help="Minimum multipole for Planck.")
 parser.add_argument("--plmax",     type=int,  default=2000,help="Maximum multipole for Planck.")
 parser.add_argument("--almin",     type=int,  default=500,help="Minimum multipole for ACT.")
@@ -31,6 +31,7 @@ parser.add_argument("--lycut",     type=int,  default=50,help="Lycut for ACT.")
 parser.add_argument("--arcmax",     type=float,  default=15,help="Maximum arcmin distance for binning.")
 parser.add_argument("--arcstep",     type=float,  default=1.0,help="Step arcmin for binning.")
 parser.add_argument("--stamp-width-arcmin",     type=float,  default=128.0,help="Stamp width arcmin.")
+parser.add_argument("--pix-width-arcmin",     type=float,  default=0.5,help="Stamp width arcmin.")
 parser.add_argument("--tap-per",     type=float,  default=12.0,help="Taper percentage.")
 parser.add_argument("--pad-per",     type=float,  default=3.0,help="Pad percentage.")
 parser.add_argument("--debug-fit",     type=str,  default=None,help="Which fit to debug.")
@@ -49,27 +50,27 @@ mstr = "_meanfield" if args.is_meanfield else ""
 
 vstr = f"{args.version}_plmin_{args.plmin}_plmax_{args.plmax}_almin_{args.almin}_almax_{args.almax}_klmin_{args.klmin}_klmax_{args.klmax}_lxcut_{args.lxcut}_lycut_{args.lycut}_swidth_{args.stamp_width_arcmin:.2f}_tapper_{args.tap_per:.2f}_padper_{args.pad_per:.2f}_{dstr}_{apstr}{mstr}"
 
-# if args.meanfield_version:
-#     if args.is_meanfield: raise ValueError
-#     mvstr = f"{args.meanfield_version}_plmin_{args.plmin}_plmax_{args.plmax}_almin_{args.almin}_almax_{args.almax}_klmin_{args.klmin}_klmax_{args.klmax}_lxcut_{args.lxcut}_lycut_{args.lycut}_swidth_{args.stamp_width_arcmin:.2f}_tapper_{args.tap_per:.2f}_padper_{args.pad_per:.2f}_{dstr}_{apstr}_meanfield"
-#     s_mf,shape_mf,wcs_mf = cutils.load_meanfields(mvstr)
-    
 
 p = cutils.p # directory paths dictionary
 start = t.time() 
 
 theory = cosmology.default_theory()
 
-# ACT catalogue :D
-catalogue_name = p['data']+ args.cat_path
-#"AdvACT_S18Clusters_v1.0-beta.fits" #[4024] 
-hdu = fits.open(catalogue_name)
-ras = hdu[1].data['RADeg'][:args.nmax]
-decs = hdu[1].data['DECDeg'][:args.nmax]
+if not(args.inject_sim):
+    # ACT catalogue :D
+    catalogue_name = p['data']+ args.cat_path
+    #"AdvACT_S18Clusters_v1.0-beta.fits" #[4024] 
+    hdu = fits.open(catalogue_name)
+    ras = hdu[1].data['RADeg'][:args.nmax]
+    decs = hdu[1].data['DECDeg'][:args.nmax]
+    nsims = len(ras)
+else:
+    csim = cutils.Simulator(args.stamp_width_arcmin,args.pix_width_arcmin)
+    nsims = args.nmax
+    assert nsims is not None
+    
 
 
-N_cluster = len(ras)
-nsims = N_cluster
 
 
 # MPI paralellization! 
@@ -181,7 +182,7 @@ def fit_p1d(cents, p1d, which,xout,fwhm1,fwhm2):
 
 # stamp size and resolution 
 stamp_width_deg = args.stamp_width_arcmin/60.
-pixel = 0.5
+pixel = args.pix_width_arcmin
 
 # beam and FWHM 
 plc_beam_fwhm = 5.
@@ -253,58 +254,59 @@ for j,task in enumerate(my_tasks):
     
     i = task
     print(f'Rank {rank} performing task {task} as index {j}')
-    ## extract a postage stamp from a larger map
-    ## by reprojecting to a coordinate system centered on the given position 
 
-    coords = np.array([decs[i], ras[i]])*utils.degree
-
-    ivar_90 = reproject.thumbnails_ivar(imap_90, coords, r=maxr, res=pixel*utils.arcmin, extensive=True, proj="plain")
-    if ivar_90 is None: 
-        print(f'{task} has no ivar 90 stamp')
-        continue
-    if np.any(ivar_90 <= 1e-10): 
-        print(f'{task} has high 90 noise')
-        if not(args.is_meanfield): io.plot_img(ivar_90,f'{debugdir}act_90_err_ivar_large_var_{task}.png',arc_width=args.stamp_width_arcmin,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)')
-        continue
+    if not(args.inject_sim):
+        coords = np.array([decs[i], ras[i]])*utils.degree
+        ivar_90 = reproject.thumbnails_ivar(imap_90, coords, r=maxr, res=pixel*utils.arcmin, extensive=True, proj="plain")
+        if ivar_90 is None: 
+            print(f'{task} has no ivar 90 stamp')
+            continue
+        if np.any(ivar_90 <= 1e-10): 
+            print(f'{task} has high 90 noise')
+            if not(args.is_meanfield): io.plot_img(ivar_90,f'{debugdir}act_90_err_ivar_large_var_{task}.png',arc_width=args.stamp_width_arcmin,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)')
+            continue
 
 
-    # cut out a stamp from the ACT map (CAR -> plain) 
-    astamp_150 = reproject.thumbnails(amap_150, coords, r=maxr, res=pixel*utils.arcmin, proj="plain", apod=0,oversample=2)
-    astamp_90 = reproject.thumbnails(amap_90, coords, r=maxr, res=pixel*utils.arcmin, proj="plain", apod=0,oversample=2)
+        # cut out a stamp from the ACT map (CAR -> plain) 
+        astamp_150 = reproject.thumbnails(amap_150, coords, r=maxr, res=pixel*utils.arcmin, proj="plain", apod=0,oversample=2)
+        astamp_90 = reproject.thumbnails(amap_90, coords, r=maxr, res=pixel*utils.arcmin, proj="plain", apod=0,oversample=2)
 
 
-    ##### temporary 1: avoid weird noisy ACT stamps
-    if np.any(astamp_150 >= 1e3) or np.any(astamp_90 >= 1e3): 
-        print(f'{task} has anomalously high ACT 150 or 90')
-        if not(args.is_meanfield): io.plot_img(astamp_150,f'{debugdir}act_150_err_stamp_large_stamp_{task}.png',arc_width=args.stamp_width_arcmin,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)')
-        if not(args.is_meanfield): io.plot_img(astamp_90,f'{debugdir}act_90_err_stamp_large_stamp_{task}.png',arc_width=args.stamp_width_arcmin,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)')
-        continue
-    try:
-        if not(np.all(np.isfinite(astamp_90))): raise ValueError
-        if not(np.all(np.isfinite(ivar_90))): raise ValueError
-    except:
-        print(f'{task} has anomalous stamp')
-        if not(args.is_meanfield): io.plot_img(astamp_150,f'{debugdir}act_150_err_stamp_an_stamp_{task}.png',arc_width=args.stamp_width_arcmin,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)')
-        if not(args.is_meanfield): io.plot_img(astamp_90,f'{debugdir}act_90_err_stamp_an_stamp_{task}.png',arc_width=args.stamp_width_arcmin,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)')
-        continue
+        ##### temporary 1: avoid weird noisy ACT stamps
+        if np.any(astamp_150 >= 1e3) or np.any(astamp_90 >= 1e3): 
+            print(f'{task} has anomalously high ACT 150 or 90')
+            if not(args.is_meanfield): io.plot_img(astamp_150,f'{debugdir}act_150_err_stamp_large_stamp_{task}.png',arc_width=args.stamp_width_arcmin,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)')
+            if not(args.is_meanfield): io.plot_img(astamp_90,f'{debugdir}act_90_err_stamp_large_stamp_{task}.png',arc_width=args.stamp_width_arcmin,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)')
+            continue
+        try:
+            if not(np.all(np.isfinite(astamp_90))): raise ValueError
+            if not(np.all(np.isfinite(ivar_90))): raise ValueError
+        except:
+            print(f'{task} has anomalous stamp')
+            if not(args.is_meanfield): io.plot_img(astamp_150,f'{debugdir}act_150_err_stamp_an_stamp_{task}.png',arc_width=args.stamp_width_arcmin,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)')
+            if not(args.is_meanfield): io.plot_img(astamp_90,f'{debugdir}act_90_err_stamp_an_stamp_{task}.png',arc_width=args.stamp_width_arcmin,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)')
+            continue
 
-    # cut out a stamp from the Planck map (CAR -> plain) 
-    pstamp = reproject.thumbnails(pmap, coords, r=maxr, res=pixel*utils.arcmin, proj="plain", apod=0,oversample=2)
+        # cut out a stamp from the Planck map (CAR -> plain) 
+        pstamp = reproject.thumbnails(pmap, coords, r=maxr, res=pixel*utils.arcmin, proj="plain", apod=0,oversample=2)
 
-    assert wcsutils.equal(astamp_150.wcs,astamp_90.wcs)
-    assert wcsutils.equal(astamp_150.wcs,pstamp.wcs)
-    assert wcsutils.equal(astamp_150.wcs,ivar_90.wcs)
+        assert wcsutils.equal(astamp_150.wcs,astamp_90.wcs)
+        assert wcsutils.equal(astamp_150.wcs,pstamp.wcs)
+        assert wcsutils.equal(astamp_150.wcs,ivar_90.wcs)
 
-    # unit: K -> uK 
-    if pstamp is None: 
-        print(f'{task} has no planck stamp')
-        continue
-    if not(np.all(np.isfinite(pstamp))): 
-        print(f'{task} has anomalous planck stamp; not finite')
-        if not(args.is_meanfield): io.plot_img(pstamp,f'{debugdir}planck_err_stamp_notfinite_{task}.png',arc_width=args.stamp_width_arcmin,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)')
-        continue
+        # unit: K -> uK 
+        if pstamp is None: 
+            print(f'{task} has no planck stamp')
+            continue
+        if not(np.all(np.isfinite(pstamp))): 
+            print(f'{task} has anomalous planck stamp; not finite')
+            if not(args.is_meanfield): io.plot_img(pstamp,f'{debugdir}planck_err_stamp_notfinite_{task}.png',arc_width=args.stamp_width_arcmin,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)')
+            continue
 
-    pstamp = pstamp[0]*1e6
+        pstamp = pstamp[0]*1e6
+
+    else:
+        astamp_150,astamp_90,pstamp = csim.get_obs(task)
 
     ## if we want to do any sort of harmonic analysis 
     ## we require periodic boundary conditions

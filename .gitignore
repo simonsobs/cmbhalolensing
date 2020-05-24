@@ -1,2 +1,4 @@
 *.DS_Store
 paths_local.yml
+*.png
+script_*.sh

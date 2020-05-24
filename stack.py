@@ -19,7 +19,7 @@ import argparse
 parser = argparse.ArgumentParser(description='Stacked CMB lensing.')
 parser.add_argument("version", type=str,help='Version label.')
 parser.add_argument("cat_path", type=str,help='Catalog path relative to data directory.')
-parser.add_argument("-N", "--nmax",     type=int,  default=None,help="Limit number of objects used.")
+parser.add_argument("-N", "--nmax",     type=int,  default=None,help="Limit number of objects used e.g. for debugging or quick tests.")
 parser.add_argument("--plmin",     type=int,  default=200,help="Minimum multipole for Planck.")
 parser.add_argument("--plmax",     type=int,  default=2000,help="Maximum multipole for Planck.")
 parser.add_argument("--almin",     type=int,  default=500,help="Minimum multipole for ACT.")
@@ -34,8 +34,8 @@ parser.add_argument("--stamp-width-arcmin",     type=float,  default=128.0,help=
 parser.add_argument("--tap-per",     type=float,  default=12.0,help="Taper percentage.")
 parser.add_argument("--pad-per",     type=float,  default=3.0,help="Pad percentage.")
 parser.add_argument("--debug-fit",     type=str,  default=None,help="Which fit to debug.")
-parser.add_argument("--meanfield_version",     type=str,  default=None,help="Subtract this meanfield version.")
 parser.add_argument("--no-sz-sub", action='store_true',help='Use the high-res maps without SZ subtraction.')
+parser.add_argument("--inject-sim", action='store_true',help='Instead of using data, simulate a lensing cluster and Planck+ACT (or unlensed for mean-field).')
 parser.add_argument("-o","--overwrite", action='store_true',help='Overwrite existing version.')
 parser.add_argument("--is-meanfield", action='store_true',help='This is a mean-field run.')
 parser.add_argument("--night-only", action='store_true',help='Use night-only maps.')
@@ -49,12 +49,11 @@ mstr = "_meanfield" if args.is_meanfield else ""
 
 vstr = f"{args.version}_plmin_{args.plmin}_plmax_{args.plmax}_almin_{args.almin}_almax_{args.almax}_klmin_{args.klmin}_klmax_{args.klmax}_lxcut_{args.lxcut}_lycut_{args.lycut}_swidth_{args.stamp_width_arcmin:.2f}_tapper_{args.tap_per:.2f}_padper_{args.pad_per:.2f}_{dstr}_{apstr}{mstr}"
 
-if args.meanfield_version:
-    if args.is_meanfield: raise ValueError
-    mvstr = f"{args.meanfield_version}_plmin_{args.plmin}_plmax_{args.plmax}_almin_{args.almin}_almax_{args.almax}_klmin_{args.klmin}_klmax_{args.klmax}_lxcut_{args.lxcut}_lycut_{args.lycut}_swidth_{args.stamp_width_arcmin:.2f}_tapper_{args.tap_per:.2f}_padper_{args.pad_per:.2f}_{dstr}_{apstr}_meanfield"
-    mfs = cutils.load_meanfields(mvstr)
+# if args.meanfield_version:
+#     if args.is_meanfield: raise ValueError
+#     mvstr = f"{args.meanfield_version}_plmin_{args.plmin}_plmax_{args.plmax}_almin_{args.almin}_almax_{args.almax}_klmin_{args.klmin}_klmax_{args.klmax}_lxcut_{args.lxcut}_lycut_{args.lycut}_swidth_{args.stamp_width_arcmin:.2f}_tapper_{args.tap_per:.2f}_padper_{args.pad_per:.2f}_{dstr}_{apstr}_meanfield"
+#     s_mf,shape_mf,wcs_mf = cutils.load_meanfields(mvstr)
     
-
 
 p = cutils.p # directory paths dictionary
 start = t.time() 
@@ -365,7 +364,7 @@ for j,task in enumerate(my_tasks):
         ymask = maps.mask_kspace(shape, wcs, lmin=ylmin, lmax=ylmax, lxcut=lxcut, lycut=lycut)
         kmask = maps.mask_kspace(shape, wcs, lmin=klmin, lmax=klmax)
 
-
+        modrmap = enmap.modrmap(shape,wcs)
 
     pow = lambda x,y: (x*y.conj()).real
     # measure the binned power spectrum from given stamp 
@@ -456,7 +455,7 @@ for j,task in enumerate(my_tasks):
         s.add_to_stats('nc',lbinner.bin(tclaa_150_90)[1])
         s.add_to_stats('np',lbinner.bin(tclpp)[1])
 
-
+    s.add_to_stack('ustack',kappa)
     Al = cqe.Al
 
 
@@ -494,7 +493,6 @@ for j,task in enumerate(my_tasks):
     s.add_to_stack('wk_iwt',iNl)
 
 
-
     # inverse variance noise weighting
     ivmean = 1./nmean
 
@@ -502,8 +500,8 @@ for j,task in enumerate(my_tasks):
     stack = kappa*weight
     s.add_to_stack('kmap', stack)  
 
-    wbinned = bin(stack, stack.modrmap()*(180*60/np.pi), bin_edges)
-    binned = bin(kappa, kappa.modrmap()*(180*60/np.pi), bin_edges)
+    wbinned = bin(stack, modrmap*(180*60/np.pi), bin_edges)
+    binned = bin(kappa, modrmap*(180*60/np.pi), bin_edges)
     s.add_to_stats('wk1d', wbinned)
     s.add_to_stats('k1d', binned)
     s.add_to_stats('kw', (weight,))
@@ -524,7 +522,9 @@ if rank==0:
     with bench.show("dump"):
         s.dump(savedir)
         enmap.write_map_geometry(f'{savedir}/map_geometry.fits',shape,wcs)
-        
+        enmap.write_map(f'{savedir}/kmask.fits',kmask)
+        enmap.write_map(f'{savedir}/modrmap.fits',modrmap)
+        np.savetxt(f'{savedir}/bin_edges.txt',bin_edges)
 
     for ctkey in ['selected']:#,'large_kappa','no_stamp','high_noise','high_stamp','anomalous']:
         try:
@@ -534,9 +534,8 @@ if rank==0:
             pass
     N_stamp = s.vectors[f'ct_{ctkey}'].sum()
     assert N_stamp==s.stack_count['kmap']
+    assert N_stamp==s.vectors['kw'].shape[0]
 
-    s = stats.load_stats(f'{savedir}') # !!!!!!!!!
-    shape,wcs = enmap.read_map_geometry(f'{savedir}/map_geometry.fits')
 
     if not(args.is_meanfield):
         pl = io.Plotter('CL')
@@ -567,54 +566,6 @@ if rank==0:
         for i in range(s.vectors['np'].shape[0]):
             pl.add(plc_cents,s.vectors['np'][i])
         pl.done(f'{savedir}np.png')
-
-    V1 = s.vectors['kw'].sum()
-    V2 = s.vectors['kw2'].sum()
-    kmap = enmap.enmap(s.stacks['kmap']*N_stamp / V1,wcs)
-
-    trimy = int((args.tap_per+args.pad_per)/100. * kmap.shape[0])
-    trimx = int((args.tap_per+args.pad_per)/100. * kmap.shape[1])
-    tmap = kmap[trimy:-trimy,trimx:-trimx]
-    zfact = tmap.shape[0]*1./kmap.shape[0]
-    io.plot_img(tmap,f'{savedir}0final_sweight.png', flip=False, ftsize=12, ticksize=10,arc_width=args.stamp_width_arcmin*zfact,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)')
-    zmap = maps.crop_center(kmap,30)
-    zfact = zmap.shape[0]*1./kmap.shape[0]
-    io.plot_img(zmap,f'{savedir}1zoom_sweight.png', flip=False, ftsize=12, ticksize=10,arc_width=args.stamp_width_arcmin*zfact,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)')
-
-    kstack = enmap.enmap((s.stacks['wk_real'] + 1j*s.stacks['wk_imag']) / s.stacks['wk_iwt'],wcs)
-    kstack[~np.isfinite(kstack)] = 0
-    kmap = enmap.ifft(kstack,normalize='phys').real
-
-
-    print("\r ::: number of cluster stamps : %d" %N_stamp)
-
-    trimy = int((args.tap_per+args.pad_per)/100. * kmap.shape[0])
-    trimx = int((args.tap_per+args.pad_per)/100. * kmap.shape[1])
-    tmap = kmap[trimy:-trimy,trimx:-trimx]
-    zfact = tmap.shape[0]*1./kmap.shape[0]
-    io.plot_img(tmap,f'{savedir}0final.png', flip=False, ftsize=12, ticksize=10,arc_width=args.stamp_width_arcmin*zfact,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)')
-    zmap = maps.crop_center(kmap,30)
-    zfact = zmap.shape[0]*1./kmap.shape[0]
-    io.plot_img(zmap,f'{savedir}1zoom.png', flip=False, ftsize=12, ticksize=10,arc_width=args.stamp_width_arcmin*zfact,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)')
-
-    
-
-
-    mean_binned = s.vectors['wk1d'].sum(axis=0) / V1
-    diff = s.vectors['k1d'] - mean_binned
-    cov = np.dot((diff * s.vectors['kw']).T,diff) / (V1-(V2/V1))
-
-    covm = cov/N_stamp
-    errs = np.sqrt(np.diag(covm))
-    
-    pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
-    pl.add(centers, mean_binned)
-    pl.add_err(centers, mean_binned, yerr=errs)
-    pl.hline(y=0)
-    pl.done(f'{savedir}3prof.png')
-
-    save(f'{savedir}4pdata_mean.npy', mean_binned)
-    save(f'{savedir}5pdata_err.npy', errs)
 
 
     elapsed = t.time() - start

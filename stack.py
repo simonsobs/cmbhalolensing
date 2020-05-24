@@ -32,11 +32,16 @@ parser.add_argument("--arcmax",     type=float,  default=15,help="Maximum arcmin
 parser.add_argument("--arcstep",     type=float,  default=1.0,help="Step arcmin for binning.")
 parser.add_argument("--stamp-width-arcmin",     type=float,  default=128.0,help="Stamp width arcmin.")
 parser.add_argument("--pix-width-arcmin",     type=float,  default=0.5,help="Stamp width arcmin.")
+parser.add_argument("--no-fit-noise", action='store_true',help='If True, do not fit empirical noise, but use RMS values specified in plc-rms, act-150-rms and act-90-rms.')
+parser.add_argument("--plc-rms",     type=float,  default=35.0,help="Planck RMS noise to assume either in sims or forced noise powers or both.")
+parser.add_argument("--act-150-rms",     type=float,  default=15.0,help="ACT 150 RMS noise to assume either in sims or forced noise powers or both.")
+parser.add_argument("--act-90-rms",     type=float,  default=20.0,help="ACT 90 RMS noise to assume either in sims or forced noise powers or both.")
 parser.add_argument("--tap-per",     type=float,  default=12.0,help="Taper percentage.")
 parser.add_argument("--pad-per",     type=float,  default=3.0,help="Pad percentage.")
 parser.add_argument("--debug-fit",     type=str,  default=None,help="Which fit to debug.")
 parser.add_argument("--no-sz-sub", action='store_true',help='Use the high-res maps without SZ subtraction.')
 parser.add_argument("--inject-sim", action='store_true',help='Instead of using data, simulate a lensing cluster and Planck+ACT (or unlensed for mean-field).')
+parser.add_argument("--lensed-sim-version",     type=str,  default="lensed_maps_2e14_m180m0_c3.2_z0.7_v1_swidth_128.00_pwidth_0.50_bfact_2_pfact_5_lorder_5",help="Default lensed sims.")
 parser.add_argument("-o","--overwrite", action='store_true',help='Overwrite existing version.')
 parser.add_argument("--is-meanfield", action='store_true',help='This is a mean-field run.')
 parser.add_argument("--night-only", action='store_true',help='Use night-only maps.')
@@ -65,7 +70,8 @@ if not(args.inject_sim):
     decs = hdu[1].data['DECDeg'][:args.nmax]
     nsims = len(ras)
 else:
-    csim = cutils.Simulator(args.stamp_width_arcmin,args.pix_width_arcmin)
+    csim = cutils.Simulator(args.is_meanfield,args.stamp_width_arcmin,args.pix_width_arcmin,args.lensed_sim_version,
+                            plc_rms=args.plc_rms,act_150_rms=args.act_150_rms,act_90_rms=args.act_90_rms)
     nsims = args.nmax
     assert nsims is not None
     
@@ -100,79 +106,97 @@ comm.Barrier()
 s = stats.Stats(comm)
 
 
-# Planck tSZ deprojected map
-with bench.show("load maps"):
-    fplc_map = p['data']+"planck_smica_nosz_reproj.fits"
-    try:
-        pmap = enmap.read_map(fplc_map,delayed=False)
-    except:
-        plc_map = p['planck_data']+"COM_CMB_IQU-smica-nosz_2048_R3.00_full.fits"
-        # reproject the Planck map (healpix -> CAR) 
-        fshape, fwcs = enmap.fullsky_geometry(res=2.*utils.arcmin, proj='car')
-        pmap = reproject.enmap_from_healpix(plc_map, fshape, fwcs, ncomp=1, unit=1, lmax=6000, rot="gal,equ")
-        enmap.write_map(fplc_map,pmap)
+if not(args.inject_sim):
+    with bench.show("load maps"):
+        fplc_map = p['data']+"planck_smica_nosz_reproj.fits"
+        try:
+            pmap = enmap.read_map(fplc_map,delayed=False)
+        except:
+            plc_map = p['planck_data']+"COM_CMB_IQU-smica-nosz_2048_R3.00_full.fits"
+            # reproject the Planck map (healpix -> CAR) 
+            fshape, fwcs = enmap.fullsky_geometry(res=2.*utils.arcmin, proj='car')
+            pmap = reproject.enmap_from_healpix(plc_map, fshape, fwcs, ncomp=1, unit=1, lmax=6000, rot="gal,equ")
+            enmap.write_map(fplc_map,pmap)
 
 
-    # ACT coadd map
-    if args.no_sz_sub:
-        act_map = p['coadd_data'] + f'{apstr}_s08_s18_cmb_f150_{dstr}_srcfree_map.fits'
-        amap_150 = enmap.read_map(act_map,delayed=False,sel=np.s_[0,...])
-    else:
-        act_map = p['data'] + f'modelSubtracted150_{apstr}_{dstr}.fits'
-        amap_150 = enmap.read_map(act_map,delayed=False)
+        # ACT coadd map
+        if args.no_sz_sub:
+            act_map = p['coadd_data'] + f'{apstr}_s08_s18_cmb_f150_{dstr}_srcfree_map.fits'
+            amap_150 = enmap.read_map(act_map,delayed=False,sel=np.s_[0,...])
+        else:
+            act_map = p['data'] + f'modelSubtracted150_{apstr}_{dstr}.fits'
+            amap_150 = enmap.read_map(act_map,delayed=False)
 
-    # ACT coadd map
-    if args.no_sz_sub:
-        act_map = p['coadd_data'] + f'{apstr}_s08_s18_cmb_f090_{dstr}_srcfree_map.fits'
-        amap_90 = enmap.read_map(act_map,delayed=False,sel=np.s_[0,...])
-    else:
-        act_map = p['data'] + f'modelSubtracted90_{apstr}_{dstr}.fits'
-        amap_90 = enmap.read_map(act_map,delayed=False)
-    ivar_map = p['coadd_data'] + f'{apstr}_s08_s18_cmb_f090_{dstr}_ivar.fits'
-    imap_90 = enmap.read_map(ivar_map,delayed=False,sel=np.s_[0,...])
+        # ACT coadd map
+        if args.no_sz_sub:
+            act_map = p['coadd_data'] + f'{apstr}_s08_s18_cmb_f090_{dstr}_srcfree_map.fits'
+            amap_90 = enmap.read_map(act_map,delayed=False,sel=np.s_[0,...])
+        else:
+            act_map = p['data'] + f'modelSubtracted90_{apstr}_{dstr}.fits'
+            amap_90 = enmap.read_map(act_map,delayed=False)
+        ivar_map = p['coadd_data'] + f'{apstr}_s08_s18_cmb_f090_{dstr}_ivar.fits'
+        imap_90 = enmap.read_map(ivar_map,delayed=False,sel=np.s_[0,...])
 
 
 
 # function for fitting 1D power spectrum of given stamp 
-def fit_p1d(cents, p1d, which,xout,fwhm1,fwhm2):
+def fit_p1d(cents, p1d, which,xout,bfunc1,bfunc2,rms=None):
 
-    ells = cents
-    cltt = p1d
+    if args.no_fit_noise:
 
-    logy = cltt*ells**2.
-       
-    def ffunc(x, a, b,c):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            b1 = maps.gauss_beam(x,fwhm1) if fwhm1 is not None else 1
-            b2 = maps.gauss_beam(x,fwhm2) if fwhm2 is not None else 1
-            return (maps.rednoise(x,a,lknee=b,alpha=c) + theory.lCl('TT',x) * b1* b2)*x**2
+        x = xout
+        b1 = bfunc1(x) if bfunc1 is not None else 1
+        b2 = bfunc2(x) if bfunc2 is not None else 1
+        ret = theory.lCl('TT',x) * b1* b2 + (rms*np.pi/180./60.)**2.
 
-    if which=='act' or which=='act_cross': 
-        popt, pcov = curve_fit(lambda x,a,b: ffunc(x,a,b,-4), ells, logy,p0=[20,3000],bounds=([4,400],[100,4000]))
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            ret = ffunc(xout, *popt,-4)/xout**2
-    elif which=='plc': 
-        popt, pcov = curve_fit(lambda x,a: ffunc(x,a,0,1), ells, logy,p0=[30])
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            ret = ffunc(xout, *popt,0,1)/xout**2
-    elif which=='apcross': 
-        popt, pcov = curve_fit(lambda x,a: ffunc(x,a,0,1), ells, logy,p0=[2],bounds=(0,100))
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            ret = ffunc(xout, *popt,0,1)/xout**2
+        if which==args.debug_fit:
+            pl = io.Plotter('Cell')
+            pl.add(cents,p1d,ls="none",marker='o')
+            pl.add(xout,ret,ls="none",marker='o')
+            pl._ax.set_ylim(1e-7,1)
+            pl._ax.set_xlim(0,6000)
+            pl.done(f'{debugdir}fcl.png')
+            sys.exit()
 
-    if which==args.debug_fit:
-        pl = io.Plotter('Cell')
-        ls = np.arange(6000)
-        if which=='plc' or which=='apcross': pl.add(ls,ffunc(ls,*popt,0,1)/ls**2)
-        else: pl.add(ls,ffunc(ls,*popt,-4)/ls**2)
-        pl.add(cents,p1d,ls="none",marker='o')
-        pl._ax.set_ylim(1e-7,1)
-        pl.done(f'{debugdir}fcl.png')
-        sys.exit()
+    else:
+        ells = cents
+        cltt = p1d
+
+        logy = cltt*ells**2.
+
+        def ffunc(x, a, b,c):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                b1 = bfunc1(x) if bfunc1 is not None else 1
+                b2 = bfunc2(x) if bfunc2 is not None else 1
+                return (maps.rednoise(x,a,lknee=b,alpha=c) + theory.lCl('TT',x) * b1* b2)*x**2
+
+        if which=='act' or which=='act_cross': 
+            popt, pcov = curve_fit(lambda x,a,b: ffunc(x,a,b,-4), ells, logy,p0=[20,3000],bounds=([4,400],[100,4000]))
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                ret = ffunc(xout, *popt,-4)/xout**2
+        elif which=='plc': 
+            popt, pcov = curve_fit(lambda x,a: ffunc(x,a,0,1), ells, logy,p0=[30])
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                ret = ffunc(xout, *popt,0,1)/xout**2
+        elif which=='apcross': 
+            popt, pcov = curve_fit(lambda x,a: ffunc(x,a,0,1), ells, logy,p0=[2],bounds=(0,100))
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                ret = ffunc(xout, *popt,0,1)/xout**2
+
+        if which==args.debug_fit:
+            print(popt)
+            pl = io.Plotter('Cell')
+            ls = np.arange(6000)
+            if which=='plc' or which=='apcross': pl.add(ls,ffunc(ls,*popt,0,1)/ls**2)
+            else: pl.add(ls,ffunc(ls,*popt,-4)/ls**2)
+            pl.add(cents,p1d,ls="none",marker='o')
+            pl._ax.set_ylim(1e-7,1)
+            pl.done(f'{debugdir}fcl.png')
+            sys.exit()
 
     ret[xout<2] = 0
     assert np.all(np.isfinite(ret))
@@ -185,7 +209,7 @@ stamp_width_deg = args.stamp_width_arcmin/60.
 pixel = args.pix_width_arcmin
 
 # beam and FWHM 
-plc_beam_fwhm = 5.
+plc_beam_fwhm = cutils.plc_beam_fwhm
 
 # Planck mask
 xlmin = args.plmin
@@ -215,13 +239,6 @@ def bin(data, modrmap, bin_edges):
     cents,ret = binner.bin(data)
     return ret
 
-def load_beam(freq,ells):
-    if freq=='f150': fname = p['data']+'s16_pa2_f150_nohwp_night_beam_tform_jitter.txt'
-    elif freq=='f090': fname = p['data']+'s16_pa3_f090_nohwp_night_beam_tform_jitter.txt'
-    ls,bls = np.loadtxt(fname,usecols=[0,1],unpack=True)
-    assert ls[0]==0
-    bls = bls / bls[0]
-    return maps.interp(ls,bls)(ells)
 
 def ilc(modlmap,m1,m2,p11,p22,p12,b1,b2):
     # A simple two array ILC solution
@@ -251,7 +268,6 @@ maxr = stamp_width_deg*utils.degree/2.
 
 
 for j,task in enumerate(my_tasks):
-    
     i = task
     print(f'Rank {rank} performing task {task} as index {j}')
 
@@ -306,7 +322,11 @@ for j,task in enumerate(my_tasks):
         pstamp = pstamp[0]*1e6
 
     else:
-        astamp_150,astamp_90,pstamp = csim.get_obs(task)
+        pstamp,astamp_150,astamp_90 = csim.get_obs(task)
+        # io.plot_img(pstamp,'stamp_plc.png')
+        # io.plot_img(astamp_150,'stamp_a150.png')
+        # io.plot_img(astamp_90,'stamp_a90.png')
+        # sys.exit()
 
     ## if we want to do any sort of harmonic analysis 
     ## we require periodic boundary conditions
@@ -338,8 +358,8 @@ for j,task in enumerate(my_tasks):
         modlmap = enmap.modlmap(shape, wcs)
 
         # evaluate the 2D Gaussian beam on an isotropic Fourier grid 
-        act_150_kbeam2d = load_beam('f150',modlmap)
-        act_90_kbeam2d = load_beam('f090',modlmap)
+        act_150_kbeam2d = cutils.load_beam('f150')(modlmap)
+        act_90_kbeam2d = cutils.load_beam('f090')(modlmap)
         plc_kbeam2d = maps.gauss_beam(modlmap,plc_beam_fwhm)
 
         ## lensing noise curves require CMB power spectra
@@ -377,10 +397,10 @@ for j,task in enumerate(my_tasks):
 
 
     # fit 1D power spectrum 
-    tclaa_150 = fit_p1d(act_cents, act_p1d_150, 'act',modlmap,1.4,1.4)
-    tclaa_90 = fit_p1d(act_cents, act_p1d_90, 'act',modlmap,2.2,2.2)
-    tclaa_150_90 = fit_p1d(act_cents, act_p1d_150_90, 'act_cross',modlmap,1.4,2.2)
-    tclpp = fit_p1d(plc_cents, plc_p1d, 'plc',modlmap,5.0,5.0) 
+    tclaa_150 = fit_p1d(act_cents, act_p1d_150, 'act',modlmap,cutils.load_beam('f150'),cutils.load_beam('f150'),rms=args.act_150_rms)
+    tclaa_90 = fit_p1d(act_cents, act_p1d_90, 'act',modlmap,cutils.load_beam('f090'),cutils.load_beam('f090'),rms=args.act_90_rms)
+    tclaa_150_90 = fit_p1d(act_cents, act_p1d_150_90, 'act_cross',modlmap,cutils.load_beam('f150'),cutils.load_beam('f090'),rms=0)
+    tclpp = fit_p1d(plc_cents, plc_p1d, 'plc',modlmap,lambda x: maps.gauss_beam(x,cutils.plc_beam_fwhm),lambda x: maps.gauss_beam(x,cutils.plc_beam_fwhm),rms=args.plc_rms) 
 
 
     act_kmap,tclaa = ilc(modlmap,k150,k90,tclaa_150,tclaa_90,tclaa_150_90,act_150_kbeam2d,act_90_kbeam2d)
@@ -414,7 +434,7 @@ for j,task in enumerate(my_tasks):
     plc_kmap[~np.isfinite(plc_kmap)] = 0
 
     cents,c_ap = lbinner.bin(pow(act_kmap,plc_kmap)/w2)
-    tclap = fit_p1d(cents,c_ap, 'apcross',modlmap,None,None) 
+    tclap = fit_p1d(cents,c_ap, 'apcross',modlmap,None,None,rms=0) 
 
 
     # build symlens dictionary 

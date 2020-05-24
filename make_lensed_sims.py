@@ -62,7 +62,7 @@ def lens_map(imap):
 
 modrmap = enmap.modrmap(shape,wcs)
 kappa = lensing.nfw_kappa(massOverh,modrmap,cc,zL=z,concentration=c,overdensity=180.,critical=False,atClusterZ=False)
-enmap.write_map(f'{savedir}kappa.fits',kappa)
+if rank==0: enmap.write_map(f'{savedir}kappa.fits',kappa)
 
 alpha = lensing.alpha_from_kappa(kappa)
 modlmap = enmap.modlmap(shape,wcs)
@@ -82,12 +82,12 @@ mgen = maps.MapGen((3,)+shape,wcs,power)
 
 for j,task in enumerate(my_tasks):
     print(f'Rank {rank} performing task {task} as index {j}')
-    cmb = mgen.get_map(seed=(0,task))
+    cmb = mgen.get_map(seed=cutils.get_seed('lensed',task,False))
     cmb = lens_map(cmb) # do the lensing
     dcmb = cmb.resample((3,dNpix,dNpix))
     kmap = enmap.map2harm(dcmb,iau=True)
-    enmap.write_map(f'{savedir}lensed_kmap_real_{task:5d}.fits',kmap.real)
-    enmap.write_map(f'{savedir}lensed_kmap_imag_{task:5d}.fits',kmap.imag)
+    enmap.write_map(f'{savedir}lensed_kmap_real_{task:06d}.fits',kmap.real)
+    enmap.write_map(f'{savedir}lensed_kmap_imag_{task:06d}.fits',kmap.imag)
     
 
 

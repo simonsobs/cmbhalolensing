@@ -2,7 +2,7 @@ from __future__ import print_function
 from orphics import maps,io,cosmology,stats
 from pixell import enmap,wcsutils,utils as putils
 import numpy as np
-import os,sys
+import os,sys,re
 import warnings
 
 try:
@@ -10,6 +10,16 @@ try:
 except:
     print("No paths_local.yml file found. Please copy paths.yml to paths_local.yml and edit with your local paths. Do not add the latter file to the git tree.")
     raise
+
+plc_beam_fwhm = 5.0
+
+def load_beam(freq):
+    if freq=='f150': fname = p['data']+'s16_pa2_f150_nohwp_night_beam_tform_jitter.txt'
+    elif freq=='f090': fname = p['data']+'s16_pa3_f090_nohwp_night_beam_tform_jitter.txt'
+    ls,bls = np.loadtxt(fname,usecols=[0,1],unpack=True)
+    assert ls[0]==0
+    bls = bls / bls[0]
+    return maps.interp(ls,bls)
 
 
 
@@ -107,13 +117,85 @@ def get_hdv_cc():
     return cc
 
 
+def get_seed(tag,task,is_meanfield):
+    if tag=='lensed':
+        return (0,task)
+    elif tag=='mf':
+        return (1,task)
+    else:
+        i = 1 if is_meanfield else 0
+        if tag=='noise_plc':
+            return (2,i,task)
+        elif tag=='noise_act_150':
+            return (3,i,task)
+        elif tag=='noise_act_90':
+            return (4,i,task)
+
 class Simulator(object):
     
-    def __init__(self,stamp_width_arcmin,pix_arcmin):
+    def __init__(self,is_meanfield,stamp_width_arcmin,pix_arcmin,lensed_version,
+                 plc_rms,act_150_rms,act_90_rms):
 
         """
         
         """
-        pass
+        self.plc_rms=plc_rms 
+        self.act_150_rms=act_150_rms 
+        self.act_90_rms=act_90_rms
+        bfact = float(re.search(rf'bfact_(.*?)_pfact', lensed_version).group(1))
+        npix = int(stamp_width_arcmin * bfact /  pix_arcmin)
+        self.dnpix = int(stamp_width_arcmin / (pix_arcmin))
+        shape,wcs = enmap.geometry(pos=(0,0),res=putils.arcmin * pix_arcmin,shape=(npix,npix),proj='plain')
+        cshape,cwcs = enmap.geometry(pos=(0,0),res=putils.arcmin * pix_arcmin,shape=(self.dnpix,self.dnpix),proj='plain')
+        self.cwcs = cwcs
+        self.ipsizemap = enmap.pixsizemap(cshape,cwcs)
+        theory = cosmology.default_theory()
+        self.shape,self.wcs = shape,wcs
+        self.modlmap = enmap.modlmap(shape,wcs)
+        self.is_meanfield = is_meanfield
+        self.planck_beam = maps.gauss_beam(self.modlmap,plc_beam_fwhm)
+        wy, wx = enmap.calc_window(self.shape)
+        act_pixwin   = wy[:,None] * wx[None,:]
+        self.act_150_beam = load_beam('f150')(self.modlmap) * act_pixwin
+        self.act_90_beam = load_beam('f090')(self.modlmap) * act_pixwin
+        if self.is_meanfield:
+            ucltt = theory.uCl('TT',self.modlmap)
+            self.mgen = maps.MapGen((1,)+self.shape,self.wcs,ucltt[None,None])
+        else:
+            self.savedir = p['scratch'] + f"/{lensed_version}/"
+            
+    def load_kmap(self,task):
+        if self.is_meanfield:
+            return self.mgen.get_map(seed=get_seed("mf",task,self.is_meanfield),harm=True)[0]
+        else:
+            kreal = enmap.read_map(f'{self.savedir}lensed_kmap_real_{task:06d}.fits',sel=np.s_[0,...])
+            kimag = enmap.read_map(f'{self.savedir}lensed_kmap_imag_{task:06d}.fits',sel=np.s_[0,...])
+            assert wcsutils.equal(kreal.wcs,self.wcs)
+            assert wcsutils.equal(kimag.wcs,self.wcs)
+            return enmap.enmap(kreal + 1j*kimag,self.wcs)
 
+    def apply_pix_beam_slice(self,kmap,exp):
+        if exp=='plc':
+            beam = self.planck_beam
+        elif exp=='act_150':
+            beam = self.act_150_beam
+        elif exp=='act_90':
+            beam = self.act_90_beam
+        ret = maps.crop_center(enmap.ifft(kmap * beam,normalize='phys').real,self.dnpix)
+        assert wcsutils.equal(ret.wcs,self.cwcs)
+        return ret
         
+    def get_obs(self,task):
+        kmap = self.load_kmap(task) 
+        kmap *= kmap.pixsize()**0.5 # apply physical normalization, since this is turned off in make_lensed_sims.py and MapGen
+        imap_plc = self.apply_pix_beam_slice(kmap,'plc')
+        imap_act_150 = self.apply_pix_beam_slice(kmap,'act_150')
+        imap_act_90 = self.apply_pix_beam_slice(kmap,'act_90')
+        
+        shape,wcs = imap_plc.shape,imap_plc.wcs
+        noise_planck = maps.white_noise(shape,wcs,self.plc_rms,seed=get_seed("noise_plc",task,self.is_meanfield),ipsizemap=self.ipsizemap)
+        noise_act_150 = maps.white_noise(shape,wcs,self.act_150_rms,seed=get_seed("noise_act_150",task,self.is_meanfield),ipsizemap=self.ipsizemap)
+        noise_act_90 = maps.white_noise(shape,wcs,self.act_90_rms,seed=get_seed("noise_act_90",task,self.is_meanfield),ipsizemap=self.ipsizemap)
+
+        return imap_plc + noise_planck, imap_act_150 + noise_act_150, imap_act_90 + noise_act_90
+

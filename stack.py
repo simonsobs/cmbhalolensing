@@ -39,21 +39,24 @@ parser.add_argument("--act-90-rms",     type=float,  default=20.0,help="ACT 90 R
 parser.add_argument("--tap-per",     type=float,  default=12.0,help="Taper percentage.")
 parser.add_argument("--pad-per",     type=float,  default=3.0,help="Pad percentage.")
 parser.add_argument("--debug-fit",     type=str,  default=None,help="Which fit to debug.")
+parser.add_argument("--no-90", action='store_true',help='Do not use the 90 GHz map.')
 parser.add_argument("--no-sz-sub", action='store_true',help='Use the high-res maps without SZ subtraction.')
 parser.add_argument("--inject-sim", action='store_true',help='Instead of using data, simulate a lensing cluster and Planck+ACT (or unlensed for mean-field).')
-parser.add_argument("--lensed-sim-version",     type=str,  default="lensed_maps_2e14_m180m0_c3.2_z0.7_v1_swidth_128.00_pwidth_0.50_bfact_2_pfact_5_lorder_5",help="Default lensed sims.")
+parser.add_argument("--lensed-sim-version",     type=str,  default="lensed_maps_2e14_m180m0_c3.2_z0.7_v1_swidth_128.00_pwidth_0.50_bfact_2_pfact_5_lorder_5",help="Default lensed sims to inject.")
 parser.add_argument("-o","--overwrite", action='store_true',help='Overwrite existing version.')
 parser.add_argument("--is-meanfield", action='store_true',help='This is a mean-field run.')
 parser.add_argument("--night-only", action='store_true',help='Use night-only maps.')
 parser.add_argument("--planck-in-hres", action='store_true',help='Use Planck+ACT maps in high-res.')
+parser.add_argument("--bcg", action='store_true',help='Use BCG coordinates when available.')
 args = parser.parse_args()
 
 
 dstr = "night" if args.night_only else "daynight"
 apstr = "act_planck" if args.planck_in_hres else "act"
 mstr = "_meanfield" if args.is_meanfield else ""
+n90str = "_no90" if args.no_90 else ""
 
-vstr = f"{args.version}_plmin_{args.plmin}_plmax_{args.plmax}_almin_{args.almin}_almax_{args.almax}_klmin_{args.klmin}_klmax_{args.klmax}_lxcut_{args.lxcut}_lycut_{args.lycut}_swidth_{args.stamp_width_arcmin:.2f}_tapper_{args.tap_per:.2f}_padper_{args.pad_per:.2f}_{dstr}_{apstr}{mstr}"
+vstr = f"{args.version}_plmin_{args.plmin}_plmax_{args.plmax}_almin_{args.almin}_almax_{args.almax}_klmin_{args.klmin}_klmax_{args.klmax}_lxcut_{args.lxcut}_lycut_{args.lycut}_swidth_{args.stamp_width_arcmin:.2f}_tapper_{args.tap_per:.2f}_padper_{args.pad_per:.2f}_{dstr}_{apstr}{n90str}{mstr}"
 
 
 p = cutils.p # directory paths dictionary
@@ -65,9 +68,21 @@ if not(args.inject_sim):
     # ACT catalogue :D
     catalogue_name = p['data']+ args.cat_path
     #"AdvACT_S18Clusters_v1.0-beta.fits" #[4024] 
-    hdu = fits.open(catalogue_name)
-    ras = hdu[1].data['RADeg'][:args.nmax]
-    decs = hdu[1].data['DECDeg'][:args.nmax]
+    if args.bcg:
+        import pandas as pd
+        df = pd.read_csv(catalogue_name)
+        ras = df['ra'].to_numpy()
+        decs = df['dec'].to_numpy()
+        bra = df['bra'].to_numpy()
+        bdec = df['bdec'].to_numpy()
+        ras[bra>-98] = bra[bra>-98]
+        decs[bra>-98] = bdec[bra>-98]
+        ras = ras[:args.nmax]
+        decs = decs[:args.nmax]
+    else:
+        hdu = fits.open(catalogue_name)
+        ras = hdu[1].data['RADeg'][:args.nmax]
+        decs = hdu[1].data['DECDeg'][:args.nmax]
     nsims = len(ras)
 else:
     csim = cutils.Simulator(args.is_meanfield,args.stamp_width_arcmin,args.pix_width_arcmin,args.lensed_sim_version,
@@ -141,13 +156,17 @@ if not(args.inject_sim):
 
 # function for fitting 1D power spectrum of given stamp 
 def fit_p1d(cents, p1d, which,xout,bfunc1,bfunc2,rms=None):
+    if args.inject_sim:
+        tfunc = theory.uCl
+    else:
+        tfunc = theory.lCl
 
     if args.no_fit_noise:
 
         x = xout
         b1 = bfunc1(x) if bfunc1 is not None else 1
         b2 = bfunc2(x) if bfunc2 is not None else 1
-        ret = theory.lCl('TT',x) * b1* b2 + (rms*np.pi/180./60.)**2.
+        ret = tfunc('TT',x) * b1* b2 + (rms*np.pi/180./60.)**2.
 
         if which==args.debug_fit:
             pl = io.Plotter('Cell')
@@ -169,10 +188,13 @@ def fit_p1d(cents, p1d, which,xout,bfunc1,bfunc2,rms=None):
                 warnings.simplefilter("ignore")
                 b1 = bfunc1(x) if bfunc1 is not None else 1
                 b2 = bfunc2(x) if bfunc2 is not None else 1
-                return (maps.rednoise(x,a,lknee=b,alpha=c) + theory.lCl('TT',x) * b1* b2)*x**2
+                return (maps.rednoise(x,a,lknee=b,alpha=c) + tfunc('TT',x) * b1* b2)*x**2
 
         if which=='act' or which=='act_cross': 
             popt, pcov = curve_fit(lambda x,a,b: ffunc(x,a,b,-4), ells, logy,p0=[20,3000],bounds=([4,400],[100,4000]))
+            #popt, pcov = curve_fit(lambda x,a,b: ffunc(x,a,b,-4), ells, logy,p0=[20,3000],bounds=([0,0],[100,4000]))
+            # print(rms)
+            # popt, pcov = curve_fit(lambda x,a,b: ffunc(x,a,b,-4), ells, logy,p0=[rms,0],bounds=([-10,-10],[1,400]))
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 ret = ffunc(xout, *popt,-4)/xout**2
@@ -189,12 +211,12 @@ def fit_p1d(cents, p1d, which,xout,bfunc1,bfunc2,rms=None):
 
         if which==args.debug_fit:
             print(popt)
-            pl = io.Plotter('Cell')
-            ls = np.arange(6000)
+            pl = io.Plotter('Dell')
+            ls = np.arange(10000)
             if which=='plc' or which=='apcross': pl.add(ls,ffunc(ls,*popt,0,1)/ls**2)
             else: pl.add(ls,ffunc(ls,*popt,-4)/ls**2)
             pl.add(cents,p1d,ls="none",marker='o')
-            pl._ax.set_ylim(1e-7,1)
+            pl._ax.set_ylim(1e-1,1e5)
             pl.done(f'{debugdir}fcl.png')
             sys.exit()
 
@@ -323,10 +345,6 @@ for j,task in enumerate(my_tasks):
 
     else:
         pstamp,astamp_150,astamp_90 = csim.get_obs(task)
-        # io.plot_img(pstamp,'stamp_plc.png')
-        # io.plot_img(astamp_150,'stamp_a150.png')
-        # io.plot_img(astamp_90,'stamp_a90.png')
-        # sys.exit()
 
     ## if we want to do any sort of harmonic analysis 
     ## we require periodic boundary conditions
@@ -343,7 +361,8 @@ for j,task in enumerate(my_tasks):
     plc_stamp = pstamp*taper 
 
     k150 = enmap.fft(act_stamp_150,normalize='phys')
-    k90 = enmap.fft(act_stamp_90,normalize='phys')
+    if not(args.no_90):
+        k90 = enmap.fft(act_stamp_90,normalize='phys')
     kp = enmap.fft(plc_stamp,normalize='phys')
 
     ## all outputs are 2D arrays in Fourier space
@@ -357,9 +376,12 @@ for j,task in enumerate(my_tasks):
         wcs = astamp_150.wcs
         modlmap = enmap.modlmap(shape, wcs)
 
+        bfunc150 = cutils.load_beam('f150')
+        bfunc90 = cutils.load_beam('f090')
+
         # evaluate the 2D Gaussian beam on an isotropic Fourier grid 
-        act_150_kbeam2d = cutils.load_beam('f150')(modlmap)
-        act_90_kbeam2d = cutils.load_beam('f090')(modlmap)
+        act_150_kbeam2d = bfunc150(modlmap)
+        act_90_kbeam2d = bfunc90(modlmap)
         plc_kbeam2d = maps.gauss_beam(modlmap,plc_beam_fwhm)
 
         ## lensing noise curves require CMB power spectra
@@ -391,19 +413,29 @@ for j,task in enumerate(my_tasks):
     pow = lambda x,y: (x*y.conj()).real
     # measure the binned power spectrum from given stamp 
     act_cents, act_p1d_150 = lbinner.bin(pow(k150,k150)/w2) 
-    act_cents, act_p1d_90 = lbinner.bin(pow(k90,k90)/w2) 
-    act_cents, act_p1d_150_90 = lbinner.bin(pow(k150,k90)/w2) 
+    if not(args.no_90):
+        act_cents, act_p1d_90 = lbinner.bin(pow(k90,k90)/w2) 
+        act_cents, act_p1d_150_90 = lbinner.bin(pow(k150,k90)/w2) 
     plc_cents, plc_p1d = lbinner.bin(pow(kp,kp)/w2)
 
 
     # fit 1D power spectrum 
-    tclaa_150 = fit_p1d(act_cents, act_p1d_150, 'act',modlmap,cutils.load_beam('f150'),cutils.load_beam('f150'),rms=args.act_150_rms)
-    tclaa_90 = fit_p1d(act_cents, act_p1d_90, 'act',modlmap,cutils.load_beam('f090'),cutils.load_beam('f090'),rms=args.act_90_rms)
-    tclaa_150_90 = fit_p1d(act_cents, act_p1d_150_90, 'act_cross',modlmap,cutils.load_beam('f150'),cutils.load_beam('f090'),rms=0)
+    tclaa_150 = fit_p1d(act_cents, act_p1d_150, 'act',modlmap,bfunc150,bfunc150,rms=args.act_150_rms)
+    if not(args.no_90):
+        tclaa_90 = fit_p1d(act_cents, act_p1d_90, 'act',modlmap,bfunc90,bfunc90,rms=args.act_90_rms)
+        tclaa_150_90 = fit_p1d(act_cents, act_p1d_150_90, 'act_cross',modlmap,bfunc150,bfunc90,rms=0)
     tclpp = fit_p1d(plc_cents, plc_p1d, 'plc',modlmap,lambda x: maps.gauss_beam(x,cutils.plc_beam_fwhm),lambda x: maps.gauss_beam(x,cutils.plc_beam_fwhm),rms=args.plc_rms) 
 
 
-    act_kmap,tclaa = ilc(modlmap,k150,k90,tclaa_150,tclaa_90,tclaa_150_90,act_150_kbeam2d,act_90_kbeam2d)
+    if not(args.no_90):
+        act_kmap,tclaa = ilc(modlmap,k150,k90,tclaa_150,tclaa_90,tclaa_150_90,act_150_kbeam2d,act_90_kbeam2d)
+    else:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            act_kmap = k150 / act_150_kbeam2d
+            tclaa = tclaa_150 / act_150_kbeam2d**2.
+        act_kmap[~np.isfinite(act_kmap)] = 0
+        tclaa[~np.isfinite(tclaa)] = 0
 
 
     # cents,c11 = lbinner.bin(pow(k150,k150)/w2/act_150_kbeam2d**2)
@@ -454,7 +486,6 @@ for j,task in enumerate(my_tasks):
     ## need to have a Fourier space mask in hand 
     ## that enforces what multipoles in the CMB map are included 
 
-
     # ask for reconstruction in Fourier space
     cqe = symlens.QE(shape,wcs,feed_dict,estimator='hdv',XY='TT',
                      xmask=xmask,ymask=ymask, field_names=['P','A'],
@@ -473,8 +504,9 @@ for j,task in enumerate(my_tasks):
 
     if not(args.is_meanfield):
         s.add_to_stats('n150',lbinner.bin(tclaa_150)[1])
-        s.add_to_stats('n90',lbinner.bin(tclaa_90)[1])
-        s.add_to_stats('nc',lbinner.bin(tclaa_150_90)[1])
+        if not(args.no_90):
+            s.add_to_stats('n90',lbinner.bin(tclaa_90)[1])
+            s.add_to_stats('nc',lbinner.bin(tclaa_150_90)[1])
         s.add_to_stats('np',lbinner.bin(tclpp)[1])
 
     s.add_to_stack('ustack',kappa)
@@ -573,15 +605,16 @@ if rank==0:
             pl.add(act_cents,s.vectors['n150'][i])
         pl.done(f'{savedir}n150.png')
 
-        pl = io.Plotter('Cell')
-        for i in range(s.vectors['n90'].shape[0]):
-            pl.add(act_cents,s.vectors['n90'][i])
-        pl.done(f'{savedir}n90.png')
+        if not(args.no_90):
+            pl = io.Plotter('Cell')
+            for i in range(s.vectors['n90'].shape[0]):
+                pl.add(act_cents,s.vectors['n90'][i])
+            pl.done(f'{savedir}n90.png')
 
-        pl = io.Plotter('Cell')
-        for i in range(s.vectors['nc'].shape[0]):
-            pl.add(act_cents,s.vectors['nc'][i])
-        pl.done(f'{savedir}nc.png')
+            pl = io.Plotter('Cell')
+            for i in range(s.vectors['nc'].shape[0]):
+                pl.add(act_cents,s.vectors['nc'][i])
+            pl.done(f'{savedir}nc.png')
 
 
         pl = io.Plotter('Cell')

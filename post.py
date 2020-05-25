@@ -98,19 +98,22 @@ else:
 
 pl.hline(y=0)
 pl.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+pl._ax.set_ylim(-0.02,0.15)
 pl.done(f'profile.png')
 
+arcmax = 5.
+nbins = bin_edges[bin_edges<arcmax].size - 1
 if mf_path is "":
-    mf_opt_binned = 0
-    mf_binned = 0
-diff = opt_binned - mf_opt_binned
-cinv = np.linalg.inv(opt_covm)
+    mf_opt_binned = opt_binned*0
+    mf_binned = opt_binned*0
+diff = (opt_binned - mf_opt_binned)[:nbins]
+cinv = np.linalg.inv(opt_covm[:nbins,:nbins])
 chisquare = np.dot(np.dot(diff,cinv),diff)
 snr = np.sqrt(chisquare)
 print("Naive SNR wrt null (optimal) : ", snr)
 
-diff = binned - mf_binned
-cinv = np.linalg.inv(covm)
+diff = (binned - mf_binned)[:nbins]
+cinv = np.linalg.inv(covm[:nbins,:nbins])
 chisquare = np.dot(np.dot(diff,cinv),diff)
 snr = np.sqrt(chisquare)
 print("Naive SNR wrt null : ", snr)

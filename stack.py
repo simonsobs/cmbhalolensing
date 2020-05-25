@@ -51,23 +51,30 @@ parser.add_argument("--bcg", action='store_true',help='Use BCG coordinates when 
 args = parser.parse_args()
 
 
+start = t.time() 
+p = cutils.p # directory paths dictionary
+
+"""
+We will save results to a directory in paths.yml:scratch.
+To decide on the name and to ensure that any meanfields we make
+have identical noise properties, we build some strings:
+"""
+
 dstr = "night" if args.night_only else "daynight"
 apstr = "act_planck" if args.planck_in_hres else "act"
 mstr = "_meanfield" if args.is_meanfield else ""
 n90str = "_no90" if args.no_90 else ""
 
+# The directory name string
 vstr = f"{args.version}_plmin_{args.plmin}_plmax_{args.plmax}_almin_{args.almin}_almax_{args.almax}_klmin_{args.klmin}_klmax_{args.klmax}_lxcut_{args.lxcut}_lycut_{args.lycut}_swidth_{args.stamp_width_arcmin:.2f}_tapper_{args.tap_per:.2f}_padper_{args.pad_per:.2f}_{dstr}_{apstr}{n90str}{mstr}"
 
 
-p = cutils.p # directory paths dictionary
-start = t.time() 
-
+# Load a fiducial CMB theory object
 theory = cosmology.default_theory()
 
 if not(args.inject_sim):
-    # ACT catalogue :D
+    # Load the catalog
     catalogue_name = p['data']+ args.cat_path
-    #"AdvACT_S18Clusters_v1.0-beta.fits" #[4024] 
     if args.bcg:
         import pandas as pd
         df = pd.read_csv(catalogue_name)
@@ -155,18 +162,18 @@ if not(args.inject_sim):
 
 
 # function for fitting 1D power spectrum of given stamp 
-def fit_p1d(cents, p1d, which,xout,bfunc1,bfunc2,rms=None):
+def fit_p1d(l_edges,cents, p1d, which,xout,bfunc1,bfunc2,rms=None,lmin=None,lmax=None):
+    b1 = bfunc1 if bfunc1 is not None else lambda x: 1
+    b2 = bfunc2 if bfunc2 is not None else lambda x: 1
     if args.inject_sim:
-        tfunc = theory.uCl
+        tfunc = lambda x: theory.uCl('TT',x) * b1(x) * b2(x)
     else:
-        tfunc = theory.lCl
+        tfunc = lambda x: theory.lCl('TT',x) * b1(x) * b2(x)
 
     if args.no_fit_noise:
 
         x = xout
-        b1 = bfunc1(x) if bfunc1 is not None else 1
-        b2 = bfunc2(x) if bfunc2 is not None else 1
-        ret = tfunc('TT',x) * b1* b2 + (rms*np.pi/180./60.)**2.
+        ret = tfunc(x) + (rms*np.pi/180./60.)**2.
 
         if which==args.debug_fit:
             pl = io.Plotter('Cell')
@@ -178,47 +185,49 @@ def fit_p1d(cents, p1d, which,xout,bfunc1,bfunc2,rms=None):
             sys.exit()
 
     else:
-        ells = cents
-        cltt = p1d
+        sel = np.logical_and(cents>lmin,cents<lmax)
+        delta_ells = np.diff(l_edges)[sel]
+        ells = cents[sel]
+        cls = p1d[sel]
+        cltt = tfunc(ells)
+        if (which=='act' or which=='act_cross') and not(args.planck_in_hres):
+            if which=='act':
+                w0 = 20.
+                sigma2 = stats.get_sigma2(ells,cltt,w0,delta_ells,fsky,ell0=3000,alpha=-4)
+            elif which=='act_cross':
+                w0 = 20
+                w0p = 20
+                ell0 = 3000
+                ell0p = 2000
+                sigma2 = stats.get_sigma2(ells,cltt,w0,delta_ells,fsky,ell0=ell0,alpha=-4,w0p=w0p,ell0p=ell0p,alphap=-4,clxx=cltt,clyy=cltt)
+            func = stats.fit_cltt_power(ells,cls,tfunc,w0,sigma2,ell0=3000,alpha=-4,fix_knee=False)
+        elif (which=='plc') or  ((which=='act' or which=='act_cross') and args.planck_in_hres):
+            w0 = 40
+            sigma2 = stats.get_sigma2(ells,cltt,w0,delta_ells,fsky,ell0=0,alpha=1)
+            func = stats.fit_cltt_power(ells,cls,tfunc,w0,sigma2,ell0=0,alpha=1,fix_knee=True)
+        elif (which=='apcross'):
+            w0 = 40
+            w0p = 20
+            ell0 = 0
+            ell0p = 3000 if not(args.planck_in_hres) else 0
+            sigma2 = stats.get_sigma2(ells,cltt,w0,delta_ells,fsky,ell0=ell0,alpha=0,w0p=w0p,ell0p=ell0p,
+                                      alphap=-4 if not(args.planck_in_hres) else 1,clxx=cltt,clyy=cltt)
+            func = stats.fit_cltt_power(ells,cls,tfunc,w0,sigma2,ell0=ell0p,alpha=-4 if not(args.planck_in_hres) else 1,
+                                        fix_knee=True if args.planck_in_hres else False)
 
-        logy = cltt*ells**2.
-
-        def ffunc(x, a, b,c):
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                b1 = bfunc1(x) if bfunc1 is not None else 1
-                b2 = bfunc2(x) if bfunc2 is not None else 1
-                return (maps.rednoise(x,a,lknee=b,alpha=c) + tfunc('TT',x) * b1* b2)*x**2
-
-        if which=='act' or which=='act_cross': 
-            popt, pcov = curve_fit(lambda x,a,b: ffunc(x,a,b,-4), ells, logy,p0=[20,3000],bounds=([4,400],[100,4000]))
-            #popt, pcov = curve_fit(lambda x,a,b: ffunc(x,a,b,-4), ells, logy,p0=[20,3000],bounds=([0,0],[100,4000]))
-            # print(rms)
-            # popt, pcov = curve_fit(lambda x,a,b: ffunc(x,a,b,-4), ells, logy,p0=[rms,0],bounds=([-10,-10],[1,400]))
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                ret = ffunc(xout, *popt,-4)/xout**2
-        elif which=='plc': 
-            popt, pcov = curve_fit(lambda x,a: ffunc(x,a,0,1), ells, logy,p0=[30])
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                ret = ffunc(xout, *popt,0,1)/xout**2
-        elif which=='apcross': 
-            popt, pcov = curve_fit(lambda x,a: ffunc(x,a,0,1), ells, logy,p0=[2],bounds=(0,100))
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                ret = ffunc(xout, *popt,0,1)/xout**2
+        ret = func(xout)
 
         if which==args.debug_fit:
-            print(popt)
             pl = io.Plotter('Dell')
             ls = np.arange(10000)
-            if which=='plc' or which=='apcross': pl.add(ls,ffunc(ls,*popt,0,1)/ls**2)
-            else: pl.add(ls,ffunc(ls,*popt,-4)/ls**2)
-            pl.add(cents,p1d,ls="none",marker='o')
+            pl.add(ls,func(ls))
+            pl.add(ls,tfunc(ls),ls='--')
+            pl.add_err(cents[sel],p1d[sel],yerr=np.sqrt(sigma2),ls="none",marker='o')
             pl._ax.set_ylim(1e-1,1e5)
             pl.done(f'{debugdir}fcl.png')
             sys.exit()
+
+
 
     ret[xout<2] = 0
     assert np.all(np.isfinite(ret))
@@ -402,6 +411,7 @@ for j,task in enumerate(my_tasks):
         l_edges = np.arange(minell/2,8001,minell)
         lbinner = stats.bin2D(modlmap,l_edges)
         w2 = np.mean(taper**2)
+        fsky = enmap.area(shape,wcs) * w2  / 4./np.pi
 
         # build a Fourier space mask    
         xmask = maps.mask_kspace(shape, wcs, lmin=xlmin, lmax=xlmax)
@@ -420,11 +430,11 @@ for j,task in enumerate(my_tasks):
 
 
     # fit 1D power spectrum 
-    tclaa_150 = fit_p1d(act_cents, act_p1d_150, 'act',modlmap,bfunc150,bfunc150,rms=args.act_150_rms)
+    tclaa_150 = fit_p1d(l_edges,act_cents, act_p1d_150, 'act',modlmap,bfunc150,bfunc150,rms=args.act_150_rms,lmin=500,lmax=8000)
     if not(args.no_90):
-        tclaa_90 = fit_p1d(act_cents, act_p1d_90, 'act',modlmap,bfunc90,bfunc90,rms=args.act_90_rms)
-        tclaa_150_90 = fit_p1d(act_cents, act_p1d_150_90, 'act_cross',modlmap,bfunc150,bfunc90,rms=0)
-    tclpp = fit_p1d(plc_cents, plc_p1d, 'plc',modlmap,lambda x: maps.gauss_beam(x,cutils.plc_beam_fwhm),lambda x: maps.gauss_beam(x,cutils.plc_beam_fwhm),rms=args.plc_rms) 
+        tclaa_90 = fit_p1d(l_edges,act_cents, act_p1d_90, 'act',modlmap,bfunc90,bfunc90,rms=args.act_90_rms,lmin=500,lmax=8000)
+        tclaa_150_90 = fit_p1d(l_edges,act_cents, act_p1d_150_90, 'act_cross',modlmap,bfunc150,bfunc90,rms=0,lmin=500,lmax=8000)
+    tclpp = fit_p1d(l_edges,plc_cents, plc_p1d, 'plc',modlmap,lambda x: maps.gauss_beam(x,cutils.plc_beam_fwhm),lambda x: maps.gauss_beam(x,cutils.plc_beam_fwhm),rms=args.plc_rms,lmin=200,lmax=3000) 
 
 
     if not(args.no_90):
@@ -466,7 +476,7 @@ for j,task in enumerate(my_tasks):
     plc_kmap[~np.isfinite(plc_kmap)] = 0
 
     cents,c_ap = lbinner.bin(pow(act_kmap,plc_kmap)/w2)
-    tclap = fit_p1d(cents,c_ap, 'apcross',modlmap,None,None,rms=0) 
+    tclap = fit_p1d(l_edges,cents,c_ap, 'apcross',modlmap,None,None,rms=0,lmin=500,lmax=3000) 
 
 
     # build symlens dictionary 
@@ -474,14 +484,14 @@ for j,task in enumerate(my_tasks):
         'uC_T_T' : ucltt,     # goes in the lensing response func = lensed theory 
         'tC_A_T_A_T' : tclaa, # the fit ACT power spectrum with ACT beam deconvolved
         'tC_P_T_P_T' : tclpp, # approximate Planck power spectrum with Planck beam deconvolved 
-        'tC_A_T_P_T' : tclap, # same lensed theory as above, no instrumental noise  
-        'tC_P_T_A_T' : tclap, # same lensed theory as above, no instrumental noise  
+        'tC_A_T_P_T' : tclap*np.nan, # same lensed theory as above, no instrumental noise  
+        'tC_P_T_A_T' : tclap*np.nan, # same lensed theory as above, no instrumental noise  
         'X' : plc_kmap,       # Planck map
         'Y' : act_kmap        # ACT map
     }
 
-    for key in feed_dict.keys():
-        assert np.all(np.isfinite(feed_dict[key]))
+    # for key in feed_dict.keys():
+    #     assert np.all(np.isfinite(feed_dict[key]))
 
     ## need to have a Fourier space mask in hand 
     ## that enforces what multipoles in the CMB map are included 

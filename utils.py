@@ -1,9 +1,11 @@
 from __future__ import print_function
-from orphics import maps,io,cosmology,stats
+from orphics import maps,io,cosmology,stats,catalogs
 from pixell import enmap,wcsutils,utils as putils
 import numpy as np
 import os,sys,re
 import warnings
+from astropy.io import fits
+from enlib import bench
 
 try:
     p = io.config_from_yaml("input/paths_local.yml")
@@ -12,6 +14,58 @@ except:
     raise
 
 plc_beam_fwhm = 5.0
+
+
+def catalog_interface(cat_type,is_meanfield,nmax=None):
+    if cat_type=='hilton_beta' or (cat_type=='hilton_bcg_merged' and is_meanfield):
+        if args.is_meanfield:
+            catalogue_name = p['data']+ 'selection/S18d_202003Mocks_DESSNR6Scaling/mockCatalog_combined.fits'
+        else:
+            catalogue_name = p['data']+ 'AdvACT_S18Clusters_v1.0-beta.fits'
+        hdu = fits.open(catalogue_name)
+        ras = hdu[1].data['RADeg'][:nmax]
+        decs = hdu[1].data['DECDeg'][:nmax]
+    elif (cat_type=='hilton_bcg_merged'):
+        assert not(is_meanfield)
+        import pandas as pd
+        catalogue_name = p['data']+ 'AdvACT_S18Clusters_v1.0-beta_bcg_merged.csv'
+        df = pd.read_csv(catalogue_name)
+        ras = df['ra'].to_numpy()
+        decs = df['dec'].to_numpy()
+        bra = df['bra'].to_numpy()
+        bdec = df['bdec'].to_numpy()
+        ras[bra>-98] = bra[bra>-98]
+        decs[bra>-98] = bdec[bra>-98]
+        ras = ras[:nmax]
+        decs = decs[:nmax]
+    elif cat_type=='sdss_redmapper':
+        if is_meanfield:
+            catalogue_name = p['data']+ 'redmapper_dr8_public_v6.3_randoms.fits'
+        else:
+            catalogue_name = p['data']+ 'redmapper_dr8_public_v6.3_catalog.fits'
+        hdu = fits.open(catalogue_name)
+        ras = hdu[1].data['RA']
+        decs = hdu[1].data['DEC']
+        ras = ras[decs<25]
+        decs = decs[decs<25]
+        ras = ras[:nmax]
+        decs = decs[:nmax]
+    elif cat_type=='cmass':
+        with bench.show("load cmass"):
+            if is_meanfield:
+                # One random has 50x, more than enough for mean-fields.
+                boss_files = [p['boss_data']+x for x in  ['random0_DR12v5_CMASS_North.fits','random0_DR12v5_CMASS_South.fits']]
+            else:
+                boss_files = [p['boss_data']+x for x in  ['galaxy_DR12v5_CMASS_North.fits','galaxy_DR12v5_CMASS_South.fits']]
+            ras,decs,_ = catalogs.load_boss(boss_files,zmin=0.4,zmax=0.7,do_weights=False)
+            ras = ras[decs<25]
+            decs = decs[decs<25]
+            ras = ras[:nmax]
+            decs = decs[:nmax]
+    else:
+        raise NotImplementedError
+        
+    return ras,decs
 
 def load_beam(freq):
     if freq=='f150': fname = p['data']+'s16_pa2_f150_nohwp_night_beam_tform_jitter.txt'

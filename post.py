@@ -122,18 +122,22 @@ print("Naive SNR wrt null : ", snr)
 catalogue_name = cutils.p['data']+ "AdvACT_S18Clusters_v1.0-beta.fits" #[4024] 
 hdu = fits.open(catalogue_name)
 zs = hdu[1].data['redshift']
-z = 0.7 #zs.mean()
+#z = 0.7 #zs.mean()
+z = zs.mean()
 M500 = hdu[1].data['M500']
 M500 = M500[M500>0.0001]
 
 print("Mean redshift : ",z)
 
-conc = 3.2
+conc = 3.0
 cc = cutils.get_hdv_cc() #counts.ClusterCosmology(skipCls=True,skipPower=True,skip_growth=True)
-nsigma = 4
-mguess = 2.e14 #M500.mean() * 1e14
-merr_guess = 0.1* mguess
-masses = np.linspace(mguess-nsigma*merr_guess,mguess+nsigma*merr_guess,200)
+nsigma = 10
+#mguess = 3.e14 #M500.mean() * 1e14
+#mguess = M500.mean() * 1e14
+sigma_mis = 1.5
+mguess = 4 * 1e14
+merr_guess = 0.05* mguess
+masses = np.linspace(mguess-nsigma*merr_guess,mguess+nsigma*merr_guess,20)
 arcmax = 10.
 nbins = bin_edges[bin_edges<arcmax].size - 1
 print(nbins,bin_edges.shape)
@@ -142,8 +146,10 @@ cov = opt_covm[:nbins,:nbins]
 fbin_edges = bin_edges[:nbins+1]
 fcents = cents[:nbins]
 lnlikes,like_fit,fit_mass,mass_err,fprofiles,fit_profile = lensing.fit_nfw_profile(profile,cov,masses,z,conc,cc,shape,wcs,fbin_edges,lmax=0,lmin=0,
-                                                             overdensity=180.,critical=False,at_cluster_z=False,
-                                                             mass_guess=mguess,sigma_guess=merr_guess,kmask=kmask)
+                                                                                   # overdensity=180.,critical=False,at_cluster_z=False,
+                                                                                   # overdensity=500.,critical=True,at_cluster_z=True,
+                                                                                   overdensity=200.,critical=False,at_cluster_z=True,
+                                                                                   mass_guess=mguess,sigma_guess=merr_guess,kmask=kmask,sigma_mis=sigma_mis)
     
 print(fit_mass/1e14,mass_err/1e14)
 snr  = fit_mass / mass_err

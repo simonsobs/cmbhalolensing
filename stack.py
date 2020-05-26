@@ -130,6 +130,7 @@ if not(args.inject_sim):
         else:
             act_map = p['data'] + f'modelSubtracted90_{apstr}_{dstr}.fits'
             amap_90 = enmap.read_map(act_map,delayed=False)
+
         ivar_map = p['coadd_data'] + f'{apstr}_s08_s18_cmb_f090_{dstr}_ivar.fits'
         imap_90 = enmap.read_map(ivar_map,delayed=False,sel=np.s_[0,...])
 
@@ -139,29 +140,27 @@ stamp_width_deg = args.stamp_width_arcmin/60.
 pixel = args.pix_width_arcmin
 
 maxr = stamp_width_deg*utils.degree/2.
-with bench.show("cull"):
-    oras = []
-    odecs = []
-    coords = np.stack([decs, ras])*utils.degree
-    with bench.show("sky2pix"):
-        pixs = enmap.sky2pix(coords)
-    #pixs[imap_90[pixs]>0]
-    # np.argwhere(imap_90[pixs
 
-            ivar_90 = reproject.thumbnails_ivar(imap_90, coords, r=maxr, res=pixel*utils.arcmin, extensive=True, proj="plain")
-            if ivar_90 is None: 
-                continue
-            if np.all(ivar_90<=1e-10):
-                continue
-            oras.append(ra)
-            odecs.append(dec)
+if not(args.inject_sim):
+    # Remove objects that lie in unobserved regions
+    with bench.show("cull"):
+        coords = np.stack([decs, ras])*utils.degree
+        ipixs = imap_90.sky2pix(coords).astype(np.int)
+        Ny,Nx = imap_90.shape
+        pixs = []
+        sel = np.logical_and(np.logical_and(np.logical_and(ipixs[0]>0,ipixs[0]<Ny),ipixs[1]>0),ipixs[1]<Nx)
+        ras = ras[sel]
+        pixs.append( ipixs[0][sel] )
+        decs = decs[sel]
+        pixs.append( ipixs[1][sel])
+        pixs = np.stack(pixs)
+        ras = ras[np.argwhere(imap_90[pixs[0,:],pixs[1,:]]>0)][:,0]
+        decs = decs[np.argwhere(imap_90[pixs[0,:],pixs[1,:]]>0)][:,0]
+        nsims = len(ras)
+    del pixs,ipixs
 
-    ras = oras
-    decs = odecs
-    nsims = len(oras)
 
-# sys.exit()
-# MPI paralellization! 
+# MPI paralellization
 comm, rank, my_tasks = mpi.distribute(nsims)
 
 

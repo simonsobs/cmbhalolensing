@@ -130,7 +130,7 @@ M500 = M500[M500>0.0001]
 print("Mean redshift : ",z)
 
 conc = 3.0
-cc = cutils.get_hdv_cc() #counts.ClusterCosmology(skipCls=True,skipPower=True,skip_growth=True)
+cc = None #cutils.get_hdv_cc() #counts.ClusterCosmology(skipCls=True,skipPower=True,skip_growth=True)
 nsigma = 10
 #mguess = 3.e14 #M500.mean() * 1e14
 #mguess = M500.mean() * 1e14

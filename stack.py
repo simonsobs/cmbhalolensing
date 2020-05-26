@@ -139,24 +139,26 @@ stamp_width_deg = args.stamp_width_arcmin/60.
 pixel = args.pix_width_arcmin
 
 maxr = stamp_width_deg*utils.degree/2.
-# with bench.show("cull"):
-#     if not(args.is_meanfield):
-#         oras = []
-#         odecs = []
-#         for ra,dec in zip(ras,decs):
-#             if not(args.inject_sim):
-#                 coords = np.array([dec, ra])*utils.degree
-#                 ivar_90 = reproject.thumbnails_ivar(imap_90, coords, r=maxr, res=pixel*utils.arcmin, extensive=True, proj="plain")
-#                 if ivar_90 is None: 
-#                     continue
-#                 if np.all(ivar_90<=1e-10):
-#                     continue
-#                 oras.append(ra)
-#                 odecs.append(dec)
+with bench.show("cull"):
+    oras = []
+    odecs = []
+    coords = np.stack([decs, ras])*utils.degree
+    with bench.show("sky2pix"):
+        pixs = enmap.sky2pix(coords)
+    #pixs[imap_90[pixs]>0]
+    # np.argwhere(imap_90[pixs
 
-#         ras = oras
-#         decs = odecs
-#         nsims = len(oras)
+            ivar_90 = reproject.thumbnails_ivar(imap_90, coords, r=maxr, res=pixel*utils.arcmin, extensive=True, proj="plain")
+            if ivar_90 is None: 
+                continue
+            if np.all(ivar_90<=1e-10):
+                continue
+            oras.append(ra)
+            odecs.append(dec)
+
+    ras = oras
+    decs = odecs
+    nsims = len(oras)
 
 # sys.exit()
 # MPI paralellization! 

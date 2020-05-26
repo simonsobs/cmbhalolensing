@@ -2,7 +2,7 @@ CMB Halo Lensing Reconstruction and Stacking
 ============================================
 
 This is a set of pipeline scripts for reconstructing stacked images
-and profiles of the CMB lensing convergence due to galaxies, groups and
+and profiles of small-scale CMB lensing convergence around galaxies, groups and
 clusters. It includes some utilities for quick modeling
 and interpretation of the results as well. Interfaces to catalogs of interest
 can be added through the function ``utils.catalog_interface``; feel free to
@@ -13,8 +13,8 @@ Dependencies
 
 There's some work to do to trim out some of these dependencies.
 
-* pixell_
-* symlens_
+* pixell_ (rectangular pixel map manipulation)
+* symlens_ (FFT-based lensing reconstruction with symbolic interface)
 * orphics_ (git clone and install with pip install -e . --user)
 * hmvec_ (possbly temporary, for NFW fits ; git clone and install with pip install -e . --user)
 * enlib_ (temporary, for benchmarking using enlib.bench; just git clone and add
@@ -25,7 +25,7 @@ There's some work to do to trim out some of these dependencies.
 Usage
 -----
 
-The main scripts stacky.py, post.py and make_lensed_sims.py are partially
+The main scripts stack.py, post.py and make_lensed_sims.py are partially
 documented through their command line arguments. Just invoke them with the ``-h``
 flag for more information.
 

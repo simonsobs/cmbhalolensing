@@ -245,6 +245,11 @@ def catalog_interface(cat_type,is_meanfield,nmax=None):
                 inds = np.random.choice(Ntot,size=nmax,replace=False)
                 ras = ras[inds]
                 decs = decs[inds]
+
+    elif cat_type=='wise_panstarrs':
+        catalogue_name = paths.data+ 'wise_panstarrs_radec.txt'
+        ras,decs = np.loadtxt(catalogue_name,unpack=True)
+        
     else:
         raise NotImplementedError
         
@@ -325,8 +330,6 @@ def plot(fname,stamp,stamp_width_arcmin,tap_per,pad_per,crop=None):
     zfact = tmap.shape[0]*1./kmap.shape[0]
     twidth = tmap.extent()/putils.arcmin
     pwidth = stamp_width_arcmin*zfact
-    print("Reported extent : ", twidth)
-    print("Plotted extent : ",pwidth)
     io.plot_img(tmap,fname, flip=False, ftsize=12, ticksize=10,arc_width=pwidth,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)')
 
 

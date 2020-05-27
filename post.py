@@ -18,11 +18,12 @@ from szar import counts
 import argparse
 # Parse command line
 parser = argparse.ArgumentParser(description='Stacked CMB lensing.')
+parser.add_argument("save_name", type=str,help='Root name for saving plots.')
 parser.add_argument("stack_path", type=str,help='Stack relative path.')
 parser.add_argument("mf_path", type=str,help='Meanfield relative path.')
 parser.add_argument("--theory",     type=str,  default=None,help="Lensed theory location for comparison of sim.")
-parser.add_argument("--stamp-width-arcmin",     type=float,  default=128.0,help="Stamp width arcmin.")
-parser.add_argument("--pix-width-arcmin",     type=float,  default=0.5,help="Stamp width arcmin.")
+parser.add_argument("--cwidth",     type=float,  default=30.0,help="Crop width arcmin.")
+parser.add_argument("--fwhm",     type=float,  default=3.0,help="FWHM for smoothing.")
 parser.add_argument("--z",     type=float,  default=0.55,help="Redshift for profile fit.")
 parser.add_argument("--conc",     type=float,  default=3.0,help="Concentration for profile fit.")
 parser.add_argument("--sigma_mis",     type=float,  default=None,help="Miscentering Rayleigh width in arcmin.")
@@ -34,6 +35,8 @@ parser.add_argument("--arcmax",     type=float,  default=10.,help="Maximum arcmi
 parser.add_argument("--overdensity",     type=float,  default=200.,help="NFW mass definition overdensity.")
 parser.add_argument("--critical", action='store_true',help='Whether NFW mass definition is wrt critical density (default: mean matter density).')
 parser.add_argument("--at-z0", action='store_true',help='Whether NFW mass definition is at z=0 (default: at cluster redshift).')
+parser.add_argument("--ymin",     type=float,  default=-0.02,help="Profile y axis scale minimum.")
+parser.add_argument("--ymax",     type=float,  default=0.2,help="Profile y axis scale maximum.")
 
 
 args = parser.parse_args()
@@ -65,38 +68,38 @@ assert np.all(shape_stack==kmask.shape)
 shape = shape_stack
 wcs = wcs_stack
 cents = (bin_edges[:-1]+bin_edges[1:])/2.
-crop = 40
+crop = int(args.cwidth / cutils.defaults.pix_width_arcmin)
 
 unweighted_stack,nmean_weighted_kappa_stack,opt_weighted_kappa_stack,opt_binned,opt_covm,opt_corr,opt_errs,binned,covm,corr,errs = cutils.analyze(s_stack,wcs)
 if mf_path is not "":
     mf_unweighted_stack,mf_nmean_weighted_kappa_stack,mf_opt_weighted_kappa_stack,mf_opt_binned,mf_opt_covm,mf_opt_corr,mf_opt_errs,mf_binned,mf_covm,mf_corr,mf_errs = cutils.analyze(s_mf,wcs)
 
-cutils.plot("unweighted_nomfsub.png",unweighted_stack,stamp_width_arcmin,tap_per,pad_per,crop=None)
-cutils.plot("unweighted_nomfsub_zoom.png",unweighted_stack,stamp_width_arcmin,tap_per,pad_per,crop=crop)
+cutils.plot(f"{args.save_name}_unweighted_nomfsub.png",unweighted_stack,stamp_width_arcmin,tap_per,pad_per,crop=None)
+cutils.plot(f"{args.save_name}_unweighted_nomfsub_zoom.png",unweighted_stack,stamp_width_arcmin,tap_per,pad_per,crop=crop)
 
 if mf_path is not "":
     stamp = opt_weighted_kappa_stack - mf_opt_weighted_kappa_stack
-    cutils.plot("opt_weighted_mfsub.png",stamp,stamp_width_arcmin,tap_per,pad_per,crop=None)
-    cutils.plot("opt_weighted_mfsub_zoom.png",stamp,stamp_width_arcmin,tap_per,pad_per,crop=crop)
+    cutils.plot(f"{args.save_name}_opt_weighted_mfsub.png",stamp,stamp_width_arcmin,tap_per,pad_per,crop=None)
+    cutils.plot(f"{args.save_name}_opt_weighted_mfsub_zoom.png",stamp,stamp_width_arcmin,tap_per,pad_per,crop=crop)
 
-    fwhm = 3.0
+    fwhm = args.fwhm
     modlmap = opt_weighted_kappa_stack.modlmap()
     stamp = maps.filter_map(opt_weighted_kappa_stack - mf_opt_weighted_kappa_stack,maps.gauss_beam(modlmap,fwhm))
-    cutils.plot("sm_opt_weighted_mfsub.png",stamp,stamp_width_arcmin,tap_per,pad_per,crop=None)
-    cutils.plot("sm_opt_weighted_mfsub_zoom.png",stamp,stamp_width_arcmin,tap_per,pad_per,crop=crop)
+    cutils.plot(f"{args.save_name}_sm_opt_weighted_mfsub.png",stamp,stamp_width_arcmin,tap_per,pad_per,crop=None)
+    cutils.plot(f"{args.save_name}_sm_opt_weighted_mfsub_zoom.png",stamp,stamp_width_arcmin,tap_per,pad_per,crop=crop)
 else:
     stamp = opt_weighted_kappa_stack 
-    cutils.plot("opt_weighted_nomfsub.png",stamp,stamp_width_arcmin,tap_per,pad_per,crop=None)
-    cutils.plot("opt_weighted_nomfsub_zoom.png",stamp,stamp_width_arcmin,tap_per,pad_per,crop=crop)
+    cutils.plot(f"{args.save_name}_opt_weighted_nomfsub.png",stamp,stamp_width_arcmin,tap_per,pad_per,crop=None)
+    cutils.plot(f"{args.save_name}_opt_weighted_nomfsub_zoom.png",stamp,stamp_width_arcmin,tap_per,pad_per,crop=crop)
 
     fwhm = 3.0
     modlmap = opt_weighted_kappa_stack.modlmap()
     stamp = maps.filter_map(opt_weighted_kappa_stack ,maps.gauss_beam(modlmap,fwhm))
-    cutils.plot("sm_opt_weighted_nomfsub.png",stamp,stamp_width_arcmin,tap_per,pad_per,crop=None)
-    cutils.plot("sm_opt_weighted_nomfsub_zoom.png",stamp,stamp_width_arcmin,tap_per,pad_per,crop=crop)
+    cutils.plot(f"{args.save_name}_sm_opt_weighted_nomfsub.png",stamp,stamp_width_arcmin,tap_per,pad_per,crop=None)
+    cutils.plot(f"{args.save_name}_sm_opt_weighted_nomfsub_zoom.png",stamp,stamp_width_arcmin,tap_per,pad_per,crop=crop)
 
 
-io.plot_img(corr,'corr.png')
+io.plot_img(corr,f'{args.save_name}_corr.png')
 
 pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
 if mf_path is not "":
@@ -109,9 +112,21 @@ else:
     pl.add_err(cents+0.2, binned, yerr=errs,ls="-",label="Filtered kappa")
 
 pl.hline(y=0)
-pl.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-pl._ax.set_ylim(-0.02,0.15)
-pl.done(f'profile.png')
+#pl.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+pl._ax.set_ylim(args.ymin,args.ymax)
+pl.done(f'{args.save_name}_profile.png')
+
+pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
+if mf_path is not "":
+    pl.add_err(cents, opt_binned - mf_opt_binned, yerr=opt_errs,ls="-",label="Filtered kappa, mean-field subtracted (optimal)")
+    pl.add_err(cents, mf_opt_binned, yerr=mf_opt_errs,label="Mean-field (optimal)",ls="-")
+else:
+    pl.add_err(cents, opt_binned, yerr=opt_errs,ls="-",label="Filtered kappa (optimal)")
+pl.hline(y=0)
+#pl.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+pl._ax.set_ylim(args.ymin,args.ymax)
+pl.done(f'{args.save_name}_profile_clean.png')
+
 
 arcmax = 5.
 nbins = bin_edges[bin_edges<arcmax].size - 1
@@ -160,14 +175,14 @@ pl = io.Plotter(xlabel='$M$',ylabel='$L$')
 likes = np.exp(lnlikes)
 pl.add(masses,likes/likes.max())
 pl.add(masses,like_fit/like_fit.max())
-pl.done('likes.png')
+pl.done(f'{args.save_name}_likes.png')
 
 pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
 pl.add_err(fcents, profile, yerr=np.sqrt(np.diagonal(cov)),ls="-",color='k')
 for fp in fprofiles:
     pl.add(fcents, fp,alpha=0.2)
 pl.add(fcents, fit_profile,color='k',ls='--')
-pl.done('fprofiles.png')
+pl.done(f'{args.save_name}_fprofiles.png')
 
 
 if args.theory is not None:
@@ -191,10 +206,10 @@ if args.theory is not None:
     pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
     pl.add_err(cents,diff,yerr=opt_errs,ls='-')
     pl.add(tcents,t1d,ls='--')
-    pl.done('theory_comp.png')
+    pl.done(f'{args.save_name}_theory_comp.png')
 
     pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
     pl.add_err(cents,diff/t1d,yerr=opt_errs/t1d,ls='-')
     pl._ax.set_ylim(0.6,1.4)
     pl.hline(y=1)
-    pl.done('theory_comp_ratio.png')
+    pl.done(f'{args.save_name}_theory_comp_ratio.png')

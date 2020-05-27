@@ -189,11 +189,11 @@ def initialize_pipeline_config():
 
     paths.debugdir = debugdir
     paths.savedir = savedir
-    return start_time,paths,defaults,args,tags
+    return start_time,paths,defaults,args,tags,rank
 
 def catalog_interface(cat_type,is_meanfield,nmax=None):
     if cat_type=='hilton_beta' or (cat_type=='hilton_bcg_merged' and is_meanfield):
-        if args.is_meanfield:
+        if is_meanfield:
             catalogue_name = paths.data+ 'selection/S18d_202003Mocks_DESSNR6Scaling/mockCatalog_combined.fits'
         else:
             catalogue_name = paths.data+ 'AdvACT_S18Clusters_v1.0-beta.fits'

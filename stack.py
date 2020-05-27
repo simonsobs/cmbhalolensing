@@ -17,11 +17,12 @@ import warnings
 python stack.py -h 
 !! to see options
 """
-start_time,paths,defaults,args,tags = cutils.initialize_pipeline_config()
-print("Paths: ",paths)
-print("Tags: ",tags)
-print("Defaults: ",defaults)
-print("Arguments: ",args)
+start_time,paths,defaults,args,tags,rank = cutils.initialize_pipeline_config()
+if rank==0:
+    print("Paths: ",paths)
+    print("Tags: ",tags)
+    print("Defaults: ",defaults)
+    print("Arguments: ",args)
 
 # Load a fiducial CMB theory object
 theory = cosmology.default_theory()

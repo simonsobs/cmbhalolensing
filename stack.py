@@ -38,8 +38,8 @@ parser.add_argument("--act-90-rms",     type=float,  default=20.0,help="ACT 90 R
 parser.add_argument("--tap-per",     type=float,  default=12.0,help="Taper percentage.")
 parser.add_argument("--pad-per",     type=float,  default=3.0,help="Pad percentage.")
 parser.add_argument("--debug-fit",     type=str,  default=None,help="Which fit to debug.")
-parser.add_argument("--debug-anomalies",     type=str,  default=None,help="Whether to save plots of excluded anomalous stamps.")
-parser.add_argument("--debug-powers",     type=str,  default=None,help="Whether to plot various power spectra from each stamp.")
+parser.add_argument("--debug-anomalies", action='store_true',help="Whether to save plots of excluded anomalous stamps.")
+parser.add_argument("--debug-powers", action='store_true',help="Whether to plot various power spectra from each stamp.")
 parser.add_argument("--no-90", action='store_true',help='Do not use the 90 GHz map.')
 parser.add_argument("--no-sz-sub", action='store_true',help='Use the high-res maps without SZ subtraction.')
 parser.add_argument("--inject-sim", action='store_true',help='Instead of using data, simulate a lensing cluster and Planck+ACT (or unlensed for mean-field).')
@@ -90,7 +90,6 @@ theory = cosmology.default_theory()
 if not(args.inject_sim):
     # Load the catalog
     ras,decs = cutils.catalog_interface(args.cat_type,args.is_meanfield,args.nmax)
-    nsims = len(ras)
 else:
     csim = cutils.Simulator(args.is_meanfield,args.stamp_width_arcmin,args.pix_width_arcmin,args.lensed_sim_version,
                             plc_rms=args.plc_rms,act_150_rms=args.act_150_rms,act_90_rms=args.act_90_rms)
@@ -133,7 +132,7 @@ if not(args.inject_sim):
 
         ivar_map = p['coadd_data'] + f'{apstr}_s08_s18_cmb_f090_{dstr}_ivar.fits'
         imap_90 = enmap.read_map(ivar_map,delayed=False,sel=np.s_[0,...])
-
+        rms_map = maps.rms_from_ivar(imap_90,cylindrical=True)
 
 # stamp size and resolution 
 stamp_width_deg = args.stamp_width_arcmin/60.
@@ -145,17 +144,18 @@ if not(args.inject_sim):
     # Remove objects that lie in unobserved regions
     with bench.show("cull"):
         coords = np.stack([decs, ras])*utils.degree
-        ipixs = imap_90.sky2pix(coords).astype(np.int)
-        Ny,Nx = imap_90.shape
+        ipixs = rms_map.sky2pix(coords).astype(np.int)
+        Ny,Nx = rms_map.shape
         pixs = []
-        sel = np.logical_and(np.logical_and(np.logical_and(ipixs[0]>0,ipixs[0]<Ny),ipixs[1]>0),ipixs[1]<Nx)
+        sel = np.logical_and.reduce((ipixs[0]>0,ipixs[0]<Ny,ipixs[1]>0,ipixs[1]<Nx))
         ras = ras[sel]
         pixs.append( ipixs[0][sel] )
         decs = decs[sel]
         pixs.append( ipixs[1][sel])
         pixs = np.stack(pixs)
-        ras = ras[np.argwhere(imap_90[pixs[0,:],pixs[1,:]]>0)][:,0]
-        decs = decs[np.argwhere(imap_90[pixs[0,:],pixs[1,:]]>0)][:,0]
+        nsel = np.logical_and(rms_map[pixs[0,:],pixs[1,:]]>0,rms_map[pixs[0,:],pixs[1,:]]<50.0)
+        ras = ras[np.argwhere( nsel )][:,0]
+        decs = decs[np.argwhere( nsel )][:,0]
         nsims = len(ras)
     del pixs,ipixs
 
@@ -321,7 +321,8 @@ def ilc(modlmap,m1,m2,p11,p22,p12,b1,b2):
 j = 0 # local counter for this MPI task
 for task in my_tasks:
     i = task # global counter for all objects
-    if rank==0: print(f'Rank {rank} performing task {task} as index {j}')
+    cper = int((j+1)/len(my_tasks)*100.)
+    if rank==0: print(f'Rank {rank} performing task {task} as index {j} ({cper}% complete.).')
 
     if not(args.inject_sim):
         coords = np.array([decs[i], ras[i]])*utils.degree

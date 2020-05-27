@@ -21,6 +21,20 @@ parser = argparse.ArgumentParser(description='Stacked CMB lensing.')
 parser.add_argument("stack_path", type=str,help='Stack relative path.')
 parser.add_argument("mf_path", type=str,help='Meanfield relative path.')
 parser.add_argument("--theory",     type=str,  default=None,help="Lensed theory location for comparison of sim.")
+parser.add_argument("--stamp-width-arcmin",     type=float,  default=128.0,help="Stamp width arcmin.")
+parser.add_argument("--pix-width-arcmin",     type=float,  default=0.5,help="Stamp width arcmin.")
+parser.add_argument("--z",     type=float,  default=0.55,help="Redshift for profile fit.")
+parser.add_argument("--conc",     type=float,  default=3.0,help="Concentration for profile fit.")
+parser.add_argument("--sigma_mis",     type=float,  default=None,help="Miscentering Rayleigh width in arcmin.")
+parser.add_argument("--mass-guess",     type=float,  default=2e14,help="Mass guess in solar masses.")
+parser.add_argument("--snr-guess",     type=float,  default=10,help="SNR guess.")
+parser.add_argument("--nsigma",     type=float,  default=10,help="Number of sigma away from mass-guess to evaulate likelihood at.")
+parser.add_argument("--num-ms",     type=int,  default=20,help="Number of mass points to evaluate likelihood at.")
+parser.add_argument("--arcmax",     type=float,  default=10.,help="Maximum arcminute radius distance for fit.")
+parser.add_argument("--overdensity",     type=float,  default=200.,help="NFW mass definition overdensity.")
+parser.add_argument("--critical", action='store_true',help='Whether NFW mass definition is wrt critical density (default: mean matter density).')
+parser.add_argument("--at-z0", action='store_true',help='Whether NFW mass definition is at z=0 (default: at cluster redshift).')
+
 
 args = parser.parse_args()
 
@@ -82,8 +96,6 @@ else:
     cutils.plot("sm_opt_weighted_nomfsub_zoom.png",stamp,stamp_width_arcmin,tap_per,pad_per,crop=crop)
 
 
-
-
 io.plot_img(corr,'corr.png')
 
 pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
@@ -118,40 +130,29 @@ chisquare = np.dot(np.dot(diff,cinv),diff)
 snr = np.sqrt(chisquare)
 print("Naive SNR wrt null : ", snr)
 
-
-catalogue_name = cutils.p['data']+ "AdvACT_S18Clusters_v1.0-beta.fits" #[4024] 
-hdu = fits.open(catalogue_name)
-zs = hdu[1].data['redshift']
-#z = 0.7 #zs.mean()
-z = zs.mean()
-M500 = hdu[1].data['M500']
-M500 = M500[M500>0.0001]
+z = args.z
 
 print("Mean redshift : ",z)
 
-conc = 3.0
-cc = None #cutils.get_hdv_cc() #counts.ClusterCosmology(skipCls=True,skipPower=True,skip_growth=True)
-nsigma = 10
-#mguess = 3.e14 #M500.mean() * 1e14
-#mguess = M500.mean() * 1e14
-sigma_mis = 1.5
-mguess = 4 * 1e14
-merr_guess = 0.05* mguess
-masses = np.linspace(mguess-nsigma*merr_guess,mguess+nsigma*merr_guess,20)
-arcmax = 10.
+conc = args.conc
+cc = None
+sigma_mis = args.sigma_mis
+mguess = args.mass_guess
+merr_guess = (1/args.snr_guess) * mguess
+masses = np.linspace(mguess-args.nsigma*merr_guess,mguess+args.nsigma*merr_guess,args.num_ms)
+masses = masses[masses>0]
+arcmax = args.arcmax
 nbins = bin_edges[bin_edges<arcmax].size - 1
-print(nbins,bin_edges.shape)
 profile = (opt_binned - mf_opt_binned)[:nbins]
 cov = opt_covm[:nbins,:nbins]
 fbin_edges = bin_edges[:nbins+1]
 fcents = cents[:nbins]
 lnlikes,like_fit,fit_mass,mass_err,fprofiles,fit_profile = lensing.fit_nfw_profile(profile,cov,masses,z,conc,cc,shape,wcs,fbin_edges,lmax=0,lmin=0,
-                                                                                   # overdensity=180.,critical=False,at_cluster_z=False,
-                                                                                   # overdensity=500.,critical=True,at_cluster_z=True,
-                                                                                   overdensity=200.,critical=False,at_cluster_z=True,
+                                                                                   overdensity=args.overdensity,
+                                                                                   critical=args.critical,at_cluster_z=args.at_z0,
                                                                                    mass_guess=mguess,sigma_guess=merr_guess,kmask=kmask,sigma_mis=sigma_mis)
     
-print(fit_mass/1e14,mass_err/1e14)
+print("Fit mass : " , fit_mass/1e14,mass_err/1e14)
 snr  = fit_mass / mass_err
 print("Fit mass SNR : ", snr)
 

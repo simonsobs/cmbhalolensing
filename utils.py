@@ -60,8 +60,16 @@ def catalog_interface(cat_type,is_meanfield,nmax=None):
             ras,decs,_ = catalogs.load_boss(boss_files,zmin=0.4,zmax=0.7,do_weights=False)
             ras = ras[decs<25]
             decs = decs[decs<25]
-            ras = ras[:nmax]
-            decs = decs[:nmax]
+            if nmax is not None:
+                """
+                We have to be a bit more careful when a max number of random galaxies is requested for BOSS, because
+                there is a North/South split.
+                """
+                Ntot = len(ras)
+                np.random.seed(100)
+                inds = np.random.choice(Ntot,size=nmax,replace=False)
+                ras = ras[inds]
+                decs = decs[inds]
     else:
         raise NotImplementedError
         

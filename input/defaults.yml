@@ -1,0 +1,47 @@
+
+# PS fitting bandpower variance defaults
+highres_fiducial_rms: 20.
+highres_fiducial_lknee: 3000.
+highres_fiducial_alpha: -4
+gradient_fiducial_rms: 40.
+
+
+gradient_lmin: 200
+gradient_lmax: 2000
+aggressive_highres_lmin: 200
+conservative_highres_lmin: 500  # Used e.g. when ACT-only coadd is used
+highres_lmax: 6000
+conservative_highres_lycut: 90
+conservative_highres_lxcut: 50
+aggressive_highres_lycut: 2
+aggressive_highres_lxcut: 2
+
+ilc_lmin: 200
+ilc_lmax: 8000
+
+kappa_Lmin: 40
+kappa_Lmax: 5000
+
+arcmax: 15.0
+arcstep: 1.0
+
+max_rms_noise: 50.0
+
+stamp_width_arcmin: 128.0
+pix_width_arcmin: 0.5
+
+taper_percent: 12.0
+pad_percent: 3.0
+
+lensed_sim_version: lensed_maps_2e14_m180m0_c3.2_z0.7_v1_swidth_128.00_pwidth_0.50_bfact_2_pfact_5_lorder_5
+
+planck_smica_beam_fwhm: 5.0
+
+kappa_noise_mean_Lmin : 3000
+kappa_noise_mean_Lmax : 5000
+
+highres_fit_ellmin : 500
+highres_fit_ellmax : 8000
+
+gradient_fit_ellmin : 200
+gradient_fit_ellmax : 3000

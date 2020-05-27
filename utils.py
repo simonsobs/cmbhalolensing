@@ -1,34 +1,209 @@
 from __future__ import print_function
 from orphics import maps,io,cosmology,stats,catalogs
-from pixell import enmap,wcsutils,utils as putils
+from orphics.mpi import MPI
+from pixell import enmap,wcsutils,utils as putils,bunch
 import numpy as np
 import os,sys,re
 import warnings
 from astropy.io import fits
 from enlib import bench
+import argparse
+import time
 
 try:
-    p = io.config_from_yaml("input/paths_local.yml")
+    paths = bunch.Bunch(io.config_from_yaml("input/paths_local.yml"))
 except:
     print("No paths_local.yml file found. Please copy paths.yml to paths_local.yml and edit with your local paths. Do not add the latter file to the git tree.")
     raise
 
-plc_beam_fwhm = 5.0
+defaults = bunch.Bunch(io.config_from_yaml("input/defaults.yml"))
 
+
+
+def initialize_pipeline_config():
+    start_time = time.time()
+    d = defaults
+    tags = bunch.Bunch({})
+
+    # Parse command line
+    parser = argparse.ArgumentParser(description="Stacked CMB lensing.")
+    parser.add_argument("version", type=str, help="Version label.")
+    parser.add_argument(
+        "cat_type", type=str, help="Catalog path relative to data directory."
+    )
+    parser.add_argument(
+        "-N",
+        "--nmax",
+        type=int,
+        default=None,
+        help="Limit number of objects used e.g. for debugging or quick tests, or for sim injections.",
+    )
+    parser.add_argument(
+        "--grad-lmin", type=int, default=d.gradient_lmin, help="Minimum multipole for Planck."
+    )
+    parser.add_argument(
+        "--grad-lmax", type=int, default=d.gradient_lmax, help="Maximum multipole for Planck."
+    )
+    parser.add_argument(
+        "--hres-lmin", type=int, default=None, help="Minimum multipole for ACT."
+    )
+    parser.add_argument(
+        "--hres-lmax", type=int, default=d.highres_lmax, help="Maximum multipole for ACT."
+    )
+    parser.add_argument(
+        "--klmin", type=int, default=d.kappa_Lmin, help="Minimum multipole for recon."
+    )
+    parser.add_argument(
+        "--klmax", type=int, default=d.kappa_Lmax, help="Maximum multipole for recon."
+    )
+    parser.add_argument("--hres-lxcut", type=int, default=None, help="Lxcut for ACT.")
+    parser.add_argument("--hres-lycut", type=int, default=None, help="Lycut for ACT.")
+    parser.add_argument(
+        "--arcmax", type=float, default=d.arcmax, help="Maximum arcmin distance for binning."
+    )
+    parser.add_argument(
+        "--arcstep", type=float, default=d.arcstep, help="Step arcmin for binning."
+    )
+    parser.add_argument(
+        "--max-rms",
+        type=float,
+        default=d.max_rms_noise,
+        help="Maximum RMS noise in uK-arcmin, beyond which to reject stamps.",
+    )
+    parser.add_argument(
+        "--swidth", type=float, default=d.stamp_width_arcmin, help="Stamp width arcmin."
+    )
+    parser.add_argument(
+        "--pwidth", type=float, default=d.pix_width_arcmin, help="Pixel width arcmin."
+    )
+    parser.add_argument(
+        "--no-fit-noise",
+        action="store_true",
+        help="If True, do not fit empirical noise, but use RMS values specified in defaults.yml.",
+    )
+    parser.add_argument("--tap-per", type=float, default=d.taper_percent, help="Taper percentage.")
+    parser.add_argument("--pad-per", type=float, default=d.pad_percent, help="Pad percentage.")
+    parser.add_argument("--debug-fit", type=str, default=None, help="Which fit to debug.")
+    parser.add_argument(
+        "--debug-anomalies",
+        action="store_true",
+        help="Whether to save plots of excluded anomalous stamps.",
+    )
+    parser.add_argument(
+        "--debug-powers",
+        action="store_true",
+        help="Whether to plot various power spectra from each stamp.",
+    )
+    parser.add_argument("--no-90", action="store_true", help="Do not use the 90 GHz map.")
+    parser.add_argument(
+        "--no-sz-sub",
+        action="store_true",
+        help="Use the high-res maps without SZ subtraction.",
+    )
+    parser.add_argument(
+        "--inject-sim",
+        action="store_true",
+        help="Instead of using data, simulate a lensing cluster and Planck+ACT (or unlensed for mean-field).",
+    )
+    parser.add_argument(
+        "--lensed-sim-version",
+        type=str,
+        default=d.lensed_sim_version,
+        help="Default lensed sims to inject.",
+    )
+    parser.add_argument(
+        "-o", "--overwrite", action="store_true", help="Overwrite existing version."
+    )
+    parser.add_argument(
+        "--is-meanfield", action="store_true", help="This is a mean-field run."
+    )
+    parser.add_argument("--night-only", action="store_true", help="Use night-only maps.")
+    parser.add_argument(
+        "--act-only-in-hres",
+        action="store_true",
+        help="Use ACT only maps in high-res instead of ACT+Planck.",
+    )
+    args = parser.parse_args()
+
+    if args.hres_lmin is None:
+        if args.act_only_in_hres:
+            setattr(args, 'hres_lmin', d.conservative_highres_lmin)
+        else:
+            setattr(args, 'hres_lmin', d.aggressive_highres_lmin)
+
+    if args.hres_lycut is None:
+        if args.act_only_in_hres:
+            setattr(args, 'hres_lycut', d.conservative_highres_lycut)
+        else:
+            setattr(args, 'hres_lycut', d.aggressive_highres_lycut)
+
+    if args.hres_lxcut is None:
+        if args.act_only_in_hres:
+            setattr(args, 'hres_lxcut', d.conservative_highres_lxcut)
+        else:
+            setattr(args, 'hres_lxcut', d.aggressive_highres_lxcut)
+
+
+    """
+    We will save results to a directory in paths.yml:scratch.
+    To decide on the name and to ensure that any meanfields we make
+    have identical noise properties, we build some strings:
+    """
+
+    tags.dstr = "night" if args.night_only else "daynight"
+    tags.apstr = "act" if args.act_only_in_hres else "act_planck"
+    tags.mstr = "_meanfield" if args.is_meanfield else ""
+    tags.n90str = "_no90" if args.no_90 else ""
+
+    # The directory name string
+    vstr = f"{args.version}_{args.cat_type}_plmin_{args.grad_lmin}_plmax_{args.grad_lmax}_almin_{args.hres_lmin}_almax_{args.hres_lmax}_klmin_{args.klmin}_klmax_{args.klmax}_lxcut_{args.hres_lxcut}_lycut_{args.hres_lycut}_swidth_{args.swidth:.2f}_tapper_{args.tap_per:.2f}_padper_{args.pad_per:.2f}_{tags.dstr}_{tags.apstr}{tags.n90str}{tags.mstr}"
+
+    # File save paths
+    savedir = paths.scratch + f"/{vstr}/"
+    debugdir = paths.scratch + f"/{vstr}/debug/"
+
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+
+    overwrite = args.overwrite
+    if not (overwrite):
+        assert not (
+            os.path.exists(savedir)
+        ), "This version already exists on disk. Please use a different version identifier or use the overwrite argument."
+    if rank == 0:
+        try:
+            os.makedirs(savedir)
+        except:
+            if overwrite:
+                pass
+            else:
+                raise
+        try:
+            os.makedirs(debugdir)
+        except:
+            if overwrite:
+                pass
+            else:
+                raise
+    comm.Barrier()  # Wait for other processes to catch up with rank=0 before saving to these directories
+
+    paths.debugdir = debugdir
+    paths.savedir = savedir
+    return start_time,paths,defaults,args,tags
 
 def catalog_interface(cat_type,is_meanfield,nmax=None):
     if cat_type=='hilton_beta' or (cat_type=='hilton_bcg_merged' and is_meanfield):
         if args.is_meanfield:
-            catalogue_name = p['data']+ 'selection/S18d_202003Mocks_DESSNR6Scaling/mockCatalog_combined.fits'
+            catalogue_name = paths.data+ 'selection/S18d_202003Mocks_DESSNR6Scaling/mockCatalog_combined.fits'
         else:
-            catalogue_name = p['data']+ 'AdvACT_S18Clusters_v1.0-beta.fits'
+            catalogue_name = paths.data+ 'AdvACT_S18Clusters_v1.0-beta.fits'
         hdu = fits.open(catalogue_name)
         ras = hdu[1].data['RADeg'][:nmax]
         decs = hdu[1].data['DECDeg'][:nmax]
     elif (cat_type=='hilton_bcg_merged'):
         assert not(is_meanfield)
         import pandas as pd
-        catalogue_name = p['data']+ 'AdvACT_S18Clusters_v1.0-beta_bcg_merged.csv'
+        catalogue_name = paths.data+ 'AdvACT_S18Clusters_v1.0-beta_bcg_merged.csv'
         df = pd.read_csv(catalogue_name)
         ras = df['ra'].to_numpy()
         decs = df['dec'].to_numpy()
@@ -40,9 +215,9 @@ def catalog_interface(cat_type,is_meanfield,nmax=None):
         decs = decs[:nmax]
     elif cat_type=='sdss_redmapper':
         if is_meanfield:
-            catalogue_name = p['data']+ 'redmapper_dr8_public_v6.3_randoms.fits'
+            catalogue_name = paths.data+ 'redmapper_dr8_public_v6.3_randoms.fits'
         else:
-            catalogue_name = p['data']+ 'redmapper_dr8_public_v6.3_catalog.fits'
+            catalogue_name = paths.data+ 'redmapper_dr8_public_v6.3_catalog.fits'
         hdu = fits.open(catalogue_name)
         ras = hdu[1].data['RA']
         decs = hdu[1].data['DEC']
@@ -54,9 +229,9 @@ def catalog_interface(cat_type,is_meanfield,nmax=None):
         with bench.show("load cmass"):
             if is_meanfield:
                 # One random has 50x, more than enough for mean-fields.
-                boss_files = [p['boss_data']+x for x in  ['random0_DR12v5_CMASS_North.fits','random0_DR12v5_CMASS_South.fits']]
+                boss_files = [paths.boss_data+x for x in  ['random0_DR12v5_CMASS_North.fits','random0_DR12v5_CMASS_South.fits']]
             else:
-                boss_files = [p['boss_data']+x for x in  ['galaxy_DR12v5_CMASS_North.fits','galaxy_DR12v5_CMASS_South.fits']]
+                boss_files = [paths.boss_data+x for x in  ['galaxy_DR12v5_CMASS_North.fits','galaxy_DR12v5_CMASS_South.fits']]
             ras,decs,_ = catalogs.load_boss(boss_files,zmin=0.4,zmax=0.7,do_weights=False)
             ras = ras[decs<25]
             decs = decs[decs<25]
@@ -76,8 +251,8 @@ def catalog_interface(cat_type,is_meanfield,nmax=None):
     return ras,decs
 
 def load_beam(freq):
-    if freq=='f150': fname = p['data']+'s16_pa2_f150_nohwp_night_beam_tform_jitter.txt'
-    elif freq=='f090': fname = p['data']+'s16_pa3_f090_nohwp_night_beam_tform_jitter.txt'
+    if freq=='f150': fname = paths.data+'s16_pa2_f150_nohwp_night_beam_tform_jitter.txt'
+    elif freq=='f090': fname = paths.data+'s16_pa3_f090_nohwp_night_beam_tform_jitter.txt'
     ls,bls = np.loadtxt(fname,usecols=[0,1],unpack=True)
     assert ls[0]==0
     bls = bls / bls[0]
@@ -86,7 +261,7 @@ def load_beam(freq):
 
 
 def load_dumped_stats(mvstr,get_extra=False):
-    savedir = p['scratch'] + f"/{mvstr}/"
+    savedir = paths.scratch + f"/{mvstr}/"
     assert os.path.exists(savedir), f"The path corresponding to {savedir} does not exist. If this is a meanfield, are you sure the parameters for your current run match the parameters in any existing meanfield directories?" 
     s = stats.load_stats(f'{savedir}')
     shape,wcs = enmap.read_map_geometry(f'{savedir}/map_geometry.fits')
@@ -215,7 +390,7 @@ class Simulator(object):
         self.shape,self.wcs = shape,wcs
         self.modlmap = enmap.modlmap(shape,wcs)
         self.is_meanfield = is_meanfield
-        self.planck_beam = maps.gauss_beam(self.modlmap,plc_beam_fwhm)
+        self.planck_beam = maps.gauss_beam(self.modlmap,defaults.planck_smica_beam_fwhm)
         wy, wx = enmap.calc_window(self.shape)
         act_pixwin   = wy[:,None] * wx[None,:]
         self.act_150_beam = load_beam('f150')(self.modlmap) * act_pixwin
@@ -224,7 +399,7 @@ class Simulator(object):
             ucltt = theory.uCl('TT',self.modlmap)
             self.mgen = maps.MapGen((1,)+self.shape,self.wcs,ucltt[None,None])
         else:
-            self.savedir = p['scratch'] + f"/{lensed_version}/"
+            self.savedir = paths.scratch + f"/{lensed_version}/"
             
     def load_kmap(self,task):
         if self.is_meanfield:

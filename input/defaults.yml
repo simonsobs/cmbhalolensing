@@ -19,7 +19,7 @@ aggressive_highres_lxcut: 2
 ilc_lmin: 200
 ilc_lmax: 8000
 
-kappa_Lmin: 40
+kappa_Lmin: 200
 kappa_Lmax: 5000
 
 arcmax: 15.0

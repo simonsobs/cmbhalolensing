@@ -59,6 +59,18 @@ def initialize_pipeline_config():
     parser.add_argument("--hres-lxcut", type=int, default=None, help="Lxcut for ACT.")
     parser.add_argument("--hres-lycut", type=int, default=None, help="Lycut for ACT.")
     parser.add_argument(
+        "--zmin", type=float, default=None, help="Minimum redshift."
+    )
+    parser.add_argument(
+        "--zmax", type=float, default=None, help="Maximum redshift."
+    )
+    parser.add_argument(
+        "--snmin", type=float, default=None, help="Minimum SNR."
+    )
+    parser.add_argument(
+        "--snmax", type=float, default=None, help="Maximum SNR."
+    )
+    parser.add_argument(
         "--arcmax", type=float, default=d.arcmax, help="Maximum arcmin distance for binning."
     )
     parser.add_argument(
@@ -95,6 +107,7 @@ def initialize_pipeline_config():
         help="Whether to plot various power spectra from each stamp.",
     )
     parser.add_argument("--no-90", action="store_true", help="Do not use the 90 GHz map.")
+    parser.add_argument("--inpaint", action="store_true", help="Inpaint gradient.")
     parser.add_argument(
         "--no-sz-sub",
         action="store_true",
@@ -116,6 +129,12 @@ def initialize_pipeline_config():
     )
     parser.add_argument(
         "--is-meanfield", action="store_true", help="This is a mean-field run."
+    )
+    parser.add_argument(
+        "--bcg", action="store_true", help="Use BCGs for Hilton Catalog."
+    )
+    parser.add_argument(
+        "--rand-rot", action="store_true", help="Rotate high-res stamp by random number of 90 degrees as a null test."
     )
     parser.add_argument("--night-only", action="store_true", help="Use night-only maps.")
     parser.add_argument(
@@ -191,28 +210,49 @@ def initialize_pipeline_config():
     paths.savedir = savedir
     return start_time,paths,defaults,args,tags,rank
 
-def catalog_interface(cat_type,is_meanfield,nmax=None):
-    if cat_type=='hilton_beta' or (cat_type=='hilton_bcg_merged' and is_meanfield):
+def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=False,snmin=None,snmax=None):
+    if cat_type=='hilton_beta':
         if is_meanfield:
             catalogue_name = paths.data+ 'selection/S18d_202003Mocks_DESSNR6Scaling/mockCatalog_combined.fits'
         else:
-            catalogue_name = paths.data+ 'AdvACT_S18Clusters_v1.0-beta.fits'
+            catalogue_name = paths.data+ 'AdvACT_S18Clusters_v1.0-beta-bcg.fits'
         hdu = fits.open(catalogue_name)
-        ras = hdu[1].data['RADeg'][:nmax]
-        decs = hdu[1].data['DECDeg'][:nmax]
-    elif (cat_type=='hilton_bcg_merged'):
-        assert not(is_meanfield)
-        import pandas as pd
-        catalogue_name = paths.data+ 'AdvACT_S18Clusters_v1.0-beta_bcg_merged.csv'
-        df = pd.read_csv(catalogue_name)
-        ras = df['ra'].to_numpy()
-        decs = df['dec'].to_numpy()
-        bra = df['bra'].to_numpy()
-        bdec = df['bdec'].to_numpy()
-        ras[bra>-98] = bra[bra>-98]
-        decs[bra>-98] = bdec[bra>-98]
+        if bcg:
+            ras = hdu[1].data['opt_RADeg']
+            decs = hdu[1].data['opt_DECDeg']
+            decs = decs[ras>=0]
+            zs = hdu[1].data['redshift'][ras>=0]
+            sns = hdu[1].data['SNR'][ras>=0]
+            ras = ras[ras>=0]
+        else:
+            ras = hdu[1].data['RADeg']
+            decs = hdu[1].data['DECDeg']
+            zs = hdu[1].data['redshift']
+            sns = hdu[1].data['SNR']
+        if zmin is not None:
+            ras = ras[zs>zmin]
+            decs = decs[zs>zmin]
+            sns = sns[zs>zmin]
+            zs = zs[zs>zmin]
+        if zmax is not None:
+            ras = ras[zs<=zmax]
+            decs = decs[zs<=zmax]
+            sns = sns[zs<=zmax]
+            zs = zs[zs<=zmax]
+        if snmin is not None:
+            ras = ras[sns>snmin]
+            decs = decs[sns>snmin]
+            zs = zs[sns>snmin]
+            sns = sns[sns>snmin]
+        if snmax is not None:
+            ras = ras[sns<=snmax]
+            decs = decs[sns<=snmax]
+            sns = sns[zs<=zmax]
+            zs = zs[zs<=zmax]
         ras = ras[:nmax]
         decs = decs[:nmax]
+        ws = ras*0 + 1
+
     elif cat_type=='sdss_redmapper':
         if is_meanfield:
             catalogue_name = paths.data+ 'redmapper_dr8_public_v6.3_randoms.fits'
@@ -225,35 +265,64 @@ def catalog_interface(cat_type,is_meanfield,nmax=None):
         decs = decs[decs<25]
         ras = ras[:nmax]
         decs = decs[:nmax]
-    elif cat_type=='cmass':
-        with bench.show("load cmass"):
-            if is_meanfield:
-                # One random has 50x, more than enough for mean-fields.
-                boss_files = [paths.boss_data+x for x in  ['random0_DR12v5_CMASS_North.fits','random0_DR12v5_CMASS_South.fits']]
-            else:
-                boss_files = [paths.boss_data+x for x in  ['galaxy_DR12v5_CMASS_North.fits','galaxy_DR12v5_CMASS_South.fits']]
-            ras,decs,_ = catalogs.load_boss(boss_files,zmin=0.4,zmax=0.7,do_weights=False)
-            ras = ras[decs<25]
-            decs = decs[decs<25]
-            if nmax is not None:
-                """
-                We have to be a bit more careful when a max number of random galaxies is requested for BOSS, because
-                there is a North/South split.
-                """
-                Ntot = len(ras)
-                np.random.seed(100)
-                inds = np.random.choice(Ntot,size=nmax,replace=False)
-                ras = ras[inds]
-                decs = decs[inds]
+        ws = ras*0 + 1
+
+    elif cat_type[:5]=='cmass':
+        scat = cat_type.split('_')
+        if len(scat)==1: raise ValueError("Please specify CMASS catalog as cmass_dr11 or cmass_dr12.")
+        dr = scat[1].lower()
+        if dr=='dr11':
+            broot = paths.boss_dr11_data
+            fstr = 'DR11v1'
+        elif dr=='dr12':
+            broot = paths.boss_dr12_data
+            fstr = 'DR12v5'
+        if is_meanfield:
+            # One random has 50x, more than enough for mean-fields.
+            boss_files = [broot+x for x in  [f'random0_{fstr}_CMASS_North.fits',f'random0_{fstr}_CMASS_South.fits']]
+        else:
+            boss_files = [broot+x for x in  [f'galaxy_{fstr}_CMASS_North.fits',f'galaxy_{fstr}_CMASS_South.fits']]
+        if zmin is None: zmin = 0.43
+        if zmax is None: zmax = 0.70
+        ras,decs,ws,zs = catalogs.load_boss(boss_files,zmin=zmin,zmax=zmax,do_weights=not(is_meanfield),sys_weights=False)
+        if ws is None: ws = ras*0 + 1
+        ws = ws[decs<25]
+        ras = ras[decs<25]
+        decs = decs[decs<25]
+        if nmax is not None:
+            """
+            We have to be a bit more careful when a max number of random galaxies is requested for BOSS, because
+            there is a North/South split.
+            """
+            Ntot = len(ras)
+            np.random.seed(100)
+            inds = np.random.choice(Ntot,size=nmax,replace=False)
+            ras = ras[inds]
+            decs = decs[inds]
+            ws = ws[inds]
 
     elif cat_type=='wise_panstarrs':
-        catalogue_name = paths.data+ 'wise_panstarrs_radec.txt'
+        if is_meanfield:
+            # made using mapcat.py followed by randcat.py
+            catalogue_name = paths.data+ 'wise_panstarrs_randoms.txt'
+        else:
+            catalogue_name = paths.data+ 'wise_panstarrs_radec.txt'
         ras,decs = np.loadtxt(catalogue_name,unpack=True)
+        ras = ras[:nmax]
+        decs = decs[:nmax]
+        ws = ras*0 + 1
+
+    elif cat_type=='hsc_camira':
+        catalogue_name = paths.hsc_data+ 'camira_s17a_wide_v1.dat'
+        ras,decs = np.loadtxt(catalogue_name,unpack=True,usecols=[0,1])
+        ras = ras[:nmax]
+        decs = decs[:nmax]
+        ws = ras*0 + 1
         
     else:
         raise NotImplementedError
         
-    return ras,decs
+    return ras,decs,ws
 
 def load_beam(freq):
     if freq=='f150': fname = paths.data+'s16_pa2_f150_nohwp_night_beam_tform_jitter.txt'

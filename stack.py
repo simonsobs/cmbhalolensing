@@ -29,7 +29,7 @@ theory = cosmology.default_theory()
 
 if not (args.inject_sim):
     # Load the catalog
-    ras, decs = cutils.catalog_interface(args.cat_type, args.is_meanfield, args.nmax)
+    ras, decs, ws = cutils.catalog_interface(args.cat_type, args.is_meanfield, args.nmax,args.zmin,args.zmax,bcg=args.bcg)
 else:
     # or if injecting sims, load the sim generator
     csim = cutils.Simulator(
@@ -115,6 +115,7 @@ if not (args.inject_sim):
         pixs.append(ipixs[0][sel])
         decs = decs[sel]
         pixs.append(ipixs[1][sel])
+        ws = ws[sel]
         pixs = np.stack(pixs)
         # Then select pixels where the noise is finite and less than args.max_rms_noise
         nsel = np.logical_and(
@@ -123,7 +124,10 @@ if not (args.inject_sim):
         )
         ras = ras[np.argwhere(nsel)][:, 0]
         decs = decs[np.argwhere(nsel)][:, 0]
+        ws = ws[np.argwhere(nsel)][:, 0]
         nsims = len(ras)
+        assert len(decs)==nsims
+        assert len(ws)==nsims
     del pixs, ipixs
 
 
@@ -314,6 +318,7 @@ def ilc(modlmap, m1, m2, p11, p22, p12, b1, b2):
 j = 0  # local counter for this MPI task
 for task in my_tasks:
     i = task  # global counter for all objects
+    cweight = ws[i] if not(args.inject_sim) else 1
     cper = int((j + 1) / len(my_tasks) * 100.0)
     if rank == 0:
         print(f"Rank {rank} performing task {task} as index {j} ({cper}% complete.).")
@@ -346,7 +351,7 @@ for task in my_tasks:
                 io.plot_img(
                     ivar_90,
                     f"{paths.debugdir}act_90_err_ivar_large_var_{task}.png",
-                    arc_width=args.stamp_width_arcmin,
+                    arc_width=args.swidth,
                     xlabel="$\\theta_x$ (arcmin)",
                     ylabel="$\\theta_y$ (arcmin)",
                 )
@@ -383,7 +388,7 @@ for task in my_tasks:
                 io.plot_img(
                     astamp_150,
                     f"{paths.debugdir}act_150_err_stamp_large_stamp_{task}.png",
-                    arc_width=args.stamp_width_arcmin,
+                    arc_width=args.swidth,
                     xlabel="$\\theta_x$ (arcmin)",
                     ylabel="$\\theta_y$ (arcmin)",
                 )
@@ -391,7 +396,7 @@ for task in my_tasks:
                 io.plot_img(
                     astamp_90,
                     f"{paths.debugdir}act_90_err_stamp_large_stamp_{task}.png",
-                    arc_width=args.stamp_width_arcmin,
+                    arc_width=args.swidth,
                     xlabel="$\\theta_x$ (arcmin)",
                     ylabel="$\\theta_y$ (arcmin)",
                 )
@@ -407,7 +412,7 @@ for task in my_tasks:
                 io.plot_img(
                     astamp_150,
                     f"{paths.debugdir}act_150_err_stamp_an_stamp_{task}.png",
-                    arc_width=args.stamp_width_arcmin,
+                    arc_width=args.swidth,
                     xlabel="$\\theta_x$ (arcmin)",
                     ylabel="$\\theta_y$ (arcmin)",
                 )
@@ -415,7 +420,7 @@ for task in my_tasks:
                 io.plot_img(
                     astamp_90,
                     f"{paths.debugdir}act_90_err_stamp_an_stamp_{task}.png",
-                    arc_width=args.stamp_width_arcmin,
+                    arc_width=args.swidth,
                     xlabel="$\\theta_x$ (arcmin)",
                     ylabel="$\\theta_y$ (arcmin)",
                 )
@@ -446,7 +451,7 @@ for task in my_tasks:
                 io.plot_img(
                     pstamp,
                     f"{paths.debugdir}planck_err_stamp_notfinite_{task}.png",
-                    arc_width=args.stamp_width_arcmin,
+                    arc_width=args.swidth,
                     xlabel="$\\theta_x$ (arcmin)",
                     ylabel="$\\theta_y$ (arcmin)",
                 )
@@ -476,6 +481,29 @@ for task in my_tasks:
     act_stamp_150 = astamp_150 * taper
     act_stamp_90 = astamp_90 * taper
     plc_stamp = pstamp * taper
+
+
+    if args.inpaint:
+        """
+        If inpainting, we 
+        (1) resample the stamp to 64x64 (2 arcmin pixels)
+        (2) Inpaint a hole of radius 4 arcmin 
+        """
+        rmin = 4 * utils.arcmin
+        No = int(args.swidth/args.pwidth)
+        Ndown = No//4
+        xmask = maps.mask_kspace(plc_stamp.shape, plc_stamp.wcs, lmin=xlmin, lmax=xlmax)
+        plc_stamp = maps.filter_map(plc_stamp,xmask)
+        pdown = enmap.resample(plc_stamp,(Ndown,Ndown))
+        if j==0:
+            from orphics import pixcov
+            beam_fn = lambda x: maps.gauss_beam(plc_beam_fwhm,x)
+            ipsizemap = enmap.pixsizemap(pdown.shape,pdown.wcs)
+            pivar = maps.ivar(pdown.shape,pdown.wcs,defaults.gradient_fiducial_rms,ipsizemap=ipsizemap)
+            pcov = pixcov.tpcov_from_ivar(Ndown,pivar,theory.lCl,beam_fn)
+            geo = pixcov.make_geometry(pdown.shape,pdown.wcs,rmin,n=Ndown,deproject=True,iau=False,res=None,pcov=pcov)
+        pdown = pixcov.inpaint_stamp(pdown,geo)
+        plc_stamp = enmap.resample(pdown,(No,No))        
 
     """ 
     !! STAMP FFTs
@@ -635,6 +663,11 @@ for task in my_tasks:
     """ 
     !! LENS RECONSTRUCTION
     """
+    if args.rand_rot:
+        np.random.seed(task)
+        act_rmap = enmap.ifft(act_kmap*ymask,normalize='phys').real
+        rotmap = enmap.enmap(np.rot90(act_rmap,np.random.randint(1,4)),wcs)
+        act_kmap = enmap.fft(rotmap,normalize='phys') * ymask
     # build symlens dictionary for lensing reconstruction
     feed_dict = {
         "uC_T_T": ucltt,  # goes in the lensing response func = lensed theory
@@ -679,7 +712,7 @@ for task in my_tasks:
             io.plot_img(
                 kappa,
                 f"{paths.debugdir}kappa_err_stamp_large_kappa_{task}.png",
-                arc_width=args.stamp_width_arcmin,
+                arc_width=args.swidth,
                 xlabel="$\\theta_x$ (arcmin)",
                 ylabel="$\\theta_y$ (arcmin)",
             )
@@ -687,7 +720,7 @@ for task in my_tasks:
             io.plot_img(
                 astamp_150,
                 f"{paths.debugdir}act_150_err_stamp_large_kappa_{task}.png",
-                arc_width=args.stamp_width_arcmin,
+                arc_width=args.swidth,
                 xlabel="$\\theta_x$ (arcmin)",
                 ylabel="$\\theta_y$ (arcmin)",
             )
@@ -701,7 +734,7 @@ for task in my_tasks:
             s.add_to_stats("nc", lbinner.bin(tclaa_150_90)[1])
         s.add_to_stats("np", lbinner.bin(tclpp)[1])
 
-    # Unweighte stack
+    # Unweighted stack
     s.add_to_stack("ustack", kappa)
 
     """ 
@@ -732,7 +765,7 @@ for task in my_tasks:
     # pl.add(ells,theory.gCl('kk',ells),color='k')
     # pl.add(*lbinner.bin(Nl),ls='--')
     # pl.done(f'{paths.debugdir}nlkk.png')
-    # io.plot_img(np.fft.fftshift(np.log10(Nl)),f'{paths.debugdir}nl2d.png',arc_width=args.stamp_width_arcmin)
+    # io.plot_img(np.fft.fftshift(np.log10(Nl)),f'{paths.debugdir}nl2d.png',arc_width=args.swidth)
     # sys.exit()
 
     # Save weighted stacks and statistics
@@ -741,14 +774,14 @@ for task in my_tasks:
         iNl = (1.0 / Nl) * kmask
     iNl[~np.isfinite(iNl)] = 0
     wkrecon = krecon * iNl
-    s.add_to_stack("wk_real", wkrecon.real)
-    s.add_to_stack("wk_imag", wkrecon.imag)
-    s.add_to_stack("wk_iwt", iNl)
+    s.add_to_stack("wk_real", wkrecon.real * cweight)
+    s.add_to_stack("wk_imag", wkrecon.imag * cweight)
+    s.add_to_stack("wk_iwt", iNl * cweight)
 
     # inverse variance noise weighting
     ivmean = 1.0 / nmean
 
-    weight = ivmean
+    weight = ivmean * cweight
     stack = kappa * weight
     s.add_to_stack("kmap", stack)
 

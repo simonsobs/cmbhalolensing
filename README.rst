@@ -29,8 +29,12 @@ The main scripts stack.py, post.py and make_lensed_sims.py are partially
 documented through their command line arguments. Just invoke them with the ``-h``
 flag for more information.
 
-* Copy input/paths.yml to input/paths_local.yml and edit with your local paths. Do not attempt to add the latter file to the git tree.
-* **stack.py** : to ILC/combine, reconstruct and stack on either catalogs or randoms.
+* Copy input/paths.yml to input/paths_local.yml and edit with your local
+  paths. Do not attempt to add the latter file to the git tree.
+* Run SZ source subtraction (to be merged into master)
+* Run inpainting of bright compact residuals (not implemented yet)
+* **stack.py** : to ILC/combine, reconstruct and stack on either catalogs,
+  randoms or injected sims.
 * **post.py** : to post-process stacks and do simple fits, calculate SNR
 * **make_lensed_sims.py** : to make and save lensed sims for sim injection tests
 * **sim.py** : simple sim tests (no window or mean-field subtraction)

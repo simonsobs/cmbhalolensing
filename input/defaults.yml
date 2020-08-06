@@ -23,7 +23,7 @@ kappa_Lmin: 200
 kappa_Lmax: 5000
 
 arcmax: 15.0
-arcstep: 1.0
+arcstep: 1.5
 
 max_rms_noise: 50.0
 

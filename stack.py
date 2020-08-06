@@ -29,7 +29,10 @@ theory = cosmology.default_theory()
 
 if not (args.inject_sim):
     # Load the catalog
-    ras, decs, ws = cutils.catalog_interface(args.cat_type, args.is_meanfield, args.nmax,args.zmin,args.zmax,bcg=args.bcg)
+    ras, decs, zs, ws, cdata = cutils.catalog_interface(args.cat_type, args.is_meanfield, 
+                                                        args.nmax,args.zmin,args.zmax,
+                                                        bcg=args.bcg,snmin=args.snmin,
+                                                        snmax=args.snmax)
 else:
     # or if injecting sims, load the sim generator
     csim = cutils.Simulator(
@@ -64,27 +67,25 @@ if not (args.inject_sim):
             enmap.write_map(fplc_map, pmap)
 
         # ACT 150 GHz coadd map
-        if args.no_sz_sub:
-            act_map = (
-                paths.coadd_data + f"{tags.apstr}_s08_s18_cmb_f150_{tags.dstr}_srcfree_map.fits"
-            )
-            amap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
-        else:
-            act_map = paths.data + f"modelSubtracted150_{tags.apstr}_{tags.dstr}.fits"
-            amap_150 = enmap.read_map(act_map, delayed=False)
+        act_map = (
+            paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f150_{tags.dstr}_srcfree_map.fits"
+        )
+        amap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+        if not(args.no_sz_sub):
+            amap_150 = amap_150 - enmap.read_map(f'{paths.data}S18d_202006_confirmed_model_f150.fits')
+
 
         # ACT 90 GHz coadd map
-        if args.no_sz_sub:
-            act_map = (
-                paths.coadd_data + f"{tags.apstr}_s08_s18_cmb_f090_{tags.dstr}_srcfree_map.fits"
-            )
-            amap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
-        else:
-            act_map = paths.data + f"modelSubtracted90_{tags.apstr}_{tags.dstr}.fits"
-            amap_90 = enmap.read_map(act_map, delayed=False)
+        act_map = (
+            paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f090_{tags.dstr}_srcfree_map.fits"
+        )
+        amap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+        if not(args.no_sz_sub):
+            amap_90 = amap_90 - enmap.read_map(f'{paths.data}S18d_202006_confirmed_model_f090.fits')
+
 
         # Inv var map for 90 GHz
-        ivar_map = paths.coadd_data + f"{tags.apstr}_s08_s18_cmb_f090_{tags.dstr}_ivar.fits"
+        ivar_map = paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f090_{tags.dstr}_ivar.fits"
         imap_90 = enmap.read_map(ivar_map, delayed=False, sel=np.s_[0, ...])
         rms_map = maps.rms_from_ivar(
             imap_90, cylindrical=True
@@ -101,6 +102,7 @@ maxr = stamp_width_deg * utils.degree / 2.0
 
 if not (args.inject_sim):
     # Remove objects that lie in unobserved regions
+    Norig = len(ras)
     with bench.show("cull"):
         coords = np.stack([decs, ras]) * utils.degree
         # Convert catalog coords to pixel coords
@@ -116,6 +118,9 @@ if not (args.inject_sim):
         decs = decs[sel]
         pixs.append(ipixs[1][sel])
         ws = ws[sel]
+        zs = zs[sel]
+        for key in cdata.keys():
+            cdata[key] = cdata[key][sel]
         pixs = np.stack(pixs)
         # Then select pixels where the noise is finite and less than args.max_rms_noise
         nsel = np.logical_and(
@@ -125,11 +130,19 @@ if not (args.inject_sim):
         ras = ras[np.argwhere(nsel)][:, 0]
         decs = decs[np.argwhere(nsel)][:, 0]
         ws = ws[np.argwhere(nsel)][:, 0]
+        zs = zs[np.argwhere(nsel)][:, 0]
+        for key in cdata.keys():
+            cdata[key] = cdata[key][np.argwhere(nsel)][:, 0]
         nsims = len(ras)
         assert len(decs)==nsims
         assert len(ws)==nsims
     del pixs, ipixs
 
+print(f"After applying the noise mask, {Norig} -> {nsims}.")
+try:
+    print(f"zmin {min(zs)} zmax {max(zs)}")
+except:
+    pass
 
 # MPI paralellization
 comm, rank, my_tasks = mpi.distribute(nsims)
@@ -319,6 +332,10 @@ j = 0  # local counter for this MPI task
 for task in my_tasks:
     i = task  # global counter for all objects
     cweight = ws[i] if not(args.inject_sim) else 1
+    if not(args.inject_sim) and not(args.is_meanfield):
+        z = zs[i]
+    else:
+        z = 0
     cper = int((j + 1) / len(my_tasks) * 100.0)
     if rank == 0:
         print(f"Rank {rank} performing task {task} as index {j} ({cper}% complete.).")
@@ -368,6 +385,7 @@ for task in my_tasks:
             res=pixel * utils.arcmin,
             proj="plain",
             oversample=2,
+            depix=True
         )
         astamp_90 = reproject.thumbnails(
             amap_90,
@@ -376,7 +394,9 @@ for task in my_tasks:
             res=pixel * utils.arcmin,
             proj="plain",
             oversample=2,
+            depix=True
         )
+
 
         """ 
         !! REJECT ANOMALOUS STAMPS
@@ -431,7 +451,7 @@ for task in my_tasks:
         """
         # cut out a stamp from the Planck map (CAR -> plain)
         pstamp = reproject.thumbnails(
-            pmap, coords, r=maxr, res=pixel * utils.arcmin, proj="plain", oversample=2
+            pmap, coords, r=maxr, res=pixel * utils.arcmin, proj="plain", oversample=2,depix=False
         )
 
         # Check that all the WCS agree
@@ -463,6 +483,9 @@ for task in my_tasks:
     else:
         pstamp, astamp_150, astamp_90 = csim.get_obs(task)
 
+
+
+
     """ 
     !! COSINE TAPER
     """
@@ -481,6 +504,15 @@ for task in my_tasks:
     act_stamp_150 = astamp_150 * taper
     act_stamp_90 = astamp_90 * taper
     plc_stamp = pstamp * taper
+
+
+    if args.debug_stack:
+        sweight = ivar_90.mean()
+        s.add_to_stack('a150_cmb',astamp_150*sweight)
+        s.add_to_stack('a90_cmb',astamp_90*sweight)
+        s.add_to_stack('acmb_twt',(astamp_90*0+1)*sweight)
+        s.add_to_stack('p_cmb',pstamp)
+        continue
 
 
     if args.inpaint:
@@ -688,7 +720,7 @@ for task in my_tasks:
         shape,
         wcs,
         feed_dict,
-        estimator="hdv",
+        estimator="hdv_curl" if args.curl else "hdv",
         XY="TT",
         xmask=xmask,
         ymask=ymask,
@@ -794,6 +826,9 @@ for task in my_tasks:
 
     # check how many stamps are cut out of given map
     s.add_to_stats("ct_selected", (1,))
+    if not(args.is_meanfield) and not(args.inject_sim):
+        s.add_to_stats("data", (z,weight,*[cdata[key][i] for key in sorted(cdata.keys())]))
+        
     j = j + 1
 
 
@@ -802,13 +837,37 @@ s.get_stacks()
 s.get_stats()
 
 if rank == 0:
+
+    if args.debug_stack:
+        twt = s.stacks['acmb_twt']
+        a150 = s.stacks['a150_cmb'] / twt
+        a90 = s.stacks['a90_cmb'] / twt
+        planck = s.stacks['p_cmb']
+        enmap.write_map(f"{paths.savedir}/a150_cmb.fits",a150)
+        enmap.write_map(f"{paths.savedir}/a90_cmb.fits",a90)
+        enmap.write_map(f"{paths.savedir}/p_cmb.fits",planck)
+        cwidth = 30.
+        crop = int(cwidth / args.pwidth)
+        cutils.plot(f"{paths.savedir}/a150_cmb.png",a150,0,0,crop=None,lim=None)
+        cutils.plot(f"{paths.savedir}/a150_cmb_zoom.png",a150,0,0,crop=crop,lim=None)
+        cutils.plot(f"{paths.savedir}/a90_cmb.png",a90,0,0,crop=None,lim=None)
+        cutils.plot(f"{paths.savedir}/a90_cmb_zoom.png",a90,0,0,crop=crop,lim=None)
+        cutils.plot(f"{paths.savedir}/p_cmb.png",planck,0,0,crop=None,lim=None)
+        cutils.plot(f"{paths.savedir}/p_cmb_zoom.png",planck,0,0,crop=crop,lim=None)
+        sys.exit()
+
     # Dump all collected statistics
     with bench.show("dump"):
+        if not(args.inject_sim):
+            with open(f"{paths.savedir}/cat_data_columns.txt",'w') as f:
+                f.write(' '.join(['z','weight',*[key for key in sorted(cdata.keys())]]))
         s.dump(paths.savedir)
         enmap.write_map_geometry(f"{paths.savedir}/map_geometry.fits", shape, wcs)
         enmap.write_map(f"{paths.savedir}/kmask.fits", kmask)
         enmap.write_map(f"{paths.savedir}/modrmap.fits", modrmap)
         np.savetxt(f"{paths.savedir}/bin_edges.txt", bin_edges)
+        if not(args.is_meanfield):
+            np.savetxt(f"{paths.savedir}/profiles.txt",s.vectors['k1d'])
 
     for ctkey in [
         "selected"

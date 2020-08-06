@@ -114,6 +114,16 @@ def initialize_pipeline_config():
         help="Use the high-res maps without SZ subtraction.",
     )
     parser.add_argument(
+        "--s19",
+        action="store_true",
+        help="Use preliminary 2019 data.",
+    )
+    parser.add_argument(
+        "--curl",
+        action="store_true",
+        help="Do curl null test instead of lensing.",
+    )
+    parser.add_argument(
         "--inject-sim",
         action="store_true",
         help="Instead of using data, simulate a lensing cluster and Planck+ACT (or unlensed for mean-field).",
@@ -129,6 +139,9 @@ def initialize_pipeline_config():
     )
     parser.add_argument(
         "--is-meanfield", action="store_true", help="This is a mean-field run."
+    )
+    parser.add_argument(
+        "--debug-stack", action="store_true", help="Skip reconstruction and just stack on gradient and high-res."
     )
     parser.add_argument(
         "--bcg", action="store_true", help="Use BCGs for Hilton Catalog."
@@ -173,9 +186,11 @@ def initialize_pipeline_config():
     tags.apstr = "act" if args.act_only_in_hres else "act_planck"
     tags.mstr = "_meanfield" if args.is_meanfield else ""
     tags.n90str = "_no90" if args.no_90 else ""
+    tags.s19str = "s19" if args.s19 else "s18"
+    curlstr = "_curl" if args.curl else ""
 
     # The directory name string
-    vstr = f"{args.version}_{args.cat_type}_plmin_{args.grad_lmin}_plmax_{args.grad_lmax}_almin_{args.hres_lmin}_almax_{args.hres_lmax}_klmin_{args.klmin}_klmax_{args.klmax}_lxcut_{args.hres_lxcut}_lycut_{args.hres_lycut}_swidth_{args.swidth:.2f}_tapper_{args.tap_per:.2f}_padper_{args.pad_per:.2f}_{tags.dstr}_{tags.apstr}{tags.n90str}{tags.mstr}"
+    vstr = f"{args.version}_{args.cat_type}_plmin_{args.grad_lmin}_plmax_{args.grad_lmax}_almin_{args.hres_lmin}_almax_{args.hres_lmax}_klmin_{args.klmin}_klmax_{args.klmax}_lxcut_{args.hres_lxcut}_lycut_{args.hres_lycut}_swidth_{args.swidth:.2f}_tapper_{args.tap_per:.2f}_padper_{args.pad_per:.2f}_{tags.dstr}_{tags.apstr}{tags.n90str}_{tags.s19str}{curlstr}{tags.mstr}"
 
     # File save paths
     savedir = paths.scratch + f"/{vstr}/"
@@ -210,12 +225,36 @@ def initialize_pipeline_config():
     paths.savedir = savedir
     return start_time,paths,defaults,args,tags,rank
 
+def cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax):
+    if zmin is not None:
+        ras = ras[zs>zmin]
+        decs = decs[zs>zmin]
+        sns = sns[zs>zmin]
+        zs = zs[zs>zmin]
+    if zmax is not None:
+        ras = ras[zs<=zmax]
+        decs = decs[zs<=zmax]
+        sns = sns[zs<=zmax]
+        zs = zs[zs<=zmax]
+    if snmin is not None:
+        ras = ras[sns>snmin]
+        decs = decs[sns>snmin]
+        zs = zs[sns>snmin]
+        sns = sns[sns>snmin]
+    if snmax is not None:
+        ras = ras[sns<=snmax]
+        decs = decs[sns<=snmax]
+        zs = zs[sns<=snmax]
+        sns = sns[sns<=snmax]
+    return ras,decs,sns,zs
+
 def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=False,snmin=None,snmax=None):
+    data = {}
     if cat_type=='hilton_beta':
         if is_meanfield:
             catalogue_name = paths.data+ 'selection/S18d_202003Mocks_DESSNR6Scaling/mockCatalog_combined.fits'
         else:
-            catalogue_name = paths.data+ 'AdvACT_S18Clusters_v1.0-beta-bcg.fits'
+            catalogue_name = paths.data+ 'AdvACT_S18Clusters_v1.0-beta.fits'
         hdu = fits.open(catalogue_name)
         if bcg:
             ras = hdu[1].data['opt_RADeg']
@@ -229,29 +268,11 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
             decs = hdu[1].data['DECDeg']
             zs = hdu[1].data['redshift']
             sns = hdu[1].data['SNR']
-        if zmin is not None:
-            ras = ras[zs>zmin]
-            decs = decs[zs>zmin]
-            sns = sns[zs>zmin]
-            zs = zs[zs>zmin]
-        if zmax is not None:
-            ras = ras[zs<=zmax]
-            decs = decs[zs<=zmax]
-            sns = sns[zs<=zmax]
-            zs = zs[zs<=zmax]
-        if snmin is not None:
-            ras = ras[sns>snmin]
-            decs = decs[sns>snmin]
-            zs = zs[sns>snmin]
-            sns = sns[sns>snmin]
-        if snmax is not None:
-            ras = ras[sns<=snmax]
-            decs = decs[sns<=snmax]
-            sns = sns[zs<=zmax]
-            zs = zs[zs<=zmax]
+        ras,decs,sns,zs = cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax)
         ras = ras[:nmax]
         decs = decs[:nmax]
         ws = ras*0 + 1
+        data['sns'] = sns
 
     elif cat_type=='sdss_redmapper':
         if is_meanfield:
@@ -261,11 +282,38 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
         hdu = fits.open(catalogue_name)
         ras = hdu[1].data['RA']
         decs = hdu[1].data['DEC']
+        zs = hdu[1].data['Z_LAMBDA']
+        lams = hdu[1].data['LAMBDA']
         ras = ras[decs<25]
+        zs = zs[decs<25]
+        lams = lams[decs<25]
         decs = decs[decs<25]
         ras = ras[:nmax]
         decs = decs[:nmax]
+        zs = zs[:nmax]
+        lams = lams[:nmax]
         ws = ras*0 + 1
+        data['lams'] = lams
+
+    elif cat_type=='des_redmapper':
+        if is_meanfield:
+            catalogue_name = paths.data+ 'y3_gold_2.2.1_wide_sofcol_run_redmapper_v6.4.22_randcat_z0.10-0.95_lgt020_vl02.fit'
+        else:
+            catalogue_name = paths.data+ 'y3_gold_2.2.1_wide_sofcol_run_redmapper_v6.4.22_lgt20_vl02_catalog.fit'
+        hdu = fits.open(catalogue_name)
+        ras = hdu[1].data['RA']
+        decs = hdu[1].data['DEC']
+        zs = hdu[1].data['Z_LAMBDA' if not(is_meanfield) else 'ZTRUE']
+        sns = hdu[1].data['LAMBDA_CHISQ' if not(is_meanfield) else 'LAMBDA_IN']
+
+        ras,decs,sns,zs = cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax)
+
+        ras = ras[:nmax]
+        decs = decs[:nmax]
+        zs = zs[:nmax]
+        sns = sns[:nmax]
+        ws = ras*0 + 1
+        data['lams'] = sns
 
     elif cat_type[:5]=='cmass':
         scat = cat_type.split('_')
@@ -288,6 +336,7 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
         if ws is None: ws = ras*0 + 1
         ws = ws[decs<25]
         ras = ras[decs<25]
+        zs = zs[decs<25]
         decs = decs[decs<25]
         if nmax is not None:
             """
@@ -300,6 +349,7 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
             ras = ras[inds]
             decs = decs[inds]
             ws = ws[inds]
+            zs = zs[inds]
 
     elif cat_type=='wise_panstarrs':
         if is_meanfield:
@@ -312,17 +362,63 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
         decs = decs[:nmax]
         ws = ras*0 + 1
 
-    elif cat_type=='hsc_camira':
-        catalogue_name = paths.hsc_data+ 'camira_s17a_wide_v1.dat'
-        ras,decs = np.loadtxt(catalogue_name,unpack=True,usecols=[0,1])
+    elif cat_type=='madcows_photz':
+        if is_meanfield:
+            # made using mapcat.py followed by randcat.py
+            catalogue_name = paths.data+ 'madcows_photz_randoms.txt'
+            ras,decs = np.loadtxt(catalogue_name,unpack=True)
+            zs = ras*0
+        else:
+            catalogue_name = paths.data+ 'madcows_cleaned.txt'
+            ras,decs,zs,sns = np.genfromtxt(catalogue_name,usecols=[2,3,6,8],unpack=True,delimiter=',')
+            ras = ras[zs>0]
+            decs = decs[zs>0]
+            sns = sns[zs>0]
+            zs = zs[zs>0]
+
+            ras = ras[sns>0]
+            decs = decs[sns>0]
+            zs = zs[sns>0]
+            sns = sns[sns>0]
+
+            print(decs.min())
+            sys.exit()
+
+
+            ras,decs,sns,zs = cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax)
+
+
+            sns = sns[:nmax]
+            data['lams'] = sns
+
+        zs = zs[:nmax]
         ras = ras[:nmax]
         decs = decs[:nmax]
+        ws = ras*0 + 1
+
+    elif cat_type=='hsc_camira':
+        if is_meanfield:
+            catalogue_name = paths.data+ 'rand_comb_s19a_wide_sm_z084.dat'
+            ras,decs = np.loadtxt(catalogue_name,unpack=True)
+            sns = None
+            zs = ras*0
+        else:
+            catalogue_name = paths.data+ 'camira_s19a_wide_sm_v1_01z11.dat'
+            ras,decs,sns,zs = np.loadtxt(catalogue_name,unpack=True)
+            ras,decs,sns,zs = cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax)
+
+        ras = ras[:nmax]
+        decs = decs[:nmax]
+        zs = zs[:nmax]
+        if not(is_meanfield):
+            sns = sns[:nmax]
+            data['lams'] = sns
         ws = ras*0 + 1
         
     else:
         raise NotImplementedError
         
-    return ras,decs,ws
+    return ras,decs,zs,ws,data
 
 def load_beam(freq):
     if freq=='f150': fname = paths.data+'s16_pa2_f150_nohwp_night_beam_tform_jitter.txt'
@@ -345,7 +441,21 @@ def load_dumped_stats(mvstr,get_extra=False):
         bin_edges = np.loadtxt(f'{savedir}/bin_edges.txt')
         assert wcsutils.equal(kmask.wcs,modrmap.wcs)
         assert wcsutils.equal(kmask.wcs,wcs)
-        return s, shape, wcs, kmask, modrmap, bin_edges
+        try:
+            with open(f'{savedir}/cat_data_columns.txt', 'r') as file:
+                columns = file.read().replace('\n', '').split(' ')
+            data = {}
+            dat = np.load(f"{savedir}/mstats_dump_vectors_data.npy")
+            assert len(columns)==dat.shape[1]
+            for i,col in enumerate(columns):
+                data[col] = dat[:,i]
+        except:
+            data = None
+        try:
+            profs = np.loadtxt(f"{savedir}/profiles.txt")
+        except:
+            profs = None
+        return s, shape, wcs, kmask, modrmap, bin_edges,data,profs
     else:
         return s, shape, wcs
 
@@ -389,17 +499,19 @@ def analyze(s,wcs):
     
 
 
-def plot(fname,stamp,stamp_width_arcmin,tap_per,pad_per,crop=None):
+def plot(fname,stamp,tap_per,pad_per,crop=None,lim=None,cmap='coolwarm',quiver=None):
     kmap = stamp
     trimy = int((tap_per+pad_per)/100. * kmap.shape[0])
     trimx = int((tap_per+pad_per)/100. * kmap.shape[1])
-    tmap = kmap[trimy:-trimy,trimx:-trimx]
+    if trimy>0 and trimx>0:
+        tmap = kmap[trimy:-trimy,trimx:-trimx]
+    else:
+        tmap = kmap
     if crop is not None:
         tmap = maps.crop_center(tmap,crop)
     zfact = tmap.shape[0]*1./kmap.shape[0]
-    twidth = tmap.extent()/putils.arcmin
-    pwidth = stamp_width_arcmin*zfact
-    io.plot_img(tmap,fname, flip=False, ftsize=12, ticksize=10,arc_width=pwidth,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)')
+    twidth = tmap.extent()[0]/putils.arcmin
+    io.plot_img(tmap,fname, flip=False, ftsize=12, ticksize=10,arc_width=twidth,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)',cmap=cmap,lim=lim,quiver=quiver)
 
 
 def get_hdv_cc():

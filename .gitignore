@@ -3,3 +3,4 @@ paths_local.yml
 *.png
 script_*.sh
 *.fits
+*.txt

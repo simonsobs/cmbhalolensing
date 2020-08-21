@@ -19,7 +19,6 @@ except:
 defaults = bunch.Bunch(io.config_from_yaml("input/defaults.yml"))
 
 
-
 def initialize_pipeline_config():
     start_time = time.time()
     d = defaults
@@ -92,6 +91,11 @@ def initialize_pipeline_config():
         "--no-fit-noise",
         action="store_true",
         help="If True, do not fit empirical noise, but use RMS values specified in defaults.yml.",
+    )
+    parser.add_argument(
+        "--day-null",
+        action="store_true",
+        help="Use day-night as data.",
     )
     parser.add_argument("--tap-per", type=float, default=d.taper_percent, help="Taper percentage.")
     parser.add_argument("--pad-per", type=float, default=d.pad_percent, help="Pad percentage.")
@@ -381,10 +385,6 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
             zs = zs[sns>0]
             sns = sns[sns>0]
 
-            print(decs.min())
-            sys.exit()
-
-
             ras,decs,sns,zs = cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax)
 
 
@@ -414,6 +414,21 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
             sns = sns[:nmax]
             data['lams'] = sns
         ws = ras*0 + 1
+
+    elif cat_type=='vrec_cmass':
+        ras,decs,zs,ws = load_vrec_catalog_boss(paths.boss_vrec_data + 'catalog.txt')
+        ws = -ws[decs<25] / 299792. # (-v/c)
+        ras = ras[decs<25]
+        zs = zs[decs<25]
+        decs = decs[decs<25]
+
+        ras = ras[:nmax]
+        decs = decs[:nmax]
+        zs = zs[:nmax]
+        ws = ws[:nmax]
+
+        data['lams'] = ws*0
+        
         
     else:
         raise NotImplementedError
@@ -499,7 +514,7 @@ def analyze(s,wcs):
     
 
 
-def plot(fname,stamp,tap_per,pad_per,crop=None,lim=None,cmap='coolwarm',quiver=None):
+def plot(fname,stamp,tap_per,pad_per,crop=None,lim=None,cmap='coolwarm',quiver=None,label='$\\kappa$ (dimensionless)'):
     kmap = stamp
     trimy = int((tap_per+pad_per)/100. * kmap.shape[0])
     trimx = int((tap_per+pad_per)/100. * kmap.shape[1])
@@ -511,7 +526,7 @@ def plot(fname,stamp,tap_per,pad_per,crop=None,lim=None,cmap='coolwarm',quiver=N
         tmap = maps.crop_center(tmap,crop)
     zfact = tmap.shape[0]*1./kmap.shape[0]
     twidth = tmap.extent()[0]/putils.arcmin
-    io.plot_img(tmap,fname, flip=False, ftsize=12, ticksize=10,arc_width=twidth,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)',cmap=cmap,lim=lim,quiver=quiver)
+    io.plot_img(tmap,fname, flip=False, ftsize=12, ticksize=10,arc_width=twidth,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)',cmap=cmap,lim=lim,quiver=quiver,label=label)
 
 
 def get_hdv_cc():
@@ -620,3 +635,63 @@ class Simulator(object):
 
         return imap_plc + noise_planck, imap_act_150 + noise_act_150, imap_act_90 + noise_act_90
 
+
+
+def load_vrec_catalog_boss(pathOutCatalog):
+    """
+    Code from Emmanuel Schaan to load in a BOSS v_rec catalog
+    """
+    data = np.genfromtxt(pathOutCatalog)
+    nObj = len(data[:,0])
+    #
+    # sky coordinates and redshift
+    RA = data[:,0] # [deg]
+    DEC = data[:,1]   # [deg]
+    Z = data[:,2]
+    #
+    # observed cartesian coordinates
+    # coordX = data[:,3]   # [Mpc/h]
+    # coordY = data[:,4]   # [Mpc/h]
+    # coordZ = data[:,5]   # [Mpc/h]
+    # #
+    # # displacement from difference,
+    # # not including the Kaiser displacement,
+    # # from differences of the observed and reconstructed fields
+    # dX = data[:,6]   # [Mpc/h]
+    # dY = data[:,7]   # [Mpc/h]
+    # dZ = data[:,8]   # [Mpc/h]
+    # #
+    # # Kaiser-only displacement
+    # # originally from differences of the observed and reconstructed fields
+    # dXKaiser = data[:,9]   # [Mpc/h] from cartesian catalog difference
+    # dYKaiser = data[:,10]   # [Mpc/h]
+    # dZKaiser = data[:,11]   # [Mpc/h]
+    # #
+    # # velocity in cartesian coordinates
+    # vX = data[:,12]   #[km/s]
+    # vY = data[:,13]   #[km/s]
+    # vZ = data[:,14]   #[km/s]
+    #
+    # velocity in spherical coordinates,
+    # from catalog of spherical displacements
+    vR = data[:,15]  # [km/s]   from spherical catalog, >0 away from us
+    # vTheta = data[:,16]   # [km/s]
+    # vPhi = data[:,17]  # [km/s]
+    # #
+    # # Stellar masses
+    # Mstellar = data[:,18]   # [M_sun], from Maraston et al
+    # #
+    # # Halo mass
+    # hasM = data[:,19]
+    # Mvir = data[:,20]  # [M_sun]
+    # #
+    # # Integrated optical depth [dimless]: int d^2theta n_e^2d sigma_T = (total nb of electrons) * sigma_T / (a chi)^2
+    # integratedTau = data[:,21]   # [dimless]
+    # #
+    # # Integrated kSZ signal [muK * sr]: int d^2theta n_e sigma_T (-v/c) Tcmb
+    # integratedKSZ = data[:, 22] # [muK * sr]
+    # #
+    # # Integrated Y signal [sr]: int d^2theta n_e sigma_T (kB Te / me c^2)
+    # # needs to be multiplied by Tcmb * f(nu) to get muK
+    # integratedY = data[:, 23] # [sr]
+    return RA,DEC,Z,vR

@@ -70,18 +70,37 @@ if not (args.inject_sim):
         act_map = (
             paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f150_{tags.dstr}_srcfree_map.fits"
         )
-        amap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+        famap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
         if not(args.no_sz_sub):
-            amap_150 = amap_150 - enmap.read_map(f'{paths.data}S18d_202006_confirmed_model_f150.fits')
+            amap_150 = famap_150 - enmap.read_map(f'{paths.data}S18d_202006_confirmed_model_f150.fits')
 
 
         # ACT 90 GHz coadd map
         act_map = (
             paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f090_{tags.dstr}_srcfree_map.fits"
         )
-        amap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+        famap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
         if not(args.no_sz_sub):
-            amap_90 = amap_90 - enmap.read_map(f'{paths.data}S18d_202006_confirmed_model_f090.fits')
+            amap_90 = famap_90 - enmap.read_map(f'{paths.data}S18d_202006_confirmed_model_f090.fits')
+
+        
+        if args.day_null:
+            assert not(args.night_only)
+            assert not(args.no_90)
+            assert not(args.rand_rot)
+            act_map = (
+                paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f150_night_srcfree_map.fits"
+            )
+            namap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+            act_map = (
+                paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f090_night_srcfree_map.fits"
+            )
+            namap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+
+            null_map_150 = famap_150 - namap_150
+            null_map_90 = famap_90 - namap_90
+            
+            
 
 
         # Inv var map for 90 GHz
@@ -397,6 +416,27 @@ for task in my_tasks:
             depix=True
         )
 
+        if args.day_null:
+            nastamp_150 = reproject.thumbnails(
+                null_map_150,
+                coords,
+                r=maxr,
+                res=pixel * utils.arcmin,
+                proj="plain",
+                oversample=2,
+                depix=True
+            )
+            nastamp_90 = reproject.thumbnails(
+                null_map_90,
+                coords,
+                r=maxr,
+                res=pixel * utils.arcmin,
+                proj="plain",
+                oversample=2,
+                depix=True
+            )
+
+
 
         """ 
         !! REJECT ANOMALOUS STAMPS
@@ -505,11 +545,18 @@ for task in my_tasks:
     act_stamp_90 = astamp_90 * taper
     plc_stamp = pstamp * taper
 
+    if args.day_null:
+        nact_stamp_150 = nastamp_150 * taper
+        nact_stamp_90 = nastamp_90 * taper
+
 
     if args.debug_stack:
         sweight = ivar_90.mean()
         s.add_to_stack('a150_cmb',astamp_150*sweight)
         s.add_to_stack('a90_cmb',astamp_90*sweight)
+        if args.day_null:
+            s.add_to_stack('na150_cmb',nastamp_150*sweight)
+            s.add_to_stack('na90_cmb',nastamp_90*sweight)
         s.add_to_stack('acmb_twt',(astamp_90*0+1)*sweight)
         s.add_to_stack('p_cmb',pstamp)
         continue
@@ -543,6 +590,11 @@ for task in my_tasks:
     k150 = enmap.fft(act_stamp_150, normalize="phys")
     if not (args.no_90):
         k90 = enmap.fft(act_stamp_90, normalize="phys")
+
+    if args.day_null:
+        nk150 = enmap.fft(nact_stamp_150, normalize="phys")
+        nk90 = enmap.fft(nact_stamp_90, normalize="phys")
+        
     kp = enmap.fft(plc_stamp, normalize="phys")
 
     if j == 0:
@@ -666,6 +718,17 @@ for task in my_tasks:
             act_150_kbeam2d,
             act_90_kbeam2d,
         ) # beam deconvolved
+        if args.day_null:
+            nact_kmap, _ = ilc(
+                modlmap,
+                nk150,
+                nk90,
+                tclaa_150,
+                tclaa_90,
+                tclaa_150_90,
+                act_150_kbeam2d,
+                act_90_kbeam2d,
+            ) # beam deconvolved
     else:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -684,6 +747,8 @@ for task in my_tasks:
     # get beam deconvolved Fourier map for Planck
     plc_kmap = kp / plc_kbeam2d
     act_kmap[~np.isfinite(act_kmap)] = 0
+    if args.day_null:
+        nact_kmap[~np.isfinite(nact_kmap)] = 0
     plc_kmap[~np.isfinite(plc_kmap)] = 0
 
     # Fit cross-power of gradient and high-res; not usually used
@@ -708,7 +773,7 @@ for task in my_tasks:
         "tC_A_T_P_T": tclap,  # same lensed theory as above, no instrumental noise
         "tC_P_T_A_T": tclap,  # same lensed theory as above, no instrumental noise
         "X": plc_kmap,  # Planck map
-        "Y": act_kmap,  # ACT map
+        "Y": nact_kmap if args.day_null else act_kmap,  # ACT map
     }
 
     # Sanity check

@@ -55,36 +55,46 @@ else:
 if not (args.inject_sim):
     with bench.show("load maps"):
         fplc_map = paths.data + "planck_smica_nosz_reproj.fits"
-        try:
-            pmap = enmap.read_map(fplc_map, delayed=False)
-        except:
-            plc_map = paths.planck_data + "COM_CMB_IQU-smica-nosz_2048_R3.00_full.fits"
-            # reproject the Planck map (healpix -> CAR)
-            fshape, fwcs = enmap.fullsky_geometry(res=2.0 * utils.arcmin, proj="car")
-            pmap = reproject.enmap_from_healpix(
-                plc_map, fshape, fwcs, ncomp=1, unit=1, lmax=6000, rot="gal,equ"
-            )
-            enmap.write_map(fplc_map, pmap)
+        if not(args.full_sim_index is None):
+            pmap = enmap.read_map(f'{paths.fullsim_path}/planck_sim_{args.full_sim_index:06d}.fits') / 1e6
+        else:
+            try:
+                pmap = enmap.read_map(fplc_map, delayed=False)
+            except:
+                plc_map = paths.planck_data + "COM_CMB_IQU-smica-nosz_2048_R3.00_full.fits"
+                # reproject the Planck map (healpix -> CAR)
+                fshape, fwcs = enmap.fullsky_geometry(res=2.0 * utils.arcmin, proj="car")
+                pmap = reproject.enmap_from_healpix(
+                    plc_map, fshape, fwcs, ncomp=1, unit=1, lmax=6000, rot="gal,equ"
+                )
+                enmap.write_map(fplc_map, pmap)
 
         # ACT 150 GHz coadd map
-        act_map = (
-            paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f150_{tags.dstr}_srcfree_map.fits"
-        )
-        famap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
-        if not(args.no_sz_sub):
-            amap_150 = famap_150 - enmap.read_map(f'{paths.data}S18d_202006_confirmed_model_f150.fits')
+        if not(args.full_sim_index is None):
+            amap_150 = enmap.read_map(f'{paths.fullsim_path}/af150_sim_{args.full_sim_index:06d}.fits')
+        else:
+            act_map = (
+                paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f150_{tags.dstr}_srcfree_map.fits"
+            )
+            famap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+            if not(args.no_sz_sub):
+                amap_150 = famap_150 - enmap.read_map(f'{paths.data}S18d_202006_confirmed_model_f150.fits')
 
 
         # ACT 90 GHz coadd map
-        act_map = (
-            paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f090_{tags.dstr}_srcfree_map.fits"
-        )
-        famap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
-        if not(args.no_sz_sub):
-            amap_90 = famap_90 - enmap.read_map(f'{paths.data}S18d_202006_confirmed_model_f090.fits')
+        if not(args.full_sim_index is None):
+            amap_90 = enmap.read_map(f'{paths.fullsim_path}/af090_sim_{args.full_sim_index:06d}.fits')
+        else:
+            act_map = (
+                paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f090_{tags.dstr}_srcfree_map.fits"
+            )
+            famap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+            if not(args.no_sz_sub):
+                amap_90 = famap_90 - enmap.read_map(f'{paths.data}S18d_202006_confirmed_model_f090.fits')
 
         
         if args.day_null:
+            assert args.full_sim_index is None
             assert not(args.night_only)
             assert not(args.no_90)
             assert not(args.rand_rot)
@@ -840,30 +850,34 @@ for task in my_tasks:
     # Noise curve for lensing obtained from normalization
     Al = cqe.Al
 
-    # FIXME: The full calculation seems to sometimes be negative
-    # Nl = symlens.N_l(shape,wcs,feed_dict,estimator='hdv',XY='TT',
-    #     xmask=xmask,ymask=ymask,
-    #     Al=Al,field_names=['P','A'],kmask=kmask,power_name="t")
-
-    # Use approximate noise assuming estimator is optimal (Narrator: it isn't)
-    Nl = symlens.N_l_from_A_l_optimal(shape, wcs, Al)
+    if args.full_nl:
+        # FIXME: The full calculation seems to sometimes be negative
+        Nl = symlens.N_l(shape,wcs,feed_dict,estimator="hdv_curl" if args.curl else "hdv",XY='TT',
+                         xmask=xmask,ymask=ymask,
+                         Al=Al,field_names=['P','A'],kmask=kmask,power_name="t") # !!!
+    else:
+        # Use approximate noise assuming estimator is optimal (Narrator: it isn't)
+        Nl = symlens.N_l_from_A_l_optimal(shape, wcs, Al)
     cents, bnl = lbinner.bin(Nl)
     nmean = bnl[np.logical_and(cents > defaults.kappa_noise_mean_Lmin, cents < defaults.kappa_noise_mean_Lmax)].mean()
     if args.debug_powers:
         s.add_to_stats("nl", bnl)
 
-    # if np.any(lbinner.bin(Nl)[1]<0):
-    #     ls = lbinner.bin(Nl)[0]
-    #     print(task,ls[lbinner.bin(Nl)[1]<0])
-    #     raise ValueError
 
-    # print(Nl.shape)
-    # pl = io.Plotter('CL')
-    # pl.add(ells,theory.gCl('kk',ells),color='k')
-    # pl.add(*lbinner.bin(Nl),ls='--')
-    # pl.done(f'{paths.debugdir}nlkk.png')
-    # io.plot_img(np.fft.fftshift(np.log10(Nl)),f'{paths.debugdir}nl2d.png',arc_width=args.swidth)
-    # sys.exit()
+    if args.debug_nl:
+        if np.any(lbinner.bin(Nl)[1]<0):
+            ls = lbinner.bin(Nl)[0]
+            print(task,ls[lbinner.bin(Nl)[1]<0])
+            print("Negative Nls")
+        print(Nl.shape)
+        pl = io.Plotter('CL')
+        pl.add(ells,theory.gCl('kk',ells),color='k')
+        pl.add(*lbinner.bin(Nl),ls='--')
+        pl.done(f'{paths.debugdir}nlkk.png')
+        io.plot_img(np.fft.fftshift(np.log10(Nl)),f'{paths.debugdir}nl2d.png',arc_width=args.swidth)
+        print(task)
+        io.save_cols(f"{'nl' if args.full_nl else 'al'}{'_curl' if args.curl else ''}.txt",lbinner.bin(Nl))
+        sys.exit()
 
     # Save weighted stacks and statistics
     with warnings.catch_warnings():

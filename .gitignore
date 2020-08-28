@@ -4,3 +4,5 @@ paths_local.yml
 script_*.sh
 *.fits
 *.txt
+*.tar
+archived/

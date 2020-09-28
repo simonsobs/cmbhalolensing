@@ -31,8 +31,6 @@ flag for more information.
 
 * Copy input/paths.yml to input/paths_local.yml and edit with your local
   paths. Do not attempt to add the latter file to the git tree.
-* Run SZ source subtraction (to be merged into master)
-* Run inpainting of bright compact residuals (not implemented yet)
 * **stack.py** : to ILC/combine, reconstruct and stack on either catalogs,
   randoms or injected sims.
 * **post.py** : to post-process stacks and do simple fits, calculate SNR

@@ -79,6 +79,8 @@ if not (args.inject_sim):
             famap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
             if not(args.no_sz_sub):
                 amap_150 = famap_150 - enmap.read_map(f'{paths.data}S18d_202006_confirmed_model_f150.fits')
+            else:
+                amap_150 = famap_150
 
 
         # ACT 90 GHz coadd map
@@ -91,6 +93,8 @@ if not (args.inject_sim):
             famap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
             if not(args.no_sz_sub):
                 amap_90 = famap_90 - enmap.read_map(f'{paths.data}S18d_202006_confirmed_model_f090.fits')
+            else:
+                amap_90 = famap_90
 
         
         if args.day_null:
@@ -304,7 +308,7 @@ plc_beam_fwhm = defaults.planck_smica_beam_fwhm
 xlmin = args.grad_lmin ; xlmax = args.grad_lmax
 
 # ACT mask
-ilcmin = defaults.ilc_lmin ; ilcmax = defaults.ilc_lmax
+ilcmin = args.ilc_lmin ; ilcmax = args.ilc_lmax
 ylmin = args.hres_lmin ; ylmax = args.hres_lmax
 
 # kappa mask

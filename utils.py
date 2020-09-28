@@ -73,6 +73,12 @@ def initialize_pipeline_config():
         "--full-sim-index", type=int, default=None, help="Use full-sky CMB simulations with this index. Defaults to None."
     )
     parser.add_argument(
+        "--ilc-lmin", type=int, default=d.ilc_lmin, help="Minimum ell for ILC solution."
+    )
+    parser.add_argument(
+        "--ilc-lmax", type=int, default=d.ilc_lmax, help="Maxmimum ell for ILC solution."
+    )
+    parser.add_argument(
         "--arcmax", type=float, default=d.arcmax, help="Maximum arcmin distance for binning."
     )
     parser.add_argument(

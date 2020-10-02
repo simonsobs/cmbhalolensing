@@ -13,7 +13,7 @@ Dependencies
 
 There's some work to do to trim out some of these dependencies.
 
-* pixell_ (rectangular pixel map manipulation)
+* pixell_ (rectangular pixel map manipulation, branch:fix_thumbnails)
 * symlens_ (FFT-based lensing reconstruction with symbolic interface)
 * orphics_ (git clone and install with pip install -e . --user)
 * hmvec_ (possbly temporary, for NFW fits ; git clone and install with pip install -e . --user)

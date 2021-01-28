@@ -10,6 +10,8 @@ from enlib import bench
 import argparse
 import time
 
+from HMFunc.cosmology import Cosmology
+
 try:
     paths = bunch.Bunch(io.config_from_yaml("input/paths_local.yml"))
 except:
@@ -68,6 +70,12 @@ def initialize_pipeline_config():
     )
     parser.add_argument(
         "--snmax", type=float, default=None, help="Maximum SNR."
+    )
+    parser.add_argument(
+        "--y0min", type=float, default=None, help="Minimum y0."
+    )
+    parser.add_argument(
+        "--y0max", type=float, default=None, help="Maximum y0."
     )
     parser.add_argument(
         "--full-sim-index", type=int, default=None, help="Use full-sky CMB simulations with this index. Defaults to None."
@@ -174,6 +182,11 @@ def initialize_pipeline_config():
         action="store_true",
         help="Use ACT only maps in high-res instead of ACT+Planck.",
     )
+    parser.add_argument("--save-noise", action="store_true", help="Save noise power spectrum of each stamp.")
+    parser.add_argument("--save-power", action="store_true", help="Save power spectrum of each stamp.")
+    parser.add_argument("--no-150", action="store_true", help="Do not use the 150 GHz map.")
+    parser.add_argument("--freq-null", action="store_true", help="Use 90-150 GHz for high-res")
+
     args = parser.parse_args()
 
     if args.hres_lmin is None:
@@ -214,6 +227,7 @@ def initialize_pipeline_config():
     # The directory name string
     vstr = f"{args.version}_{args.cat_type}_plmin_{args.grad_lmin}_plmax_{args.grad_lmax}_almin_{args.hres_lmin}_almax_{args.hres_lmax}_klmin_{args.klmin}_klmax_{args.klmax}_lxcut_{args.hres_lxcut}_lycut_{args.hres_lycut}_swidth_{args.swidth:.2f}_tapper_{args.tap_per:.2f}_padper_{args.pad_per:.2f}_{tags.dstr}_{tags.apstr}{tags.n90str}_{tags.s19str}{curlstr}{tags.mstr}{findstr}"
 
+
     # File save paths
     savedir = paths.scratch + f"/{vstr}/"
     debugdir = paths.scratch + f"/{vstr}/debug/"
@@ -247,36 +261,62 @@ def initialize_pipeline_config():
     paths.savedir = savedir
     return start_time,paths,defaults,args,tags,rank
 
-def cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax):
+#def cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max,mass):
+def cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max):
     if zmin is not None:
         ras = ras[zs>zmin]
         decs = decs[zs>zmin]
         sns = sns[zs>zmin]
+        y0s = y0s[zs>zmin]
+        #mass = mass[zs>zmin]
         zs = zs[zs>zmin]
     if zmax is not None:
         ras = ras[zs<=zmax]
         decs = decs[zs<=zmax]
         sns = sns[zs<=zmax]
+        y0s = y0s[zs<=zmax]
+        #mass = mass[zs<=zmax]
         zs = zs[zs<=zmax]
     if snmin is not None:
         ras = ras[sns>snmin]
         decs = decs[sns>snmin]
         zs = zs[sns>snmin]
+        y0s = y0s[sns>snmin]
+        #mass = mass[sns>snmin]
         sns = sns[sns>snmin]
     if snmax is not None:
         ras = ras[sns<=snmax]
         decs = decs[sns<=snmax]
         zs = zs[sns<=snmax]
+        y0s = y0s[sns<=snmax]
+        #mass = mass[sns<=snmax]
         sns = sns[sns<=snmax]
-    return ras,decs,sns,zs
-
-def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=False,snmin=None,snmax=None):
+    if y0min is not None:
+        ras = ras[y0s>y0min]
+        decs = decs[y0s>y0min]
+        zs = zs[y0s>y0min]
+        sns = sns[y0s>y0min]
+        #mass = mass[y0s>y0min]
+        y0s = y0s[y0s>y0min]
+    if y0max is not None:
+        ras = ras[y0s<=y0max]
+        decs = decs[y0s<=y0max]
+        zs = zs[y0s<=y0max]
+        sns = sns[y0s<=y0max]
+        #mass = mass[y0s<=y0max]
+        y0s = y0s[y0s<=y0max]
+    return ras,decs,sns,zs,y0s
+    #return ras,decs,sns,zs,y0s,mass
+def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=False,snmin=None,snmax=None,y0min=None,y0max=None):
     data = {}
     if cat_type=='hilton_beta':
         if is_meanfield:
-            catalogue_name = paths.data+ 'selection/S18d_202003Mocks_DESSNR6Scaling/mockCatalog_combined.fits'
+            #catalogue_name = paths.data+ 'selection/S18d_202003Mocks_DESSNR6Scaling/mockCatalog_combined.fits'
+            catalogue_name = paths.data+ 'selection/mocks_S18d_202006_DESSNR6Scaling/mockCatalog_combined.fits'
         else:
-            catalogue_name = paths.data+ 'AdvACT_S18Clusters_v1.0-beta.fits'
+            #catalogue_name = paths.data+ 'AdvACT_S18Clusters_v1.0-beta.fits'
+            catalogue_name = paths.data+ 'DR5_cluster-catalog_v1.0b2.fits'
+            #catalogue_name = paths.data+ 'AdvACT_unconfirmed_fixedSNR5p5.fits'
         hdu = fits.open(catalogue_name)
         if bcg:
             ras = hdu[1].data['opt_RADeg']
@@ -284,15 +324,22 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
             decs = decs[ras>=0]
             zs = hdu[1].data['redshift'][ras>=0]
             sns = hdu[1].data['SNR'][ras>=0]
+            y0s = hdu[1].data['fixed_y_c'][ras>=0]
+            mass = hdu[1].data['M500'][ras>=0]
             ras = ras[ras>=0]
         else:
             ras = hdu[1].data['RADeg']
             decs = hdu[1].data['DECDeg']
             zs = hdu[1].data['redshift']
-            sns = hdu[1].data['SNR']
-        ras,decs,sns,zs = cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax)
+            sns = hdu[1].data['fixed_SNR'] # mock
+            y0s = hdu[1].data['fixed_y_c']
+            #mass = hdu[1].data['true_M500']
+        #ras,decs,sns,zs,y0s,mass = cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max,mass)
+        ras,decs,sns,zs,y0s = cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max)
         ras = ras[:nmax]
         decs = decs[:nmax]
+        y0s = y0s[:nmax]
+        #mass = mass[:nmax]
         ws = ras*0 + 1
         data['sns'] = sns
 
@@ -451,6 +498,7 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
     else:
         raise NotImplementedError
         
+    #return ras,decs,zs,ws,data,mass
     return ras,decs,zs,ws,data
 
 def load_beam(freq):
@@ -527,6 +575,7 @@ def analyze(s,wcs):
     corr = stats.cov2corr(s.stats['k1d']['covmean'])
     errs = s.stats['k1d']['errmean']
 
+
     return unweighted_stack,nmean_weighted_kappa_stack,opt_weighted_kappa_stack,opt_binned,opt_covm,opt_corr,opt_errs,binned,covm,corr,errs
     
     
@@ -545,6 +594,8 @@ def plot(fname,stamp,tap_per,pad_per,crop=None,lim=None,cmap='coolwarm',quiver=N
     zfact = tmap.shape[0]*1./kmap.shape[0]
     twidth = tmap.extent()[0]/putils.arcmin
     io.plot_img(tmap,fname, flip=False, ftsize=12, ticksize=10,arc_width=twidth,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)',cmap=cmap,lim=lim,quiver=quiver,label=label)
+
+
 
 
 def get_hdv_cc():
@@ -872,7 +923,6 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         pl._ax.set_ylim(args.ymin,args.ymax)
         pl.done(f'{save_dir}/{save_name}_profile_clean.png')
 
-
         arcmax = 5.
         nbins = bin_edges[bin_edges<arcmax].size - 1
         if mf_path is "":
@@ -885,10 +935,17 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         print("Naive SNR wrt null (optimal) : ", snr)
 
     ret_data = opt_binned - mf_opt_binned
+    ret_data_nw = binned - mf_binned
     ret_cov = opt_covm
 
     if not(save_name is None):
-        io.save_cols(f'{save_dir}/{save_name}_profile.txt',(cents,ret_data))
+        io.save_cols(f'{save_dir}/{save_name}_opt_profile.txt',(cents,ret_data))
+        #io.save_cols(f'{save_dir}/{save_name}_opt_profile_mf.txt',(cents,mf_opt_binned))
+        io.save_cols(f'{save_dir}/{save_name}_profile.txt',(cents,binned))
+        io.save_cols(f'{save_dir}/{save_name}_profile_mfsub.txt',(cents,ret_data_nw))
+        io.save_cols(f'{save_dir}/{save_name}_opt_profile_err.txt',(cents,opt_errs))
+        #io.save_cols(f'{save_dir}/{save_name}_opt_profile_err_mf.txt',(cents,mf_opt_errs))
+        io.save_cols(f'{save_dir}/{save_name}_profile_err.txt',(cents,errs))
         np.savetxt(f'{save_dir}/{save_name}_covmat.txt',ret_cov)
         np.savetxt(f'{save_dir}/{save_name}_bin_edges.txt',bin_edges)
         enmap.write_map(f'{save_dir}/{save_name}_kmask.fits',kmask)
@@ -904,7 +961,8 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         print("Mean redshift : ",z)
 
         conc = args.conc
-        cc = None
+        #cc = None
+        cc = Cosmology()
         sigma_mis = args.sigma_mis
         mguess = args.mass_guess
         merr_guess = (1/args.snr_guess) * mguess
@@ -969,5 +1027,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
             pl._ax.set_ylim(0.6,1.4)
             pl.hline(y=1)
             pl.done(f'{save_dir}/{save_name}_theory_comp_ratio.png')
+
+        
 
     return cents,ret_data,ret_cov

@@ -29,10 +29,11 @@ theory = cosmology.default_theory()
 
 if not (args.inject_sim):
     # Load the catalog
+    #ras, decs, zs, ws, cdata, mass = cutils.catalog_interface(args.cat_type, args.is_meanfield, 
     ras, decs, zs, ws, cdata = cutils.catalog_interface(args.cat_type, args.is_meanfield, 
                                                         args.nmax,args.zmin,args.zmax,
                                                         bcg=args.bcg,snmin=args.snmin,
-                                                        snmax=args.snmax)
+                                                        snmax=args.snmax,y0min=args.y0min,y0max=args.y0max)
 else:
     # or if injecting sims, load the sim generator
     csim = cutils.Simulator(
@@ -78,7 +79,7 @@ if not (args.inject_sim):
             )
             famap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
             if not(args.no_sz_sub):
-                amap_150 = famap_150 - enmap.read_map(f'{paths.data}S18d_202006_confirmed_model_f150.fits')
+                amap_150 = famap_150 - enmap.read_map(f'{paths.data}S18d_202006_pass2_confirmed_model_f150.fits')
             else:
                 amap_150 = famap_150
 
@@ -92,7 +93,7 @@ if not (args.inject_sim):
             )
             famap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
             if not(args.no_sz_sub):
-                amap_90 = famap_90 - enmap.read_map(f'{paths.data}S18d_202006_confirmed_model_f090.fits')
+                amap_90 = famap_90 - enmap.read_map(f'{paths.data}S18d_202006_pass2_confirmed_model_f090.fits')
             else:
                 amap_90 = famap_90
 
@@ -113,7 +114,6 @@ if not (args.inject_sim):
 
             null_map_150 = famap_150 - namap_150
             null_map_90 = famap_90 - namap_90
-            
             
 
 
@@ -451,7 +451,6 @@ for task in my_tasks:
             )
 
 
-
         """ 
         !! REJECT ANOMALOUS STAMPS
         """
@@ -534,6 +533,9 @@ for task in my_tasks:
         # Planck unit conversion: K -> uK
         pstamp = pstamp[0] * 1e6
 
+        # to obtain weighted mean SZ mass 
+        #mm = mass[i]
+
     else:
         pstamp, astamp_150, astamp_90 = csim.get_obs(task)
 
@@ -563,16 +565,52 @@ for task in my_tasks:
         nact_stamp_150 = nastamp_150 * taper
         nact_stamp_90 = nastamp_90 * taper
 
-
     if args.debug_stack:
         sweight = ivar_90.mean()
-        s.add_to_stack('a150_cmb',astamp_150*sweight)
         s.add_to_stack('a90_cmb',astamp_90*sweight)
+
+	    # to obtain tsz profile and covmat for act stamp 
+        shape = astamp_150.shape
+        wcs = astamp_150.wcs
+        modrmap = enmap.modrmap(shape, wcs)          
+        ymask = maps.mask_kspace(shape, wcs, lmin=ylmin, lmax=ylmax, lxcut=args.hres_lxcut, lycut=args.hres_lycut)
+        masked = maps.filter_map(astamp_150, ymask)
+        s.add_to_stack('a150_cmb', masked*sweight)
+        #s.add_to_stack('a150_cmb', astamp_150*sweight) # no filter 
+
         if args.day_null:
-            s.add_to_stack('na150_cmb',nastamp_150*sweight)
             s.add_to_stack('na90_cmb',nastamp_90*sweight)
+
+            # to obtain tsz profile and covmat
+            shape = nastamp_150.shape
+            wcs = nastamp_150.wcs
+            modrmap = enmap.modrmap(shape, wcs)          
+            ymask = maps.mask_kspace(shape, wcs, lmin=ylmin, lmax=ylmax, lxcut=args.hres_lxcut, lycut=args.hres_lycut)
+            masked = maps.filter_map(nastamp_150, ymask)
+            s.add_to_stack('na150_cmb', masked*sweight)
+
+        sz150 = bin(masked, modrmap * (180 * 60 / np.pi), bin_edges)   
+        sz150w = bin(masked*sweight, modrmap * (180 * 60 / np.pi), bin_edges)
+        #sz150 = bin(astamp_150, modrmap * (180 * 60 / np.pi), bin_edges) # no filter
+        #sz150w = bin(astamp_150*sweight, modrmap * (180 * 60 / np.pi), bin_edges) # no filter
+
+        s.add_to_stats("sz150", sz150)  
+        s.add_to_stats("sz150w", sz150w)
+        s.add_to_stats("szw", (sweight,))
+        s.add_to_stats("szw2", (sweight ** 2,))
         s.add_to_stack('acmb_twt',(astamp_90*0+1)*sweight)
-        s.add_to_stack('p_cmb',pstamp)
+
+	    # to obtain tsz profile and covmat for planck stamp
+        modrmap = enmap.modrmap(pstamp.shape, pstamp.wcs)          
+        xmask = maps.mask_kspace(pstamp.shape, pstamp.wcs, lmin=xlmin, lmax=xlmax)
+        masked = maps.filter_map(pstamp, xmask)
+        s.add_to_stack('p_cmb', masked)
+        #s.add_to_stack('p_cmb', pstamp) # no filter
+        psz = bin(masked, modrmap * (180 * 60 / np.pi), bin_edges)   
+        #psz = bin(pstamp, modrmap * (180 * 60 / np.pi), bin_edges) # no filter
+        s.add_to_stats("psz_binned", psz)  
+
+          
         continue
 
 
@@ -705,6 +743,7 @@ for task in my_tasks:
             lmin=defaults.highres_fit_ellmin,
             lmax=defaults.highres_fit_ellmax,
         )
+
     tclpp = fit_p1d(
         l_edges,
         plc_cents,
@@ -721,6 +760,7 @@ for task in my_tasks:
     """ 
     !! ILC / COADD
     """
+
     if not (args.no_90):
         act_kmap, tclaa = ilc(
             modlmap,
@@ -732,6 +772,7 @@ for task in my_tasks:
             act_150_kbeam2d,
             act_90_kbeam2d,
         ) # beam deconvolved
+        
         if args.day_null:
             nact_kmap, _ = ilc(
                 modlmap,
@@ -743,6 +784,31 @@ for task in my_tasks:
                 act_150_kbeam2d,
                 act_90_kbeam2d,
             ) # beam deconvolved
+            
+        if args.freq_null:
+            act_kmap150 = k150 / act_150_kbeam2d 
+            act_kmap90 = k90 / act_90_kbeam2d 
+            act_kmap = act_kmap90 - act_kmap150
+            
+            _, tclaa = ilc(
+                modlmap,
+                k150,
+                k90,
+                tclaa_150,
+                tclaa_90,
+                tclaa_150_90,
+                act_150_kbeam2d,
+                act_90_kbeam2d,
+            ) # beam deconvolved
+
+        if args.no_150:
+            # Deconvolve beam
+            act_kmap = k90 / act_90_kbeam2d 
+            tclaa = tclaa_90 / act_90_kbeam2d ** 2.0           
+
+        act_kmap[~np.isfinite(act_kmap)] = 0
+        tclaa[~np.isfinite(tclaa)] = 0      
+
     else:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -757,6 +823,14 @@ for task in my_tasks:
     tclpp = tclpp / (plc_kbeam2d ** 2.0)
     tclaa[~np.isfinite(tclaa)] = 0
     tclpp[~np.isfinite(tclpp)] = 0
+
+
+    if args.save_power: 
+        cents, btclpp = lbinner.bin(tclpp)
+        cents, btclaa = lbinner.bin(tclaa)
+        io.save_cols(f'{paths.savedir}/binned_tclpp_{task}.txt',(cents,btclpp))
+        io.save_cols(f'{paths.savedir}/binned_tclaa_{task}.txt',(cents,btclaa))
+
 
     # get beam deconvolved Fourier map for Planck
     plc_kmap = kp / plc_kbeam2d
@@ -816,6 +890,7 @@ for task in my_tasks:
     """ 
     !! REJECT WEIRD KAPPA
     """
+
     ##### temporary 3: to get rid of stamps with tSZ cluster in random locations
     if np.any(np.abs(kappa) > 15):
         print(f"{task} has large kappa")
@@ -836,6 +911,7 @@ for task in my_tasks:
                 ylabel="$\\theta_y$ (arcmin)",
             )
         continue
+    
 
     # Save power spectra to look at later
     if args.debug_powers:
@@ -867,6 +943,16 @@ for task in my_tasks:
     if args.debug_powers:
         s.add_to_stats("nl", bnl)
 
+    if args.save_noise:
+        enmap.write_map(f"{paths.savedir}/noise_{task}.fits", Nl)
+        enmap.write_map_geometry(f"{paths.savedir}/map_geometry_{task}.fits", shape, wcs)
+        io.save_cols(f'{paths.savedir}/binned_noise_{task}.txt',(cents,bnl))
+   
+    if args.save_power:           
+        clkk = theory.gCl('kk', ells)
+        io.save_cols(f'{paths.savedir}/binned_clkk_{task}.txt',(ells,clkk))
+    
+        continue
 
     if args.debug_nl:
         if np.any(lbinner.bin(Nl)[1]<0):
@@ -898,7 +984,9 @@ for task in my_tasks:
 
     weight = ivmean * cweight
     stack = kappa * weight
+    #wmass = mm * weight
     s.add_to_stack("kmap", stack)
+    #s.add_to_stats("wm", (wmass,))
 
     wbinned = bin(stack, modrmap * (180 * 60 / np.pi), bin_edges)
     binned = bin(kappa, modrmap * (180 * 60 / np.pi), bin_edges)
@@ -910,7 +998,7 @@ for task in my_tasks:
     # check how many stamps are cut out of given map
     s.add_to_stats("ct_selected", (1,))
     if not(args.is_meanfield) and not(args.inject_sim):
-        s.add_to_stats("data", (z,weight,*[cdata[key][i] for key in sorted(cdata.keys())]))
+        s.add_to_stats("data", (z,weight,*[cdata[key][i] for key in sorted(cdata.keys())]))                
         
     j = j + 1
 
@@ -922,22 +1010,70 @@ s.get_stats()
 if rank == 0:
 
     if args.debug_stack:
+       
         twt = s.stacks['acmb_twt']
         a150 = s.stacks['a150_cmb'] / twt
         a90 = s.stacks['a90_cmb'] / twt
+        
+        if args.day_null:
+            a150 = s.stacks['na150_cmb'] / twt
+            a90 = s.stacks['na90_cmb'] / twt
+           
+      
+        # obtain tsz profile and covmat for tsz stack     
+        N_sz = s.vectors['szw'].shape[0]
+        vsz1 = s.vectors['szw'].sum()
+        vsz2 = s.vectors['szw2'].sum()
+         
+        opt_binned = s.vectors['sz150w'].sum(axis=0) / vsz1
+        diff = s.vectors['sz150'] - opt_binned
+        cov = np.dot((diff * s.vectors['szw']).T,diff) / (vsz1-(vsz2/vsz1))
+        opt_covm = cov/N_sz
+        opt_corr = stats.cov2corr(opt_covm)
+        opt_errs = np.sqrt(np.diag(opt_covm))
+
+        binned = s.stats['sz150']['mean']
+        covm = s.stats['sz150']['covmean']
+        corr = stats.cov2corr(s.stats['sz150']['covmean'])
+        errs = s.stats['sz150']['errmean']
+
+        np.savetxt(f"{paths.savedir}/bin_edges.txt", bin_edges)    
+        np.savetxt(f"{paths.savedir}/opt_profile.txt", opt_binned)
+        np.savetxt(f"{paths.savedir}/profile.txt", binned)
+        np.savetxt(f"{paths.savedir}/opt_profile_errs.txt", opt_errs)
+        np.savetxt(f"{paths.savedir}/profile_errs.txt", errs)    
+        np.savetxt(f"{paths.savedir}/opt_covm.txt", opt_covm)
+        np.savetxt(f"{paths.savedir}/covm.txt", covm)
+        save(f"{paths.savedir}/opt_corr.npy", opt_corr) 
+        save(f"{paths.savedir}/corr.npy", corr)    
+        save(f"{paths.savedir}/a150_cmb.npy", a150)         
+                         
         planck = s.stacks['p_cmb']
+        binned = s.stats['psz_binned']['mean']
+        covm = s.stats['psz_binned']['covmean']
+        corr = stats.cov2corr(s.stats['psz_binned']['covmean'])
+        errs = s.stats['psz_binned']['errmean']
+        np.savetxt(f"{paths.savedir}/plc_profile.txt", binned)
+        np.savetxt(f"{paths.savedir}/plc_profile_errs.txt", errs)
+        np.savetxt(f"{paths.savedir}/plc_covm.txt", covm)
+        save(f"{paths.savedir}/plc_corr.npy", corr)   
+        save(f"{paths.savedir}/p_cmb.npy", planck) 
+
         enmap.write_map(f"{paths.savedir}/a150_cmb.fits",a150)
         enmap.write_map(f"{paths.savedir}/a90_cmb.fits",a90)
         enmap.write_map(f"{paths.savedir}/p_cmb.fits",planck)
         cwidth = 30.
         crop = int(cwidth / args.pwidth)
-        cutils.plot(f"{paths.savedir}/a150_cmb.png",a150,0,0,crop=None,lim=None)
-        cutils.plot(f"{paths.savedir}/a150_cmb_zoom.png",a150,0,0,crop=crop,lim=None)
-        cutils.plot(f"{paths.savedir}/a90_cmb.png",a90,0,0,crop=None,lim=None)
-        cutils.plot(f"{paths.savedir}/a90_cmb_zoom.png",a90,0,0,crop=crop,lim=None)
-        cutils.plot(f"{paths.savedir}/p_cmb.png",planck,0,0,crop=None,lim=None)
-        cutils.plot(f"{paths.savedir}/p_cmb_zoom.png",planck,0,0,crop=crop,lim=None)
+        cutils.plot(f"{paths.savedir}/a150_cmb.png",a150,0,0,crop=None,lim=None,label='$\\mu$K')
+        cutils.plot(f"{paths.savedir}/a150_cmb_zoom.png",a150,0,0,crop=crop,lim=None,label='$\\mu$K')
+        cutils.plot(f"{paths.savedir}/a90_cmb.png",a90,0,0,crop=None,lim=None,label='$\\mu$K')
+        cutils.plot(f"{paths.savedir}/a90_cmb_zoom.png",a90,0,0,crop=crop,lim=None,label='$\\mu$K')
+        cutils.plot(f"{paths.savedir}/p_cmb.png",planck,0,0,crop=None,lim=None,label='$\\mu$K')
+        cutils.plot(f"{paths.savedir}/p_cmb_zoom.png",planck,0,0,crop=crop,lim=None,label='$\\mu$K')
         sys.exit()
+  
+   
+    
 
     # Dump all collected statistics
     with bench.show("dump"):
@@ -960,10 +1096,16 @@ if rank == 0:
             print(f"Number {ctkey} : {N}")
         except:
             pass
-    # Sanity checks
-    N_stamp = s.vectors[f"ct_{ctkey}"].sum()
-    assert N_stamp == s.stack_count["kmap"]
-    assert N_stamp == s.vectors["kw"].shape[0]
+
+    if not (args.debug_stack):
+	# Sanity checks
+        N_stamp = s.vectors[f"ct_{ctkey}"].sum()
+        assert N_stamp == s.stack_count["kmap"]
+        assert N_stamp == s.vectors["kw"].shape[0]
+
+        #ww = s.vectors['kw'].sum()
+        #wmass = s.vectors['wm'].sum(axis=0)/ww
+        #print("weighted SZ mean mass : ", wmass)   
 
     # Some debug plots if requested
     if args.debug_powers:

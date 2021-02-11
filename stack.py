@@ -575,8 +575,12 @@ for task in my_tasks:
         modrmap = enmap.modrmap(shape, wcs)          
         ymask = maps.mask_kspace(shape, wcs, lmin=ylmin, lmax=ylmax, lxcut=args.hres_lxcut, lycut=args.hres_lycut)
         masked = maps.filter_map(astamp_150, ymask)
-        s.add_to_stack('a150_cmb', masked*sweight)
-        #s.add_to_stack('a150_cmb', astamp_150*sweight) # no filter 
+
+        if args.no_filter:
+            s.add_to_stack('a150_cmb', astamp_150*sweight)
+        else:
+            s.add_to_stack('a150_cmb', masked*sweight)
+
 
         if args.day_null:
             s.add_to_stack('na90_cmb',nastamp_90*sweight)
@@ -589,10 +593,13 @@ for task in my_tasks:
             masked = maps.filter_map(nastamp_150, ymask)
             s.add_to_stack('na150_cmb', masked*sweight)
 
-        sz150 = bin(masked, modrmap * (180 * 60 / np.pi), bin_edges)   
-        sz150w = bin(masked*sweight, modrmap * (180 * 60 / np.pi), bin_edges)
-        #sz150 = bin(astamp_150, modrmap * (180 * 60 / np.pi), bin_edges) # no filter
-        #sz150w = bin(astamp_150*sweight, modrmap * (180 * 60 / np.pi), bin_edges) # no filter
+        if args.no_filter:
+            sz150 = bin(astamp_150, modrmap * (180 * 60 / np.pi), bin_edges)
+            sz150w = bin(astamp_150*sweight, modrmap * (180 * 60 / np.pi), bin_edges)
+        else:    
+            sz150 = bin(masked, modrmap * (180 * 60 / np.pi), bin_edges)   
+            sz150w = bin(masked*sweight, modrmap * (180 * 60 / np.pi), bin_edges)
+
 
         s.add_to_stats("sz150", sz150)  
         s.add_to_stats("sz150w", sz150w)
@@ -604,10 +611,14 @@ for task in my_tasks:
         modrmap = enmap.modrmap(pstamp.shape, pstamp.wcs)          
         xmask = maps.mask_kspace(pstamp.shape, pstamp.wcs, lmin=xlmin, lmax=xlmax)
         masked = maps.filter_map(pstamp, xmask)
-        s.add_to_stack('p_cmb', masked)
-        #s.add_to_stack('p_cmb', pstamp) # no filter
-        psz = bin(masked, modrmap * (180 * 60 / np.pi), bin_edges)   
-        #psz = bin(pstamp, modrmap * (180 * 60 / np.pi), bin_edges) # no filter
+        
+        if args.no_filter:
+            s.add_to_stack('p_cmb', pstamp)
+            psz = bin(pstamp, modrmap * (180 * 60 / np.pi), bin_edges)
+        else:
+            s.add_to_stack('p_cmb', masked)
+            psz = bin(masked, modrmap * (180 * 60 / np.pi), bin_edges)   
+
         s.add_to_stats("psz_binned", psz)  
 
           
@@ -1046,7 +1057,8 @@ if rank == 0:
         np.savetxt(f"{paths.savedir}/covm.txt", covm)
         save(f"{paths.savedir}/opt_corr.npy", opt_corr) 
         save(f"{paths.savedir}/corr.npy", corr)    
-        save(f"{paths.savedir}/a150_cmb.npy", a150)         
+        save(f"{paths.savedir}/a150_cmb.npy", a150)  
+        save(f"{paths.savedir}/a90_cmb.npy", a90)         
                          
         planck = s.stacks['p_cmb']
         binned = s.stats['psz_binned']['mean']
@@ -1070,6 +1082,9 @@ if rank == 0:
         cutils.plot(f"{paths.savedir}/a90_cmb_zoom.png",a90,0,0,crop=crop,lim=None,label='$\\mu$K')
         cutils.plot(f"{paths.savedir}/p_cmb.png",planck,0,0,crop=None,lim=None,label='$\\mu$K')
         cutils.plot(f"{paths.savedir}/p_cmb_zoom.png",planck,0,0,crop=crop,lim=None,label='$\\mu$K')
+
+        elapsed = time.time() - start_time
+        print("\r ::: entire run took %.1f seconds" % elapsed)
         sys.exit()
   
    

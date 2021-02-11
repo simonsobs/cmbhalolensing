@@ -185,7 +185,8 @@ def initialize_pipeline_config():
     parser.add_argument("--save-noise", action="store_true", help="Save noise power spectrum of each stamp.")
     parser.add_argument("--save-power", action="store_true", help="Save power spectrum of each stamp.")
     parser.add_argument("--no-150", action="store_true", help="Do not use the 150 GHz map.")
-    parser.add_argument("--freq-null", action="store_true", help="Use 90-150 GHz for high-res")
+    parser.add_argument("--freq-null", action="store_true", help="Use 90-150 GHz for high-res.")
+    parser.add_argument("--no-filter", action="store_true", help="Remove filters and stack without lensing reconstruction (use with debug-stack)")
 
     args = parser.parse_args()
 
@@ -934,21 +935,21 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         snr = np.sqrt(chisquare)
         print("Naive SNR wrt null (optimal) : ", snr)
 
-    ret_data = opt_binned - mf_opt_binned
-    ret_data_nw = binned - mf_binned
-    ret_cov = opt_covm
+    ret_opt_data = opt_binned - mf_opt_binned
+    ret_data = binned - mf_binned
+    ret_opt_cov = opt_covm
+    ret_cov = covm
 
     if not(save_name is None):
-        io.save_cols(f'{save_dir}/{save_name}_opt_profile.txt',(cents,ret_data))
-        #io.save_cols(f'{save_dir}/{save_name}_opt_profile_mf.txt',(cents,mf_opt_binned))
-        io.save_cols(f'{save_dir}/{save_name}_profile.txt',(cents,binned))
-        io.save_cols(f'{save_dir}/{save_name}_profile_mfsub.txt',(cents,ret_data_nw))
-        io.save_cols(f'{save_dir}/{save_name}_opt_profile_err.txt',(cents,opt_errs))
-        #io.save_cols(f'{save_dir}/{save_name}_opt_profile_err_mf.txt',(cents,mf_opt_errs))
-        io.save_cols(f'{save_dir}/{save_name}_profile_err.txt',(cents,errs))
-        np.savetxt(f'{save_dir}/{save_name}_covmat.txt',ret_cov)
-        np.savetxt(f'{save_dir}/{save_name}_bin_edges.txt',bin_edges)
-        enmap.write_map(f'{save_dir}/{save_name}_kmask.fits',kmask)
+
+        io.save_cols(f'{save_dir}/{save_name}_opt_profile.txt', (cents, ret_opt_data))
+        io.save_cols(f'{save_dir}/{save_name}_opt_profile_errs.txt', (cents, opt_errs))
+        io.save_cols(f'{save_dir}/{save_name}_profile.txt', (cents, ret_data))
+        io.save_cols(f'{save_dir}/{save_name}_profile_errs.txt', (cents, errs))
+        np.savetxt(f'{save_dir}/{save_name}_opt_covm.txt', ret_opt_cov)
+        np.savetxt(f'{save_dir}/{save_name}_covm.txt', ret_cov)
+        np.savetxt(f'{save_dir}/{save_name}_bin_edges.txt', bin_edges)
+        enmap.write_map(f'{save_dir}/{save_name}_kmask.fits', kmask)
 
         diff = (binned - mf_binned)[:nbins]
         cinv = np.linalg.inv(covm[:nbins,:nbins])
@@ -1030,4 +1031,4 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
 
         
 
-    return cents,ret_data,ret_cov
+    return cents,ret_opt_data,ret_opt_cov

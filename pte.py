@@ -6,9 +6,7 @@ import os,sys
 from enlib import bench
 from scipy.special import erfinv,erf
 
-#isave_name = "v01daynight_curlbcg" #args.sys[1] #"mpz_lam20_night_v3"
-
-isave_name = "tSZstack"
+#isave_name = "v01daynight" #args.sys[1] #"mpz_lam20_night_v3"
 
 arcmax = 8.
 
@@ -21,14 +19,12 @@ for save_name,label in zip([isave_name,f'{isave_name}_curl'],['lensing','curl'])
     try:
         #cents,profile = np.loadtxt(f'/scratch/r/rbond/msyriac/data/depot/cmbh/postprocess/{save_name}/{save_name}_profile.txt',unpack=True)
         #cov = np.loadtxt(f'/scratch/r/rbond/msyriac/data/depot/cmbh/postprocess/{save_name}/{save_name}_covmat.txt')  
-        #cents,profile = np.loadtxt(f'/global/cscratch1/sd/eunseong/results/post/{save_name}/{save_name}_profile.txt',unpack=True)
-        #cov = np.loadtxt(f'/global/cscratch1/sd/eunseong/results/post/{save_name}/{save_name}_covmat.txt')
-
+   
         cents = np.loadtxt(f'/global/cscratch1/sd/eunseong/results/v01daynullsz_hilton_beta_plmin_200_plmax_2000_almin_200_almax_6000_klmin_200_klmax_5000_lxcut_2_lycut_2_swidth_128.00_tapper_12.00_padper_3.00_daynight_act_planck_s18/bin_edges.txt',unpack=True)
 
         opt_p = np.loadtxt(f'/global/cscratch1/sd/eunseong/results/v01daynullsz_hilton_beta_plmin_200_plmax_2000_almin_200_almax_6000_klmin_200_klmax_5000_lxcut_2_lycut_2_swidth_128.00_tapper_12.00_padper_3.00_daynight_act_planck_s18/profile.txt',unpack=True)
 
-        pp = np.loadtxt(f'/global/cscratch1/sd/eunseong/results/v01daynullsz_hilton_beta_plmin_200_plmax_2000_almin_200_almax_6000_klmin_200_klmax_5000_lxcut_2_lycut_2_swidth_128.00_tapper_12.00_padper_3.00_daynight_act_planck_s18/profile_mf.txt',unpack=True)
+        opt_p_mf = np.loadtxt(f'/global/cscratch1/sd/eunseong/results/v01daynullsz_hilton_beta_plmin_200_plmax_2000_almin_200_almax_6000_klmin_200_klmax_5000_lxcut_2_lycut_2_swidth_128.00_tapper_12.00_padper_3.00_daynight_act_planck_s18/profile_mf.txt',unpack=True)
 
         cov = np.loadtxt(f'/global/cscratch1/sd/eunseong/results/v01daynullsz_hilton_beta_plmin_200_plmax_2000_almin_200_almax_6000_klmin_200_klmax_5000_lxcut_2_lycut_2_swidth_128.00_tapper_12.00_padper_3.00_daynight_act_planck_s18/covm.txt',unpack=True)
 
@@ -37,7 +33,7 @@ for save_name,label in zip([isave_name,f'{isave_name}_curl'],['lensing','curl'])
 
 
 
-    profile = opt_p - pp
+    profile = opt_p - opt_p_mf
 
 
     if no_off: cov = np.diag(np.diagonal(cov))

@@ -1,4 +1,7 @@
 import numpy as np
+import matplotlib
+# Force matplotlib to not use any Xwindows backend.
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import utils as cutils
 from pixell import enmap, reproject, enplot, utils, wcsutils
@@ -102,6 +105,7 @@ if not (args.inject_sim):
             assert args.full_sim_index is None
             assert not(args.night_only)
             assert not(args.no_90)
+            assert not(args.no_150)
             assert not(args.rand_rot)
             act_map = (
                 paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f150_night_srcfree_map.fits"
@@ -561,6 +565,32 @@ for task in my_tasks:
     act_stamp_90 = astamp_90 * taper
     plc_stamp = pstamp * taper
 
+
+    if args.inpaint:
+        """
+        If inpainting, we 
+        (1) resample the stamp to 64x64 (2 arcmin pixels)
+        (2) Inpaint a hole of radius 4 arcmin 
+        """
+        rmin = 4 * utils.arcmin
+        No = int(args.swidth/args.pwidth)
+        Ndown = No//4
+        #xmask = maps.mask_kspace(plc_stamp.shape, plc_stamp.wcs, lmin=xlmin, lmax=xlmax)
+        #plc_stamp = maps.filter_map(plc_stamp,xmask)
+        pdown = enmap.resample(plc_stamp,(Ndown,Ndown))
+        if j==0:
+            from orphics import pixcov
+            beam_fn = lambda x: maps.gauss_beam(plc_beam_fwhm,x)
+            ipsizemap = enmap.pixsizemap(pdown.shape,pdown.wcs)
+            pivar = maps.ivar(pdown.shape,pdown.wcs,defaults.gradient_fiducial_rms,ipsizemap=ipsizemap)
+            pcov = pixcov.tpcov_from_ivar(Ndown,pivar,theory.lCl,beam_fn)
+            geo = pixcov.make_geometry(pdown.shape,pdown.wcs,rmin,n=Ndown,deproject=True,iau=False,res=None,pcov=pcov)
+        pdown = pixcov.inpaint_stamp(pdown,geo)
+        plc_stamp = enmap.resample(pdown,(No,No)) 
+
+
+
+
     if args.day_null:
         nact_stamp_150 = nastamp_150 * taper
         nact_stamp_90 = nastamp_90 * taper
@@ -581,11 +611,9 @@ for task in my_tasks:
         else:
             s.add_to_stack('a150_cmb', masked*sweight)
 
-
         if args.day_null:
             s.add_to_stack('na90_cmb',nastamp_90*sweight)
 
-            # to obtain tsz profile and covmat
             shape = nastamp_150.shape
             wcs = nastamp_150.wcs
             modrmap = enmap.modrmap(shape, wcs)          
@@ -600,7 +628,6 @@ for task in my_tasks:
             sz150 = bin(masked, modrmap * (180 * 60 / np.pi), bin_edges)   
             sz150w = bin(masked*sweight, modrmap * (180 * 60 / np.pi), bin_edges)
 
-
         s.add_to_stats("sz150", sz150)  
         s.add_to_stats("sz150w", sz150w)
         s.add_to_stats("szw", (sweight,))
@@ -608,44 +635,82 @@ for task in my_tasks:
         s.add_to_stack('acmb_twt',(astamp_90*0+1)*sweight)
 
 	    # to obtain tsz profile and covmat for planck stamp
-        modrmap = enmap.modrmap(pstamp.shape, pstamp.wcs)          
-        xmask = maps.mask_kspace(pstamp.shape, pstamp.wcs, lmin=xlmin, lmax=xlmax)
-        masked = maps.filter_map(pstamp, xmask)
-        
-        if args.no_filter:
-            s.add_to_stack('p_cmb', pstamp)
-            psz = bin(pstamp, modrmap * (180 * 60 / np.pi), bin_edges)
+        if args.inpaint:
+            modrmap = enmap.modrmap(plc_stamp.shape, plc_stamp.wcs)          
+            xmask = maps.mask_kspace(plc_stamp.shape, plc_stamp.wcs, lmin=xlmin, lmax=xlmax)
+            masked = maps.filter_map(plc_stamp, xmask)
+            
+            if args.no_filter:
+                s.add_to_stack('p_cmb', plc_stamp)
+                psz = bin(plc_stamp, modrmap * (180 * 60 / np.pi), bin_edges)
+            else:
+                s.add_to_stack('p_cmb', masked)
+                psz = bin(masked, modrmap * (180 * 60 / np.pi), bin_edges)   
+
+            s.add_to_stats("psz_binned", psz)  
+
+            cond = 50
+            if (j % cond) == 0 and not(args.is_meanfield):
+                try: 
+                    cwidth = 30.
+                    crop = int(cwidth / args.pwidth)
+                    if args.no_filter:
+                        cutils.plot(f"{paths.debugdir}/p_inp_zoom_{task}.png",plc_stamp,0,0,crop=crop,lim=None,label='$\\mu$K')
+                        save(f"{paths.debugdir}/p_inp_{task}.npy", plc_stamp) 
+                    else:
+                        cutils.plot(f"{paths.debugdir}/p_inp_zoom_{task}.png",masked,0,0,crop=crop,lim=None,label='$\\mu$K')
+                        save(f"{paths.debugdir}/p_inp_{task}.npy", masked)
+                except IOError:
+                    pass
+
         else:
-            s.add_to_stack('p_cmb', masked)
-            psz = bin(masked, modrmap * (180 * 60 / np.pi), bin_edges)   
+            '''
+            modrmap = enmap.modrmap(pstamp.shape, pstamp.wcs)          
+            xmask = maps.mask_kspace(pstamp.shape, pstamp.wcs, lmin=xlmin, lmax=xlmax)
+            masked = maps.filter_map(pstamp, xmask)
+            
+            if args.no_filter:
+                s.add_to_stack('p_cmb', pstamp)
+                psz = bin(pstamp, modrmap * (180 * 60 / np.pi), bin_edges)
+            else:
+                s.add_to_stack('p_cmb', masked)
+                psz = bin(masked, modrmap * (180 * 60 / np.pi), bin_edges)   
 
-        s.add_to_stats("psz_binned", psz)  
+            s.add_to_stats("psz_binned", psz)  
+            '''
+            modrmap = enmap.modrmap(plc_stamp.shape, plc_stamp.wcs)          
+            xmask = maps.mask_kspace(plc_stamp.shape, plc_stamp.wcs, lmin=xlmin, lmax=xlmax)
+            masked = maps.filter_map(plc_stamp, xmask)
+            
+            if args.no_filter:
+                s.add_to_stack('p_cmb', plc_stamp)
+                psz = bin(plc_stamp, modrmap * (180 * 60 / np.pi), bin_edges)
+            else:
+                s.add_to_stack('p_cmb', masked)
+                psz = bin(masked, modrmap * (180 * 60 / np.pi), bin_edges)   
 
-          
+            s.add_to_stats("psz_binned", psz)  
+
+            cond = 50
+            if (j % cond) == 0 and not(args.is_meanfield):
+                try: 
+                    cwidth = 30.
+                    crop = int(cwidth / args.pwidth)
+                    if args.no_filter:
+                        cutils.plot(f"{paths.debugdir}/p_ref_zoom_{task}.png",plc_stamp,0,0,crop=crop,lim=None,label='$\\mu$K')
+                        save(f"{paths.debugdir}/p_ref_{task}.npy", plc_stamp)
+                    else:
+                        cutils.plot(f"{paths.debugdir}/p_ref_zoom_{task}.png",masked,0,0,crop=crop,lim=None,label='$\\mu$K')
+                        save(f"{paths.debugdir}/p_ref_{task}.npy", masked)
+                except IOError:
+                    pass
+
+        j = j + 1                 
+        
         continue
 
 
-    if args.inpaint:
-        """
-        If inpainting, we 
-        (1) resample the stamp to 64x64 (2 arcmin pixels)
-        (2) Inpaint a hole of radius 4 arcmin 
-        """
-        rmin = 4 * utils.arcmin
-        No = int(args.swidth/args.pwidth)
-        Ndown = No//4
-        xmask = maps.mask_kspace(plc_stamp.shape, plc_stamp.wcs, lmin=xlmin, lmax=xlmax)
-        plc_stamp = maps.filter_map(plc_stamp,xmask)
-        pdown = enmap.resample(plc_stamp,(Ndown,Ndown))
-        if j==0:
-            from orphics import pixcov
-            beam_fn = lambda x: maps.gauss_beam(plc_beam_fwhm,x)
-            ipsizemap = enmap.pixsizemap(pdown.shape,pdown.wcs)
-            pivar = maps.ivar(pdown.shape,pdown.wcs,defaults.gradient_fiducial_rms,ipsizemap=ipsizemap)
-            pcov = pixcov.tpcov_from_ivar(Ndown,pivar,theory.lCl,beam_fn)
-            geo = pixcov.make_geometry(pdown.shape,pdown.wcs,rmin,n=Ndown,deproject=True,iau=False,res=None,pcov=pcov)
-        pdown = pixcov.inpaint_stamp(pdown,geo)
-        plc_stamp = enmap.resample(pdown,(No,No))        
+
 
     """ 
     !! STAMP FFTs

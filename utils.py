@@ -946,6 +946,11 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         io.save_cols(f'{save_dir}/{save_name}_opt_profile_errs.txt', (cents, opt_errs))
         io.save_cols(f'{save_dir}/{save_name}_profile.txt', (cents, ret_data))
         io.save_cols(f'{save_dir}/{save_name}_profile_errs.txt', (cents, errs))
+
+        io.save_cols(f'{save_dir}/{save_name}_before_mf.txt', (cents, binned))
+        io.save_cols(f'{save_dir}/{save_name}_mf.txt', (cents, mf_binned))
+        io.save_cols(f'{save_dir}/{save_name}_mf_errs.txt', (cents, mf_opt_errs))
+
         np.savetxt(f'{save_dir}/{save_name}_opt_covm.txt', ret_opt_cov)
         np.savetxt(f'{save_dir}/{save_name}_covm.txt', ret_cov)
         np.savetxt(f'{save_dir}/{save_name}_bin_edges.txt', bin_edges)

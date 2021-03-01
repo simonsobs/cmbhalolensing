@@ -880,58 +880,34 @@ for task in my_tasks:
         (2) Inpaint a hole of radius 4 arcmin 
         """
         rmin = 4 * utils.arcmin
-        No = int(args.swidth/args.pwidth)
-        Ndown = No//4
-        #xmask = maps.mask_kspace(plc_stamp.shape, plc_stamp.wcs, lmin=xlmin, lmax=xlmax)
-        #plc_stamp = maps.filter_map(plc_stamp,xmask)
-      
-        
-        # transform the act_map to real space for inpainting
-        gact_kmap = enmap.ifft(gact_kmap, normalize='phys').real
-        #plt.imshow(gact_kmap[108:148,108:148]); plt.colorbar(); plt.show(); plt.clf()         
         
         # evaluate 2D beam on an isotropic Fourier grid
         bfunc150 = cutils.load_beam("f150")
         act_150_kbeam2d = bfunc150(modlmap) 
-        #plt.imshow(act_150_kbeam2d); plt.colorbar(); plt.show(); plt.clf()         
-                
-        # do the convolution 
-        #ft_beam = np.fft.fft2(np.fft.fftshift(act_150_kbeam2d))
-        #ft_map = np.fft.fft2(np.fft.fftshift(gact_kmap))
-        #convolved = np.fft.fftshift(np.real(np.fft.ifft2(ft_beam*ft_map)))
-        
-        ft_beam = enmap.fft(enmap.fftshift(act_150_kbeam2d))
-        ft_map = enmap.fft(enmap.fftshift(gact_kmap))
-        convolved = enmap.fftshift(np.real(enmap.ifft(ft_beam*ft_map)))
-        
-        #plt.imshow(convolved[108:148,108:148]); plt.colorbar(); plt.show(); plt.clf()     
-        
-        #gact_kmap = enmap.fft(convolved, normalize='phys')
-        
+        gact_full = enmap.ifft(gact_kmap*act_150_kbeam2d, normalize='phys').real
 
+        crop_pixels = int(16.  / args.pwidth) # 16 arcminutes wide
+        gact = maps.crop_center(gact_full,cropy=crop_pixels,cropx=crop_pixels,sel=False)
+        gact_sel = maps.crop_center(gact,cropy=crop_pixels,cropx=crop_pixels,sel=True)
+        Ndown, Ndown2 = gact.shape[-2:]
+        if Ndown!=Ndown2: raise Exception
 
-        pdown = enmap.resample(convolved, (Ndown,Ndown))
-  
         if j==0:
             from orphics import pixcov
-            #beam_fn = lambda x: maps.gauss_beam(act_beam_fwhm,x)
-            pshape = pdown.shape
-            pwcs = pdown.wcs
-            #modlmap = enmap.modlmap(shape, wcs)
+            pshape = gact.shape
+            pwcs = gact.wcs
             beam_fn = cutils.load_beam("f150")
             ipsizemap = enmap.pixsizemap(pshape, pwcs)
             pivar = maps.ivar(pshape, pwcs, defaults.highres_fiducial_rms, ipsizemap=ipsizemap)
             pcov = pixcov.tpcov_from_ivar(Ndown, pivar, theory.lCl, beam_fn)
             geo = pixcov.make_geometry(pshape, pwcs, rmin, n=Ndown, deproject=True, iau=False, res=None, pcov=pcov)
-        pdown = pixcov.inpaint_stamp(pdown, geo)
-        inpainted = enmap.resample(pdown, (No,No)) 
-        
-        #plt.imshow(inpainted[108:148,108:148]); plt.colorbar(); plt.show(); plt.clf()   
-        
-        gact_kmap = enmap.fft(inpainted, normalize='phys')/act_150_kbeam2d 
+        gact = pixcov.inpaint_stamp(gact, geo)
+        gact_full[gact_sel] = gact.copy()
+
+        gact_kmap = enmap.fft(gact_full, normalize='phys')/act_150_kbeam2d 
         gact_kmap[~np.isfinite(gact_kmap)] = 0
 
-        aa = enmap.ifft(gact_kmap, normalize='phys').real
+        aa = enmap.ifft(gact_kmap*act_150_kbeam2d , normalize='phys').real
         #plt.imshow(aa[108:148,108:148]); plt.colorbar(); plt.show(); plt.clf()   
 
 

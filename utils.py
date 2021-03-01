@@ -10,7 +10,7 @@ from enlib import bench
 import argparse
 import time
 
-from HMFunc.cosmology import Cosmology
+#from HMFunc.cosmology import Cosmology
 
 try:
     paths = bunch.Bunch(io.config_from_yaml("input/paths_local.yml"))

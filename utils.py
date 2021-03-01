@@ -182,11 +182,11 @@ def initialize_pipeline_config():
         action="store_true",
         help="Use ACT only maps in high-res instead of ACT+Planck.",
     )
-    parser.add_argument("--save-noise", action="store_true", help="Save noise power spectrum of each stamp.")
     parser.add_argument("--save-power", action="store_true", help="Save power spectrum of each stamp.")
     parser.add_argument("--no-150", action="store_true", help="Do not use the 150 GHz map.")
     parser.add_argument("--freq-null", action="store_true", help="Use 90-150 GHz for high-res.")
-    parser.add_argument("--no-filter", action="store_true", help="Remove filters and stack without lensing reconstruction (use with debug-stack)")
+    parser.add_argument("--no-filter", action="store_true", help="Remove filters and stack without lensing reconstruction (use with --debug-stack)")
+    parser.add_argument("--hres-grad", action="store_true", help="Replace tSZ-free gradient with high-res ACT+Planck co-adds (use with --inpaint)")
 
     args = parser.parse_args()
 
@@ -946,11 +946,9 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         io.save_cols(f'{save_dir}/{save_name}_opt_profile_errs.txt', (cents, opt_errs))
         io.save_cols(f'{save_dir}/{save_name}_profile.txt', (cents, ret_data))
         io.save_cols(f'{save_dir}/{save_name}_profile_errs.txt', (cents, errs))
-
-        io.save_cols(f'{save_dir}/{save_name}_before_mf.txt', (cents, binned))
         io.save_cols(f'{save_dir}/{save_name}_mf.txt', (cents, mf_binned))
-        io.save_cols(f'{save_dir}/{save_name}_mf_errs.txt', (cents, mf_opt_errs))
-
+        if mf_path is not "":
+            io.save_cols(f'{save_dir}/{save_name}_mf_errs.txt', (cents, mf_opt_errs))
         np.savetxt(f'{save_dir}/{save_name}_opt_covm.txt', ret_opt_cov)
         np.savetxt(f'{save_dir}/{save_name}_covm.txt', ret_cov)
         np.savetxt(f'{save_dir}/{save_name}_bin_edges.txt', bin_edges)

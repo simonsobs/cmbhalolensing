@@ -6,7 +6,7 @@ import os,sys
 from enlib import bench
 from scipy.special import erfinv,erf
 
-isave_name = args.sys[1] #"mpz_lam20_night_v3"
+isave_name = sys.argv[1] #"mpz_lam20_night_v3"
 
 arcmax = 8.
 

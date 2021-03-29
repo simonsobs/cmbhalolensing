@@ -264,6 +264,31 @@ def cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax):
         sns = sns[sns<=snmax]
     return ras,decs,sns,zs
 
+def load_actncows_with_weights(lowhigh,nmax,is_meanfield,weight_cut=0.6):
+    if is_meanfield:
+        # made using mapjoint.py followed by randcat_joint.py
+        catalogue_name = paths.data+ 'madcows_actncows_joint_randoms.txt'
+        ras,decs = np.loadtxt(catalogue_name,unpack=True)
+        zs = ras*0
+        ws = ras*0 + 1
+        data = {}
+        return ras[:nmax],decs[:nmax],zs[:nmax],ws,data
+    else:
+        cols = catalogs.load_fits(paths.data+'mdcws_with_weights.fits',['RADeg','decDeg','Rich','Photz','weights'])
+        ras = cols['RADeg']
+        decs = cols['decDeg']
+        zs = cols['Photz']
+        lams = cols['Rich']
+        szws = cols['weights']
+        data = {}
+        if lowhigh=='low':
+            sel = szws<weight_cut
+        elif lowhigh=='high':
+            sel = szws>=weight_cut
+        data['lams'] = lams[sel][:nmax]
+        ws = ras[sel][:nmax]*0 + 1
+        return ras[sel][:nmax],decs[sel][:nmax],zs[sel][:nmax],ws,data
+
 def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=False,snmin=None,snmax=None):
     data = {}
     if cat_type=='hilton_beta':
@@ -378,6 +403,13 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
         decs = decs[:nmax]
         ws = ras*0 + 1
 
+    elif cat_type=='madcows_actncows_joint':
+        if not(is_meanfield): raise Exception
+        ras,decs,zs,ws,data = load_actncows_with_weights('high',nmax,is_meanfield)
+    elif cat_type=='madcows_actncows_high':
+        ras,decs,zs,ws,data = load_actncows_with_weights('high',nmax,is_meanfield)
+    elif cat_type=='madcows_actncows_low':
+        ras,decs,zs,ws,data = load_actncows_with_weights('low',nmax,is_meanfield)
     elif cat_type=='madcows_photz':
         if is_meanfield:
             # made using mapcat.py followed by randcat.py
@@ -801,8 +833,10 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
             gy,gx = enmap.grad(stamp)
             gy = maps.filter_map(gy,maps.mask_kspace(shape,wcs,lmin=200,lmax=1000))
             gx = maps.filter_map(gx,maps.mask_kspace(shape,wcs,lmin=200,lmax=1000))
-            plot(f"{save_dir}/{save_name}_sm_opt_weighted_mfsub_phi.png",stamp,tap_per,pad_per,crop=None,lim=args.slim,cmap='coolwarm',quiver=[gy,gx])
-            plot(f"{save_dir}/{save_name}_sm_opt_weighted_mfsub_phi_zoom.png",stamp,tap_per,pad_per,crop=crop,lim=args.slim,cmap='coolwarm',quiver=[gy,gx])
+            # plot(f"{save_dir}/{save_name}_sm_opt_weighted_mfsub_phi.png",stamp,tap_per,pad_per,crop=None,lim=args.slim,cmap='coolwarm',quiver=[gy,gx])
+            # plot(f"{save_dir}/{save_name}_sm_opt_weighted_mfsub_phi_zoom.png",stamp,tap_per,pad_per,crop=crop,lim=args.slim,cmap='coolwarm',quiver=[gy,gx])
+            plot(f"{save_dir}/{save_name}_sm_opt_weighted_mfsub_phi.png",stamp,tap_per,pad_per,crop=None,lim=args.slim,cmap='coolwarm',quiver=None)
+            plot(f"{save_dir}/{save_name}_sm_opt_weighted_mfsub_phi_zoom.png",stamp,tap_per,pad_per,crop=crop,lim=args.slim,cmap='coolwarm',quiver=None)
 
 
             # Nmean weighted

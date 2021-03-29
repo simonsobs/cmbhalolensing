@@ -14,8 +14,8 @@ a random catalog.
 paths = cutils.paths
 #cat_type = "wise_panstarrs"
 #cat_type = "madcows_photz"
-cat_type = args.sys[1]
-Nx = int(args.sys[2])
+cat_type = sys.argv[1]
+Nx = int(sys.argv[2])
 
 ras,decs,_,_,_ = cutils.catalog_interface(cat_type,is_meanfield=False)
 N = Nx * len(ras)

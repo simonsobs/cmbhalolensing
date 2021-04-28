@@ -1,13 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from astropy.io import fits
 import utils as cutils
 from pixell import enmap, reproject, enplot, utils, wcsutils,lensing as plensing
 from orphics import maps, mpi, io, stats,cosmology,lensing # github.com/msyriac/orphics ; pip install -e . --user
-from scipy.optimize import curve_fit
 from numpy import save
-import symlens
-import healpy as hp
 import os, sys
 import time as t
 import warnings

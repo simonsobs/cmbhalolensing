@@ -384,7 +384,7 @@ for task in my_tasks:
             r=maxr,
             res=pixel * utils.arcmin,
             extensive=True,
-            proj="plain",
+            proj="tan",
         )
         """ 
         !! REJECT IF NO OBS. OR HIGH NOISE
@@ -416,7 +416,7 @@ for task in my_tasks:
             coords,
             r=maxr,
             res=pixel * utils.arcmin,
-            proj="plain",
+            proj="tan",
             oversample=2,
             depix=True
         )
@@ -425,7 +425,7 @@ for task in my_tasks:
             coords,
             r=maxr,
             res=pixel * utils.arcmin,
-            proj="plain",
+            proj="tan",
             oversample=2,
             depix=True
         )

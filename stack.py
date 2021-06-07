@@ -406,7 +406,7 @@ for task in my_tasks:
             r=maxr,
             res=pixel * utils.arcmin,
             extensive=True,
-            proj="plain",
+            proj="tan",pixwin=False
         )
         """ 
         !! REJECT IF NO OBS. OR HIGH NOISE
@@ -438,18 +438,18 @@ for task in my_tasks:
             coords,
             r=maxr,
             res=pixel * utils.arcmin,
-            proj="plain",
+            proj="tan",
             oversample=2,
-            depix=True
+            pixwin=True
         )
         astamp_90 = reproject.thumbnails(
             amap_90,
             coords,
             r=maxr,
             res=pixel * utils.arcmin,
-            proj="plain",
+            proj="tan",
             oversample=2,
-            depix=True
+            pixwin=True
         )
 
 	# for daynight - night null test
@@ -459,18 +459,18 @@ for task in my_tasks:
                 coords,
                 r=maxr,
                 res=pixel * utils.arcmin,
-                proj="plain",
+                proj="tan",
                 oversample=2,
-                depix=True
+                pixwin=True
             )
             nastamp_90 = reproject.thumbnails(
                 null_map_90,
                 coords,
                 r=maxr,
                 res=pixel * utils.arcmin,
-                proj="plain",
+                proj="tan",
                 oversample=2,
-                depix=True
+                pixwin=True
             )
 
 	# in case of using hres map for gradient leg 
@@ -548,7 +548,7 @@ for task in my_tasks:
         """
         # cut out a stamp from the Planck map (CAR -> plain)
         pstamp = reproject.thumbnails(
-            pmap, coords, r=maxr, res=pixel * utils.arcmin, proj="plain", oversample=2, depix=False
+            pmap, coords, r=maxr, res=pixel * utils.arcmin, proj="tan", oversample=2,pixwin=False
         )
 
         # Check that all the WCS agree

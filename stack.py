@@ -1,7 +1,10 @@
+# inpainting test
+# do inpainting on 90 and 150 GHz separately first and then ILC
+
 import numpy as np
 import matplotlib
 # Force matplotlib to not use any Xwindows backend.
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import utils as cutils
 from pixell import enmap, reproject, enplot, utils, wcsutils
@@ -36,7 +39,7 @@ if not (args.inject_sim):
     ras, decs, zs, ws, cdata = cutils.catalog_interface(args.cat_type, args.is_meanfield, 
                                                         args.nmax,args.zmin,args.zmax,
                                                         bcg=args.bcg,snmin=args.snmin,
-                                                        snmax=args.snmax,y0min=args.y0min,y0max=args.y0max)
+                                                        snmax=args.snmax,y0min=args.y0min,y0max=args.y0max,decmin=args.decmin)
 else:
     # or if injecting sims, load the sim generator
     csim = cutils.Simulator(
@@ -57,7 +60,7 @@ else:
 """
 
 if not (args.inject_sim):
-    with bench.show("load maps"):
+    with bench.show("load maps"): ##### what does this do?
         fplc_map = paths.data + "planck_smica_nosz_reproj.fits"
         if not(args.full_sim_index is None):
             pmap = enmap.read_map(f'{paths.fullsim_path}/planck_sim_{args.full_sim_index:06d}.fits') / 1e6
@@ -82,8 +85,12 @@ if not (args.inject_sim):
             )
             famap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
 
-            if args.hres_grad: gamap_150 = famap_150
-            
+            if args.hres_grad:            
+                if not (args.hres_noszsub): 
+                    gamap_150 = famap_150 - enmap.read_map(f'{paths.data}S18d_202006_pass2_confirmed_model_f150.fits')
+                else: 
+                    gamap_150 = famap_150
+                    
             if not(args.no_sz_sub):
                 amap_150 = famap_150 - enmap.read_map(f'{paths.data}S18d_202006_pass2_confirmed_model_f150.fits')
             else:
@@ -98,8 +105,12 @@ if not (args.inject_sim):
             )
             famap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
 
-            if args.hres_grad: gamap_90 = famap_90
-            
+            if args.hres_grad:            
+                if not (args.hres_noszsub): 
+                    gamap_90 = famap_90 - enmap.read_map(f'{paths.data}S18d_202006_pass2_confirmed_model_f090.fits')
+                else: 
+                    gamap_90 = famap_90
+                    
             if not(args.no_sz_sub):
                 amap_90 = famap_90 - enmap.read_map(f'{paths.data}S18d_202006_pass2_confirmed_model_f090.fits')
             else:
@@ -123,8 +134,6 @@ if not (args.inject_sim):
 
             null_map_150 = famap_150 - namap_150
             null_map_90 = famap_90 - namap_90
-            
-
 
         # Inv var map for 90 GHz
         ivar_map = paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f090_{tags.dstr}_ivar.fits"
@@ -137,6 +146,10 @@ if not (args.inject_sim):
 stamp_width_deg = args.swidth / 60.0
 pixel = args.pwidth
 maxr = stamp_width_deg * utils.degree / 2.0
+
+# stamp_width_arcmin: 128.0 is default so 2.13 deg
+# pix_width_arcmin: 0.5
+# max radius for projection geometry 
 
 """ 
 !! CATALOG TRIMMING BASED ON RMS MAP
@@ -167,7 +180,7 @@ if not (args.inject_sim):
         # Then select pixels where the noise is finite and less than args.max_rms_noise
         nsel = np.logical_and(
             rms_map[pixs[0, :], pixs[1, :]] > 0,
-            rms_map[pixs[0, :], pixs[1, :]] < args.max_rms,
+            rms_map[pixs[0, :], pixs[1, :]] < args.max_rms, # max_rms_noise: 50.0
         )
         ras = ras[np.argwhere(nsel)][:, 0]
         decs = decs[np.argwhere(nsel)][:, 0]
@@ -311,20 +324,20 @@ def fit_p1d(
 
 
 # beam and FWHM
-plc_beam_fwhm = defaults.planck_smica_beam_fwhm
+plc_beam_fwhm = defaults.planck_smica_beam_fwhm # 5 arcmin
 
 # Planck mask
-xlmin = args.grad_lmin ; xlmax = args.grad_lmax
+xlmin = args.grad_lmin ; xlmax = args.grad_lmax # 200, 2000
 
 # ACT mask
-ilcmin = args.ilc_lmin ; ilcmax = args.ilc_lmax
-ylmin = args.hres_lmin ; ylmax = args.hres_lmax
+ilcmin = args.ilc_lmin ; ilcmax = args.ilc_lmax # 200, 8000
+ylmin = args.hres_lmin ; ylmax = args.hres_lmax # 200, 6000 -> 3500 
 
 # kappa mask
-klmin = args.klmin ; klmax = args.klmax
+klmin = args.klmin ; klmax = args.klmax # 200, 5000 -> 3000
 
 # for binned kappa profile
-bin_edges = np.arange(0, args.arcmax, args.arcstep)
+bin_edges = np.arange(0, args.arcmax, args.arcstep) # 15 arcmin, 1.5 arcmin
 centers = (bin_edges[1:] + bin_edges[:-1]) / 2.0
 
 """ 
@@ -439,6 +452,7 @@ for task in my_tasks:
             depix=True
         )
 
+	# for daynight - night null test
         if args.day_null:
             nastamp_150 = reproject.thumbnails(
                 null_map_150,
@@ -459,6 +473,7 @@ for task in my_tasks:
                 depix=True
             )
 
+	# in case of using hres map for gradient leg 
         if args.hres_grad:
             gastamp_150 = reproject.thumbnails(
                 gamap_150,
@@ -533,7 +548,7 @@ for task in my_tasks:
         """
         # cut out a stamp from the Planck map (CAR -> plain)
         pstamp = reproject.thumbnails(
-            pmap, coords, r=maxr, res=pixel * utils.arcmin, proj="plain", oversample=2,depix=False
+            pmap, coords, r=maxr, res=pixel * utils.arcmin, proj="plain", oversample=2, depix=False
         )
 
         # Check that all the WCS agree
@@ -568,9 +583,6 @@ for task in my_tasks:
     else:
         pstamp, astamp_150, astamp_90 = csim.get_obs(task)
 
-
-
-
     """ 
     !! COSINE TAPER
     """
@@ -589,11 +601,179 @@ for task in my_tasks:
     act_stamp_150 = astamp_150 * taper
     act_stamp_90 = astamp_90 * taper
     plc_stamp = pstamp * taper
+
+    if args.freq_null:
+        act_stamp_fnull = (astamp_150 - astamp_90) * taper
     
     if args.hres_grad:
         gact_stamp_150 = gastamp_150 * taper
         gact_stamp_90 = gastamp_90 * taper
     
+    
+    if args.inpaint:
+        """
+        If inpainting, we 
+        (1) resample the stamp to 64x64 (2 arcmin pixels)
+        (2) Inpaint a hole of radius 4 arcmin 
+        """
+        rmin = 4 * utils.arcmin
+
+        crop_pixels = int(16.  / args.pwidth) # 16 arcminutes wide
+        gact150 = maps.crop_center(gact_stamp_150,cropy=crop_pixels,cropx=crop_pixels,sel=False)
+        gact90 = maps.crop_center(gact_stamp_90,cropy=crop_pixels,cropx=crop_pixels,sel=False)
+        gact_sel150 = maps.crop_center(gact_stamp_150,cropy=crop_pixels,cropx=crop_pixels,sel=True)
+        gact_sel90 = maps.crop_center(gact_stamp_90,cropy=crop_pixels,cropx=crop_pixels,sel=True)
+        Ndown150, Ndown2 = gact150.shape[-2:]
+        if Ndown150 != Ndown2: raise Exception
+        Ndown90, Ndown2 = gact90.shape[-2:]
+        if Ndown90 != Ndown2: raise Exception
+
+        if j==0:
+            from orphics import pixcov
+            pshape = gact150.shape
+            pwcs = gact150.wcs
+            beam_fn150 = cutils.load_beam("f150")
+            beam_fn90 = cutils.load_beam("f090")
+            ipsizemap = enmap.pixsizemap(pshape, pwcs)
+            pivar = maps.ivar(pshape, pwcs, defaults.highres_fiducial_rms, ipsizemap=ipsizemap)
+            pcov150 = pixcov.tpcov_from_ivar(Ndown150, pivar, theory.lCl, beam_fn150)
+            pcov90 = pixcov.tpcov_from_ivar(Ndown90, pivar, theory.lCl, beam_fn90)            
+            geo150 = pixcov.make_geometry(pshape, pwcs, rmin, n=Ndown150, deproject=True, iau=False, res=None, pcov=pcov150)
+            geo90 = pixcov.make_geometry(pshape, pwcs, rmin, n=Ndown90, deproject=True, iau=False, res=None, pcov=pcov90)
+        gact150 = pixcov.inpaint_stamp(gact150, geo150)
+        gact90 = pixcov.inpaint_stamp(gact90, geo90)
+        gact_stamp_150[gact_sel150] = gact150.copy()
+        gact_stamp_90[gact_sel90] = gact90.copy()  
+
+    if args.day_null:
+        nact_stamp_150 = nastamp_150 * taper
+        nact_stamp_90 = nastamp_90 * taper
+
+    if args.debug_stack:
+        sweight = ivar_90.mean()
+
+	# to obtain tsz profile and covmat for act stamp 
+        shape = astamp_150.shape
+        wcs = astamp_150.wcs
+        modrmap = enmap.modrmap(shape, wcs)        
+        ymask = maps.mask_kspace(shape, wcs, lmin=ylmin, lmax=ylmax, lxcut=args.hres_lxcut, lycut=args.hres_lycut)
+        masked_150 = maps.filter_map(astamp_150, ymask)
+        masked_90 = maps.filter_map(astamp_90, ymask)
+        if args.no_filter:
+            s.add_to_stack('a150_cmb', astamp_150*sweight)
+            s.add_to_stack('a90_cmb', astamp_90*sweight)
+        else:
+            s.add_to_stack('a150_cmb', masked_150*sweight)
+            s.add_to_stack('a90_cmb', masked_90*sweight)
+
+        if args.day_null:    
+            nmasked_150 = maps.filter_map(nastamp_150, ymask)
+            nmasked_90 = maps.filter_map(nastamp_90, ymask)
+            if args.no_filter:
+                s.add_to_stack('na150_cmb', nastamp_150*sweight)
+                s.add_to_stack('na90_cmb', nastamp_90*sweight)  
+            else:
+                s.add_to_stack('na150_cmb', nmasked_150*sweight)
+                s.add_to_stack('na90_cmb', nmasked_90*sweight)  
+                       
+        if args.hres_grad and args.inpaint:
+            shape = gastamp_150.shape
+            wcs = gastamp_150.wcs
+            gmodrmap = enmap.modrmap(shape, wcs)          
+            gmask = maps.mask_kspace(shape, wcs, lmin=ylmin, lmax=ylmax, lxcut=args.hres_lxcut, lycut=args.hres_lycut)
+            gmasked_150 = maps.filter_map(gastamp_150, gmask)
+            gmasked_90 = maps.filter_map(gastamp_90, gmask)
+            
+            if args.no_filter:
+                s.add_to_stack('ga150_cmb', gastamp_150*sweight)
+                s.add_to_stack('ga90_cmb', gastamp_90*sweight)  
+            else:
+                s.add_to_stack('ga150_cmb', gmasked_150*sweight)
+                s.add_to_stack('ga90_cmb', gmasked_90*sweight)  
+
+            cond = 50
+            if (j % cond) == 0 and not(args.is_meanfield):
+                try: 
+                    cwidth = 30.
+                    crop = int(cwidth / args.pwidth)
+                    if args.no_filter:
+                        cutils.plot(f"{paths.debugdir}/inp150_zoom_{task}.png",gastamp_150*sweight,0,0,crop=crop,lim=None,label='$\\mu$K')
+                        cutils.plot(f"{paths.debugdir}/inp90_zoom_{task}.png",gastamp_90*sweight,0,0,crop=crop,lim=None,label='$\\mu$K')
+                        cutils.plot(f"{paths.debugdir}/ref150_zoom_{task}.png",astamp_150*sweight,0,0,crop=crop,lim=None,label='$\\mu$K')
+                        cutils.plot(f"{paths.debugdir}/ref90_zoom_{task}.png",astamp_90*sweight,0,0,crop=crop,lim=None,label='$\\mu$K')
+                        save(f"{paths.debugdir}/inp150_{task}.npy",gastamp_150*sweight) 
+                        save(f"{paths.debugdir}/inp90_{task}.npy",gastamp_90*sweight) 
+                        save(f"{paths.debugdir}/ref150_{task}.npy",astamp_150*sweight) 
+                        save(f"{paths.debugdir}/ref90_{task}.npy",astamp_90*sweight) 
+                    else:
+                        cutils.plot(f"{paths.debugdir}/inp150_zoom_{task}.png",gmasked_150*sweight,0,0,crop=crop,lim=None,label='$\\mu$K')
+                        cutils.plot(f"{paths.debugdir}/inp90_zoom_{task}.png",gmasked_90*sweight,0,0,crop=crop,lim=None,label='$\\mu$K')
+                        cutils.plot(f"{paths.debugdir}/ref150_zoom_{task}.png",masked_150*sweight,0,0,crop=crop,lim=None,label='$\\mu$K')
+                        cutils.plot(f"{paths.debugdir}/ref90_zoom_{task}.png",masked_90*sweight,0,0,crop=crop,lim=None,label='$\\mu$K')
+                        save(f"{paths.debugdir}/inp150_{task}.npy",gmasked_150*sweight) 
+                        save(f"{paths.debugdir}/inp90_{task}.npy",gmasked_90*sweight) 
+                        save(f"{paths.debugdir}/ref150_{task}.npy",masked_150*sweight) 
+                        save(f"{paths.debugdir}/ref90_{task}.npy",masked_90*sweight) 
+                except IOError:
+                    pass
+
+        if args.no_filter:
+            sz150 = bin(astamp_150, modrmap * (180 * 60 / np.pi), bin_edges)
+            sz150w = bin(astamp_150*sweight, modrmap * (180 * 60 / np.pi), bin_edges)
+            sz90 = bin(astamp_90, modrmap * (180 * 60 / np.pi), bin_edges)
+        else:    
+            sz150 = bin(masked_150, modrmap * (180 * 60 / np.pi), bin_edges)   
+            sz150w = bin(masked_150*sweight, modrmap * (180 * 60 / np.pi), bin_edges)
+            sz90 = bin(masked_90, modrmap * (180 * 60 / np.pi), bin_edges)
+
+        if args.day_null:
+            if args.no_filter:
+                sz150 = bin(nastamp_150, modrmap * (180 * 60 / np.pi), bin_edges)
+                sz150w = bin(nastamp_150*sweight, modrmap * (180 * 60 / np.pi), bin_edges)
+            else:    
+                sz150 = bin(nmasked_150, modrmap * (180 * 60 / np.pi), bin_edges)   
+                sz150w = bin(nmasked_150*sweight, modrmap * (180 * 60 / np.pi), bin_edges)            
+
+        s.add_to_stats("sz150", sz150)  
+        s.add_to_stats("sz150w", sz150w)
+        s.add_to_stats("sz90", sz90)         
+        s.add_to_stats("szw", (sweight,))
+        s.add_to_stats("szw2", (sweight ** 2,))
+        s.add_to_stack('acmb_twt',(astamp_90*0+1)*sweight)
+
+        if args.hres_grad and args.inpaint:
+            if args.no_filter:
+                gsz150 = bin(gastamp_150, gmodrmap * (180 * 60 / np.pi), bin_edges)
+                gsz150w = bin(gastamp_150*sweight, gmodrmap * (180 * 60 / np.pi), bin_edges)
+                gsz90 = bin(gastamp_90, gmodrmap * (180 * 60 / np.pi), bin_edges)
+                gsz90w = bin(gastamp_90*sweight, gmodrmap * (180 * 60 / np.pi), bin_edges)
+            else:    
+                gsz150 = bin(gmasked_150, gmodrmap * (180 * 60 / np.pi), bin_edges)   
+                gsz150w = bin(gmasked_150*sweight, gmodrmap * (180 * 60 / np.pi), bin_edges)
+                gsz90 = bin(gmasked_90, gmodrmap * (180 * 60 / np.pi), bin_edges)   
+                gsz90w = bin(gmasked_90*sweight, gmodrmap * (180 * 60 / np.pi), bin_edges)
+
+            s.add_to_stats("gsz150", gsz150)  
+            s.add_to_stats("gsz150w", gsz150w)
+            s.add_to_stats("gsz90", gsz90)  
+            s.add_to_stats("gsz90w", gsz90w)
+
+    	# to obtain tsz profile and covmat for planck stamp
+        modrmap = enmap.modrmap(pstamp.shape, pstamp.wcs)          
+        xmask = maps.mask_kspace(pstamp.shape, pstamp.wcs, lmin=xlmin, lmax=xlmax)
+        masked = maps.filter_map(pstamp, xmask)     
+        if args.no_filter:
+            s.add_to_stack('p_cmb', pstamp)
+            psz = bin(pstamp, modrmap * (180 * 60 / np.pi), bin_edges)
+        else:
+            s.add_to_stack('p_cmb', masked)
+            psz = bin(masked, modrmap * (180 * 60 / np.pi), bin_edges)   
+
+        s.add_to_stats("psz_binned", psz)  
+
+        j = j + 1                        
+        continue
+
     """ 
     !! STAMP FFTs
     """
@@ -604,6 +784,9 @@ for task in my_tasks:
     if args.day_null:
         nk150 = enmap.fft(nact_stamp_150, normalize="phys")
         nk90 = enmap.fft(nact_stamp_90, normalize="phys")
+
+    if args.freq_null:
+        fnk = enmap.fft(act_stamp_fnull, normalize="phys")
 
     if args.hres_grad:
         gk150 = enmap.fft(gact_stamp_150, normalize="phys")
@@ -642,7 +825,8 @@ for task in my_tasks:
         minell = 2 * maps.minimum_ell(shape, wcs)
         l_edges = np.arange(minell / 2, 8001, minell)
         lbinner = stats.bin2D(modlmap, l_edges)
-        w2 = np.mean(taper ** 2) # PS correction factor
+	# PS correction factor
+        w2 = np.mean(taper ** 2) 
         # fsky for bandpower variance
         fsky = enmap.area(shape, wcs) * w2 / 4.0 / np.pi
 
@@ -656,7 +840,12 @@ for task in my_tasks:
         # map of distances from center
         modrmap = enmap.modrmap(shape, wcs)
 
-    pow = lambda x, y: (x * y.conj()).real # Fourier map -> PS
+	print(kmask.shape)
+	print(kmask.wcs)
+	print(modrmap)
+
+    # Fourier map -> PS
+    pow = lambda x, y: (x * y.conj()).real 
 
     # measure the binned power spectrum from given stamp
     act_cents, act_p1d_150 = lbinner.bin(pow(k150, k150) / w2)
@@ -664,18 +853,18 @@ for task in my_tasks:
         act_cents, act_p1d_90 = lbinner.bin(pow(k90, k90) / w2)
         act_cents, act_p1d_150_90 = lbinner.bin(pow(k150, k90) / w2)
 
+    if args.freq_null:
+        act_cents, act_p1d = lbinner.bin(pow(fnk, fnk) / w2)
+
     if args.hres_grad:
         act_cents, gact_p1d_150 = lbinner.bin(pow(gk150, gk150) / w2)
         act_cents, gact_p1d_90 = lbinner.bin(pow(gk90, gk90) / w2)
         act_cents, gact_p1d_150_90 = lbinner.bin(pow(gk150, gk90) / w2)
-        
-        # gshape = gastamp_150.shape
-        # gwcs = gastamp_150.wcs
-        # gmodlmap = enmap.modlmap(gshape, gwcs) 
+        gshape = gastamp_150.shape
+        gwcs = gastamp_150.wcs
+        gmodlmap = enmap.modlmap(gshape, gwcs) 
         
     plc_cents, plc_p1d = lbinner.bin(pow(kp, kp) / w2)
-    
-
 
     """ 
     !! FIT POWER SPECTRA
@@ -718,13 +907,27 @@ for task in my_tasks:
             lmax=defaults.highres_fit_ellmax,
         )
 
+    if args.freq_null:
+       tclaa_fn = fit_p1d(
+            l_edges,
+            act_cents,
+            act_p1d,
+            "act",
+            modlmap,
+            bfunc150,
+            bfunc150,
+            rms=defaults.highres_fiducial_rms,
+            lmin=defaults.highres_fit_ellmin,
+            lmax=defaults.highres_fit_ellmax,
+        )            
+
     if args.hres_grad:
        tclgg_150 = fit_p1d(
             l_edges,
             act_cents,
             gact_p1d_150,
             "act",
-            modlmap,
+            gmodlmap,
             bfunc150,
             bfunc150,
             rms=defaults.highres_fiducial_rms,
@@ -736,7 +939,7 @@ for task in my_tasks:
             act_cents,
             gact_p1d_90,
             "act",
-            modlmap,
+            gmodlmap,
             bfunc90,
             bfunc90,
             rms=defaults.highres_fiducial_rms,
@@ -748,7 +951,7 @@ for task in my_tasks:
             act_cents,
             gact_p1d_150_90,
             "act_cross",
-            modlmap,
+            gmodlmap,
             bfunc150,
             bfunc90,
             rms=0,
@@ -800,35 +1003,24 @@ for task in my_tasks:
         if args.freq_null:
             act_kmap150 = k150 / act_150_kbeam2d 
             act_kmap90 = k90 / act_90_kbeam2d 
-            act_kmap = act_kmap90 - act_kmap150
+            act_kmap = act_kmap150 - act_kmap90
+            tclaa = tclaa_fn / (act_150_kbeam2d ** 2.0)
             
-            _, tclaa = ilc(
-                modlmap,
-                k150,
-                k90,
-                tclaa_150,
-                tclaa_90,
-                tclaa_150_90,
-                act_150_kbeam2d,
-                act_90_kbeam2d,
-            ) # beam deconvolved
-
         if args.no_150:
-            # Deconvolve beam
             act_kmap = k90 / act_90_kbeam2d 
-            tclaa = tclaa_90 / act_90_kbeam2d ** 2.0           
+            tclaa = tclaa_90 / (act_90_kbeam2d ** 2.0)          
 
     else:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             # Deconvolve beam
             act_kmap = k150 / act_150_kbeam2d 
-            tclaa = tclaa_150 / act_150_kbeam2d ** 2.0
+            tclaa = tclaa_150 / (act_150_kbeam2d ** 2.0)
 
 
     if args.hres_grad:
         gact_kmap, tclgg = ilc(
-            modlmap,
+            gmodlmap,
             gk150,
             gk90,
             tclgg_150,
@@ -837,7 +1029,7 @@ for task in my_tasks:
             act_150_kbeam2d,
             act_90_kbeam2d,
         ) # beam deconvolved
-
+        
     ## total TT spectrum includes beam-deconvolved noise
     ## so create a total beam-deconvolved spectrum using a Gaussian beam func.
     act_kmap[~np.isfinite(act_kmap)] = 0
@@ -872,155 +1064,6 @@ for task in my_tasks:
         )
 
 
-
-    if args.inpaint:
-        """
-        If inpainting, we 
-        (1) resample the stamp to 64x64 (2 arcmin pixels)
-        (2) Inpaint a hole of radius 4 arcmin 
-        """
-        rmin = 4 * utils.arcmin
-        
-        # evaluate 2D beam on an isotropic Fourier grid
-        bfunc150 = cutils.load_beam("f150")
-        act_150_kbeam2d = bfunc150(modlmap) 
-        gact_full = enmap.ifft(gact_kmap*act_150_kbeam2d, normalize='phys').real
-
-        crop_pixels = int(16.  / args.pwidth) # 16 arcminutes wide
-        gact = maps.crop_center(gact_full,cropy=crop_pixels,cropx=crop_pixels,sel=False)
-        gact_sel = maps.crop_center(gact,cropy=crop_pixels,cropx=crop_pixels,sel=True)
-        Ndown, Ndown2 = gact.shape[-2:]
-        if Ndown!=Ndown2: raise Exception
-
-        if j==0:
-            from orphics import pixcov
-            pshape = gact.shape
-            pwcs = gact.wcs
-            beam_fn = cutils.load_beam("f150")
-            ipsizemap = enmap.pixsizemap(pshape, pwcs)
-            pivar = maps.ivar(pshape, pwcs, defaults.highres_fiducial_rms, ipsizemap=ipsizemap)
-            pcov = pixcov.tpcov_from_ivar(Ndown, pivar, theory.lCl, beam_fn)
-            geo = pixcov.make_geometry(pshape, pwcs, rmin, n=Ndown, deproject=True, iau=False, res=None, pcov=pcov)
-        gact = pixcov.inpaint_stamp(gact, geo)
-        gact_full[gact_sel] = gact.copy()
-
-        gact_kmap = enmap.fft(gact_full, normalize='phys')/act_150_kbeam2d 
-        gact_kmap[~np.isfinite(gact_kmap)] = 0
-
-        aa = enmap.ifft(gact_kmap*act_150_kbeam2d , normalize='phys').real
-        #plt.imshow(aa[108:148,108:148]); plt.colorbar(); plt.show(); plt.clf()   
-
-
-
-    if args.day_null:
-        nact_stamp_150 = nastamp_150 * taper
-        nact_stamp_90 = nastamp_90 * taper
-
-    if args.debug_stack:
-        sweight = ivar_90.mean()
-
-	    # to obtain tsz profile and covmat for act 150 GHz stamp 
-        shape = astamp_150.shape
-        wcs = astamp_150.wcs
-        modrmap = enmap.modrmap(shape, wcs)        
-        ymask = maps.mask_kspace(shape, wcs, lmin=ylmin, lmax=ylmax, lxcut=args.hres_lxcut, lycut=args.hres_lycut)
-        masked_150 = maps.filter_map(astamp_150, ymask)
-        masked_90 = maps.filter_map(astamp_90, ymask)
-        if args.no_filter:
-            s.add_to_stack('a150_cmb', astamp_150*sweight)
-            s.add_to_stack('a90_cmb', astamp_90*sweight)
-        else:
-            s.add_to_stack('a150_cmb', masked_150*sweight)
-            s.add_to_stack('a90_cmb', masked_90*sweight)
-
-        if args.day_null:    
-            nmasked_150 = maps.filter_map(nastamp_150, ymask)
-            nmasked_90 = maps.filter_map(nastamp_90, ymask)
-            if args.no_filter:
-                s.add_to_stack('na150_cmb', nastamp_150*sweight)
-                s.add_to_stack('na90_cmb', nastamp_90*sweight)  
-            else:
-                s.add_to_stack('na150_cmb', nmasked_150*sweight)
-                s.add_to_stack('na90_cmb', nmasked_90*sweight)  
-
-        if args.hres_grad and args.inpaint:
-            gshape = inpainted.shape
-            gwcs = inpainted.wcs
-            gmodrmap = enmap.modrmap(gshape, gwcs)          
-            gmask = maps.mask_kspace(gshape, gwcs, lmin=ylmin, lmax=ylmax, lxcut=args.hres_lxcut, lycut=args.hres_lycut)
-            gmasked = maps.filter_map(aa, gmask)
-            gmasked_ref = maps.filter_map(convolved, gmask)
-
-            if args.no_filter:
-                s.add_to_stack('ga_cmb', aa*sweight) 
-            else:
-                s.add_to_stack('ga_cmb', gmasked*sweight) 
-
-            '''
-            cond = 50
-            if (j % cond) == 0 and not(args.is_meanfield):
-                try: 
-                    cwidth = 30.
-                    crop = int(cwidth / args.pwidth)
-                    if args.no_filter:
-                        cutils.plot(f"{paths.debugdir}/inp_zoom_{task}.png",inpainted*sweight,0,0,crop=crop,lim=None,label='$\\mu$K')
-                        cutils.plot(f"{paths.debugdir}/ref_zoom_{task}.png",convolved*sweight,0,0,crop=crop,lim=None,label='$\\mu$K')
-                        save(f"{paths.debugdir}/inp_{task}.npy",inpainted*sweight) 
-                        save(f"{paths.debugdir}/ref_{task}.npy",convolved*sweight) 
-                    else:
-                        cutils.plot(f"{paths.debugdir}/inp_zoom_{task}.png",gmasked*sweight,0,0,crop=crop,lim=None,label='$\\mu$K')
-                        cutils.plot(f"{paths.debugdir}/ref_zoom_{task}.png",gmasked_ref*sweight,0,0,crop=crop,lim=None,label='$\\mu$K')
-                        save(f"{paths.debugdir}/inp_{task}.npy",gmasked*sweight) 
-                        save(f"{paths.debugdir}/ref_{task}.npy",gmasked_ref*sweight)
-                except IOError:
-                    pass
-                    
-            '''
-
-        if args.no_filter:
-            sz150 = bin(astamp_150, modrmap * (180 * 60 / np.pi), bin_edges)
-            sz150w = bin(astamp_150*sweight, modrmap * (180 * 60 / np.pi), bin_edges)
-        else:    
-            sz150 = bin(masked_150, modrmap * (180 * 60 / np.pi), bin_edges)   
-            sz150w = bin(masked_150*sweight, modrmap * (180 * 60 / np.pi), bin_edges)
-
-        s.add_to_stats("sz150", sz150)  
-        s.add_to_stats("sz150w", sz150w)
-        s.add_to_stats("szw", (sweight,))
-        s.add_to_stats("szw2", (sweight ** 2,))
-        s.add_to_stack('acmb_twt',(astamp_90*0+1)*sweight)
-
-        if args.hres_grad and args.inpaint:
-            if args.no_filter:
-                gsz = bin(inpainted, gmodrmap * (180 * 60 / np.pi), bin_edges)
-                gszw = bin(inpainted*sweight, gmodrmap * (180 * 60 / np.pi), bin_edges)
-            else:    
-                gsz = bin(gmasked, gmodrmap * (180 * 60 / np.pi), bin_edges)   
-                gszw = bin(gmasked*sweight, gmodrmap * (180 * 60 / np.pi), bin_edges)
-
-            s.add_to_stats("gsz", gsz)  
-            s.add_to_stats("gszw", gszw)
-
-    	# to obtain tsz profile and covmat for planck stamp
-        modrmap = enmap.modrmap(pstamp.shape, pstamp.wcs)          
-        xmask = maps.mask_kspace(pstamp.shape, pstamp.wcs, lmin=xlmin, lmax=xlmax)
-        masked = maps.filter_map(pstamp, xmask)     
-        if args.no_filter:
-            s.add_to_stack('p_cmb', pstamp)
-            psz = bin(pstamp, modrmap * (180 * 60 / np.pi), bin_edges)
-        else:
-            s.add_to_stack('p_cmb', masked)
-            psz = bin(masked, modrmap * (180 * 60 / np.pi), bin_edges)   
-
-        s.add_to_stats("psz_binned", psz)  
-
-        j = j + 1                        
-        continue
-
-
-
-
-
     """ 
     !! LENS RECONSTRUCTION
     """
@@ -1051,8 +1094,7 @@ for task in my_tasks:
         feed_dict,
         estimator="hdv_curl" if args.curl else "hdv",
         XY="TT",
-        #xmask=xmask,
-        xmask=ymask,
+        xmask=xmask,
         ymask=ymask,
         field_names=["P", "A"],
         groups=None,
@@ -1119,7 +1161,7 @@ for task in my_tasks:
     nmean = bnl[np.logical_and(cents > defaults.kappa_noise_mean_Lmin, cents < defaults.kappa_noise_mean_Lmax)].mean()
     if args.debug_powers:
         s.add_to_stats("nl", bnl)
-   
+
     if args.save_power:      
         # save theory lensing power spectrum     
         clkk = theory.gCl('kk', ells)
@@ -1131,6 +1173,8 @@ for task in my_tasks:
         io.save_cols(f'{paths.savedir}/binned_noise_{task}.txt',(cents,bnl))
     
         continue
+
+
 
     if args.debug_nl:
         if np.any(lbinner.bin(Nl)[1]<0):
@@ -1213,12 +1257,17 @@ if rank == 0:
         covm = s.stats['sz150']['covmean']
         corr = stats.cov2corr(s.stats['sz150']['covmean'])
         errs = s.stats['sz150']['errmean']
+        
+        binned90 = s.stats['sz90']['mean']
+        errs90 = s.stats['sz90']['errmean']       
 
         np.savetxt(f"{paths.savedir}/bin_edges.txt", bin_edges)    
         np.savetxt(f"{paths.savedir}/opt_profile.txt", opt_binned)
         np.savetxt(f"{paths.savedir}/profile.txt", binned)
+        np.savetxt(f"{paths.savedir}/profile90.txt", binned90)        
         np.savetxt(f"{paths.savedir}/opt_profile_errs.txt", opt_errs)
         np.savetxt(f"{paths.savedir}/profile_errs.txt", errs)    
+        np.savetxt(f"{paths.savedir}/profile_errs90.txt", errs90)         
         np.savetxt(f"{paths.savedir}/opt_covm.txt", opt_covm)
         np.savetxt(f"{paths.savedir}/covm.txt", covm)
         save(f"{paths.savedir}/opt_corr.npy", opt_corr) 
@@ -1250,24 +1299,25 @@ if rank == 0:
         cutils.plot(f"{paths.savedir}/p_cmb_zoom.png",planck,0,0,crop=crop,lim=None,label='$\\mu$K')
 
         if args.hres_grad and args.inpaint:
-            ga = s.stacks['ga_cmb'] / twt
+            a150 = s.stacks['ga150_cmb'] / twt
+            a90 = s.stacks['ga90_cmb'] / twt
 
             # obtain tsz profile and covmat for tsz stack     
             N_sz = s.vectors['szw'].shape[0]
             vsz1 = s.vectors['szw'].sum()
             vsz2 = s.vectors['szw2'].sum()
              
-            opt_binned = s.vectors['gszw'].sum(axis=0) / vsz1
-            diff = s.vectors['gsz'] - opt_binned
+            opt_binned = s.vectors['gsz150w'].sum(axis=0) / vsz1
+            diff = s.vectors['gsz150'] - opt_binned
             cov = np.dot((diff * s.vectors['szw']).T,diff) / (vsz1-(vsz2/vsz1))
             opt_covm = cov/N_sz
             opt_corr = stats.cov2corr(opt_covm)
             opt_errs = np.sqrt(np.diag(opt_covm))
 
-            binned = s.stats['gsz']['mean']
-            covm = s.stats['gsz']['covmean']
-            corr = stats.cov2corr(s.stats['gsz']['covmean'])
-            errs = s.stats['gsz']['errmean']
+            binned = s.stats['gsz150']['mean']
+            covm = s.stats['gsz150']['covmean']
+            corr = stats.cov2corr(s.stats['gsz150']['covmean'])
+            errs = s.stats['gsz150']['errmean']
 
             np.savetxt(f"{paths.savedir}/inp_bin_edges.txt", bin_edges)    
             np.savetxt(f"{paths.savedir}/inp_opt_profile.txt", opt_binned)
@@ -1278,12 +1328,15 @@ if rank == 0:
             np.savetxt(f"{paths.savedir}/inp_covm.txt", covm)
             save(f"{paths.savedir}/inp_opt_corr.npy", opt_corr) 
             save(f"{paths.savedir}/inp_corr.npy", corr)    
-            save(f"{paths.savedir}/inp_a_cmb.npy", ga)         
+            save(f"{paths.savedir}/inp_a150_cmb.npy", a150)  
+            save(f"{paths.savedir}/inp_a90_cmb.npy", a90)         
 
             cwidth = 30.
             crop = int(cwidth / args.pwidth)
-            cutils.plot(f"{paths.savedir}/inp_a_cmb.png",ga,0,0,crop=None,lim=None,label='$\\mu$K')
-            cutils.plot(f"{paths.savedir}/inp_a_cmb_zoom.png",ga,0,0,crop=crop,lim=None,label='$\\mu$K')
+            cutils.plot(f"{paths.savedir}/inp_a150_cmb.png",a150,0,0,crop=None,lim=None,label='$\\mu$K')
+            cutils.plot(f"{paths.savedir}/inp_a150_cmb_zoom.png",a150,0,0,crop=crop,lim=None,label='$\\mu$K')
+            cutils.plot(f"{paths.savedir}/inp_a90_cmb.png",a90,0,0,crop=None,lim=None,label='$\\mu$K')
+            cutils.plot(f"{paths.savedir}/inp_a90_cmb_zoom.png",a90,0,0,crop=crop,lim=None,label='$\\mu$K')
 
         elapsed = time.time() - start_time
         print("\r ::: entire run took %.1f seconds" % elapsed)

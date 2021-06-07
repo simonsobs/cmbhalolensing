@@ -384,7 +384,7 @@ for task in my_tasks:
             r=maxr,
             res=pixel * utils.arcmin,
             extensive=True,
-            proj="tan",
+            proj="tan",pixwin=False
         )
         """ 
         !! REJECT IF NO OBS. OR HIGH NOISE
@@ -418,7 +418,7 @@ for task in my_tasks:
             res=pixel * utils.arcmin,
             proj="tan",
             oversample=2,
-            depix=True
+            pixwin=True
         )
         astamp_90 = reproject.thumbnails(
             amap_90,
@@ -427,7 +427,7 @@ for task in my_tasks:
             res=pixel * utils.arcmin,
             proj="tan",
             oversample=2,
-            depix=True
+            pixwin=True
         )
 
         if args.day_null:
@@ -436,18 +436,18 @@ for task in my_tasks:
                 coords,
                 r=maxr,
                 res=pixel * utils.arcmin,
-                proj="plain",
+                proj="tan",
                 oversample=2,
-                depix=True
+                pixwin=True
             )
             nastamp_90 = reproject.thumbnails(
                 null_map_90,
                 coords,
                 r=maxr,
                 res=pixel * utils.arcmin,
-                proj="plain",
+                proj="tan",
                 oversample=2,
-                depix=True
+                pixwin=True
             )
 
 
@@ -505,7 +505,7 @@ for task in my_tasks:
         """
         # cut out a stamp from the Planck map (CAR -> plain)
         pstamp = reproject.thumbnails(
-            pmap, coords, r=maxr, res=pixel * utils.arcmin, proj="plain", oversample=2,depix=False
+            pmap, coords, r=maxr, res=pixel * utils.arcmin, proj="tan", oversample=2,pixwin=False
         )
 
         # Check that all the WCS agree

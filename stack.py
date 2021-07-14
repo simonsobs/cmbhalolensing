@@ -87,12 +87,14 @@ if not (args.inject_sim):
 
             if args.hres_grad:            
                 if not (args.hres_noszsub): 
-                    gamap_150 = famap_150 - enmap.read_map(f'{paths.data}S18d_202006_pass2_confirmed_model_f150.fits')
+                    gamap_150 = famap_150 - enmap.read_map(f'{paths.data}S18d_202006_confirmed_model_f150.fits')
+                    #gamap_150 = famap_150 - enmap.read_map(f'{paths.data}S18d_202006_pass2_confirmed_model_f150.fits')
                 else: 
                     gamap_150 = famap_150
                     
             if not(args.no_sz_sub):
-                amap_150 = famap_150 - enmap.read_map(f'{paths.data}S18d_202006_pass2_confirmed_model_f150.fits')
+                amap_150 = famap_150 - enmap.read_map(f'{paths.data}S18d_202006_confirmed_model_f150.fits')
+                #amap_150 = famap_150 - enmap.read_map(f'{paths.data}S18d_202006_pass2_confirmed_model_f150.fits')
             else:
                 amap_150 = famap_150
 
@@ -107,12 +109,14 @@ if not (args.inject_sim):
 
             if args.hres_grad:            
                 if not (args.hres_noszsub): 
-                    gamap_90 = famap_90 - enmap.read_map(f'{paths.data}S18d_202006_pass2_confirmed_model_f090.fits')
+                    gamap_90 = famap_90 - enmap.read_map(f'{paths.data}S18d_202006_confirmed_model_f090.fits')
+                    #gamap_90 = famap_90 - enmap.read_map(f'{paths.data}S18d_202006_pass2_confirmed_model_f090.fits')
                 else: 
                     gamap_90 = famap_90
                     
             if not(args.no_sz_sub):
-                amap_90 = famap_90 - enmap.read_map(f'{paths.data}S18d_202006_pass2_confirmed_model_f090.fits')
+                amap_90 = famap_90 - enmap.read_map(f'{paths.data}S18d_202006_confirmed_model_f090.fits')
+                #amap_90 = famap_90 - enmap.read_map(f'{paths.data}S18d_202006_pass2_confirmed_model_f090.fits')
             else:
                 amap_90 = famap_90
 
@@ -406,7 +410,7 @@ for task in my_tasks:
             r=maxr,
             res=pixel * utils.arcmin,
             extensive=True,
-            proj="tan",pixwin=False
+            proj="tan",
         )
         """ 
         !! REJECT IF NO OBS. OR HIGH NOISE
@@ -825,7 +829,7 @@ for task in my_tasks:
         minell = 2 * maps.minimum_ell(shape, wcs)
         l_edges = np.arange(minell / 2, 8001, minell)
         lbinner = stats.bin2D(modlmap, l_edges)
-	# PS correction factor
+        # PS correction factor
         w2 = np.mean(taper ** 2) 
         # fsky for bandpower variance
         fsky = enmap.area(shape, wcs) * w2 / 4.0 / np.pi
@@ -839,10 +843,6 @@ for task in my_tasks:
 
         # map of distances from center
         modrmap = enmap.modrmap(shape, wcs)
-
-	print(kmask.shape)
-	print(kmask.wcs)
-	print(modrmap)
 
     # Fourier map -> PS
     pow = lambda x, y: (x * y.conj()).real 

@@ -78,6 +78,12 @@ def initialize_pipeline_config():
         "--y0max", type=float, default=None, help="Maximum y0."
     )
     parser.add_argument(
+        "--decmin", type=float, default=None, help="Minimum dec."
+    )
+    parser.add_argument(
+        "--decmax", type=float, default=None, help="Maximum dec."
+    )
+    parser.add_argument(
         "--full-sim-index", type=int, default=None, help="Use full-sky CMB simulations with this index. Defaults to None."
     )
     parser.add_argument(
@@ -263,52 +269,52 @@ def initialize_pipeline_config():
     return start_time,paths,defaults,args,tags,rank
 
 #def cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max,mass):
-def cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max):
-    if zmin is not None:
+def cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s=None,y0min=None,y0max=None):
+    if  not(zmin is None):
         ras = ras[zs>zmin]
         decs = decs[zs>zmin]
         sns = sns[zs>zmin]
-        y0s = y0s[zs>zmin]
+        # y0s = y0s[zs>zmin]
         #mass = mass[zs>zmin]
         zs = zs[zs>zmin]
-    if zmax is not None:
+    if not(zmax is None):
         ras = ras[zs<=zmax]
         decs = decs[zs<=zmax]
         sns = sns[zs<=zmax]
-        y0s = y0s[zs<=zmax]
+        # y0s = y0s[zs<=zmax]
         #mass = mass[zs<=zmax]
         zs = zs[zs<=zmax]
-    if snmin is not None:
+    if not(snmin is None):
         ras = ras[sns>snmin]
         decs = decs[sns>snmin]
         zs = zs[sns>snmin]
-        y0s = y0s[sns>snmin]
+        # y0s = y0s[sns>snmin]
         #mass = mass[sns>snmin]
         sns = sns[sns>snmin]
-    if snmax is not None:
+    if not(snmax is None):
         ras = ras[sns<=snmax]
         decs = decs[sns<=snmax]
         zs = zs[sns<=snmax]
-        y0s = y0s[sns<=snmax]
+        # y0s = y0s[sns<=snmax]
         #mass = mass[sns<=snmax]
         sns = sns[sns<=snmax]
-    if y0min is not None:
+    if not(y0min is None):
         ras = ras[y0s>y0min]
         decs = decs[y0s>y0min]
         zs = zs[y0s>y0min]
         sns = sns[y0s>y0min]
         #mass = mass[y0s>y0min]
-        y0s = y0s[y0s>y0min]
-    if y0max is not None:
+        # y0s = y0s[y0s>y0min]
+    if not(y0max is None):
         ras = ras[y0s<=y0max]
         decs = decs[y0s<=y0max]
         zs = zs[y0s<=y0max]
         sns = sns[y0s<=y0max]
         #mass = mass[y0s<=y0max]
-        y0s = y0s[y0s<=y0max]
-    return ras,decs,sns,zs,y0s
+        # y0s = y0s[y0s<=y0max]
+    return ras,decs,sns,zs#,y0s
     #return ras,decs,sns,zs,y0s,mass
-def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=False,snmin=None,snmax=None,y0min=None,y0max=None):
+def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=False,snmin=None,snmax=None,y0min=None,y0max=None,decmin=None,decmax=None):
     data = {}
     if cat_type=='hilton_beta':
         if is_meanfield:
@@ -408,7 +414,7 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
         ras = ras[decs<25]
         zs = zs[decs<25]
         decs = decs[decs<25]
-        if nmax is not None:
+        if not(nmax is None):
             """
             We have to be a bit more careful when a max number of random galaxies is requested for BOSS, because
             there is a North/South split.
@@ -590,7 +596,7 @@ def plot(fname,stamp,tap_per,pad_per,crop=None,lim=None,cmap='coolwarm',quiver=N
         tmap = kmap[trimy:-trimy,trimx:-trimx]
     else:
         tmap = kmap
-    if crop is not None:
+    if not(crop is None):
         tmap = maps.crop_center(tmap,crop)
     zfact = tmap.shape[0]*1./kmap.shape[0]
     twidth = tmap.extent()[0]/putils.arcmin
@@ -769,14 +775,14 @@ def load_vrec_catalog_boss(pathOutCatalog):
 
 def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,ignore_last=None):
 
-    if mf_path is not "":
+    if mf_path != "":
         smf_path = mf_path if (ignore_last is None) else mf_path[:-ignore_last]
         mf_paramstr = re.search(rf'plmin_(.*?)_meanfield', smf_path).group(1)
     sstack_path = stack_path if (ignore_last is None) else stack_path[:-ignore_last]
     st_paramstr = re.search(rf'plmin_(.*)', sstack_path).group(1)
 
     if not(ignore_param):
-        if mf_path is not "":
+        if mf_path != "":
             try:
                 assert mf_paramstr==st_paramstr
             except:
@@ -796,13 +802,13 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
     if not(save_name is None):
         save_dir = f'{paths.postprocess_path}/{save_name}'
         io.mkdir(f'{save_dir}')
-        if data is not None: 
+        if not(data is None): 
             io.save_cols(f'{save_dir}/{save_name}_catalog_data.txt',[data[key] for key in sorted(data.keys())],header=' '.join([key for key in sorted(data.keys())]))
 
-    if mf_path is not "":
+    if mf_path != "":
         s_mf, shape_mf, wcs_mf = load_dumped_stats(mf_path)
 
-    if mf_path is not "":
+    if mf_path != "":
         assert np.all(shape_stack==shape_mf)
         assert wcsutils.equal(wcs_stack,wcs_mf)
     assert np.all(shape_stack==kmask.shape)
@@ -814,10 +820,10 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         crop = int(args.cwidth / defaults.pix_width_arcmin)
 
     unweighted_stack,nmean_weighted_kappa_stack,opt_weighted_kappa_stack,opt_binned,opt_covm,opt_corr,opt_errs,binned,covm,corr,errs = analyze(s_stack,wcs)
-    if mf_path is not "":
+    if mf_path != "":
         mf_unweighted_stack,mf_nmean_weighted_kappa_stack,mf_opt_weighted_kappa_stack,mf_opt_binned,mf_opt_covm,mf_opt_corr,mf_opt_errs,mf_binned,mf_covm,mf_corr,mf_errs = analyze(s_mf,wcs)
 
-    # if profs is not None:
+    # if not(profs is None):
     #     profs = profs - mf_binned
     #     arcmax = 8.
     #     profs = profs[:,cents<arcmax].sum(axis=1)
@@ -841,7 +847,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         plot(f"{save_dir}/{save_name}_unweighted_nomfsub.png",unweighted_stack,tap_per,pad_per,crop=None,lim=args.plim)
         plot(f"{save_dir}/{save_name}_unweighted_nomfsub_zoom.png",unweighted_stack,tap_per,pad_per,crop=crop,lim=args.plim)
 
-        if mf_path is not "":
+        if mf_path != "":
             # Opt weighted
             stamp = opt_weighted_kappa_stack - mf_opt_weighted_kappa_stack
             plot(f"{save_dir}/{save_name}_opt_weighted_mfsub.png",stamp,tap_per,pad_per,crop=None,lim=args.plim)
@@ -899,7 +905,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         io.plot_img(corr,f'{save_dir}/{save_name}_corr.png')
 
         pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
-        if mf_path is not "":
+        if mf_path != "":
             pl.add_err(cents, opt_binned - mf_opt_binned, yerr=opt_errs,ls="-",label="Filtered kappa, mean-field subtracted (optimal)")
             pl.add_err(cents+0.2, binned - mf_binned, yerr=errs,ls="-",label="Filtered kappa, mean-field subtracted")
             pl.add_err(cents, mf_opt_binned, yerr=mf_opt_errs,label="Mean-field (optimal)",ls="-",alpha=0.5)
@@ -914,7 +920,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         pl.done(f'{save_dir}/{save_name}_profile.png')
 
         pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
-        if mf_path is not "":
+        if mf_path != "":
             pl.add_err(cents, opt_binned - mf_opt_binned, yerr=opt_errs,ls="-",label="Filtered kappa, mean-field subtracted (optimal)")
             pl.add_err(cents, mf_opt_binned, yerr=mf_opt_errs,label="Mean-field (optimal)",ls="-",alpha=0.5)
         else:
@@ -926,7 +932,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
 
         arcmax = 5.
         nbins = bin_edges[bin_edges<arcmax].size - 1
-        if mf_path is "":
+        if mf_path == "":
             mf_opt_binned = opt_binned*0
             mf_binned = opt_binned*0
         diff = (opt_binned - mf_opt_binned)[:nbins]
@@ -947,7 +953,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         io.save_cols(f'{save_dir}/{save_name}_profile.txt', (cents, ret_data))
         io.save_cols(f'{save_dir}/{save_name}_profile_errs.txt', (cents, errs))
         io.save_cols(f'{save_dir}/{save_name}_mf.txt', (cents, mf_binned))
-        if mf_path is not "":
+        if mf_path != "":
             io.save_cols(f'{save_dir}/{save_name}_mf_errs.txt', (cents, mf_opt_errs))
         np.savetxt(f'{save_dir}/{save_name}_opt_covm.txt', ret_opt_cov)
         np.savetxt(f'{save_dir}/{save_name}_covm.txt', ret_cov)
@@ -1003,7 +1009,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         pl.done(f'{save_dir}/{save_name}_fprofiles.png')
 
 
-        if args.theory is not None:
+        if not(args.theory is None):
             savedir = p['scratch'] + f"/{args.theory}/"
             lensed_version = args.theory
             bfact = float(re.search(rf'bfact_(.*?)_pfact', args.theory).group(1))

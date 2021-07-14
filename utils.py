@@ -10,7 +10,7 @@ from enlib import bench
 import argparse
 import time
 
-#from HMFunc.cosmology import Cosmology
+from HMFunc.cosmology import Cosmology
 
 try:
     paths = bunch.Bunch(io.config_from_yaml("input/paths_local.yml"))
@@ -57,8 +57,12 @@ def initialize_pipeline_config():
     parser.add_argument(
         "--klmax", type=int, default=d.kappa_Lmax, help="Maximum multipole for recon."
     )
-    parser.add_argument("--hres-lxcut", type=int, default=None, help="Lxcut for ACT.")
-    parser.add_argument("--hres-lycut", type=int, default=None, help="Lycut for ACT.")
+    parser.add_argument(
+        "--hres-lxcut", type=int, default=None, help="Lxcut for ACT."
+    )
+    parser.add_argument(
+        "--hres-lycut", type=int, default=None, help="Lycut for ACT."
+    )
     parser.add_argument(
         "--zmin", type=float, default=None, help="Minimum redshift."
     )
@@ -78,7 +82,10 @@ def initialize_pipeline_config():
         "--y0max", type=float, default=None, help="Maximum y0."
     )
     parser.add_argument(
-        "--full-sim-index", type=int, default=None, help="Use full-sky CMB simulations with this index. Defaults to None."
+        "--full-sim-index", 
+        type=int, 
+        default=None, 
+        help="Use full-sky CMB simulations with this index. Defaults to None."
     )
     parser.add_argument(
         "--ilc-lmin", type=int, default=d.ilc_lmin, help="Minimum ell for ILC solution."
@@ -114,9 +121,15 @@ def initialize_pipeline_config():
         action="store_true",
         help="Use day-night as data.",
     )
-    parser.add_argument("--tap-per", type=float, default=d.taper_percent, help="Taper percentage.")
-    parser.add_argument("--pad-per", type=float, default=d.pad_percent, help="Pad percentage.")
-    parser.add_argument("--debug-fit", type=str, default=None, help="Which fit to debug.")
+    parser.add_argument(
+        "--tap-per", type=float, default=d.taper_percent, help="Taper percentage."
+    )
+    parser.add_argument(
+        "--pad-per", type=float, default=d.pad_percent, help="Pad percentage."
+    )
+    parser.add_argument(
+        "--debug-fit", type=str, default=None, help="Which fit to debug."
+    )
     parser.add_argument(
         "--debug-anomalies",
         action="store_true",
@@ -132,8 +145,12 @@ def initialize_pipeline_config():
         action="store_true",
         help="Whether to plot Nl for weighting and stop after one cluster.",
     )
-    parser.add_argument("--no-90", action="store_true", help="Do not use the 90 GHz map.")
-    parser.add_argument("--inpaint", action="store_true", help="Inpaint gradient.")
+    parser.add_argument(
+        "--no-90", action="store_true", help="Do not use the 90 GHz map."
+    )
+    parser.add_argument(
+        "--inpaint", action="store_true", help="Inpaint gradient."
+    )
     parser.add_argument(
         "--no-sz-sub",
         action="store_true",
@@ -175,19 +192,44 @@ def initialize_pipeline_config():
     parser.add_argument(
         "--rand-rot", action="store_true", help="Rotate high-res stamp by random number of 90 degrees as a null test."
     )
-    parser.add_argument("--night-only", action="store_true", help="Use night-only maps.")
-    parser.add_argument("--full-nl", action="store_true", help="Do not assume estimator is optimal for Nl weighting.")
+    parser.add_argument(
+        "--night-only", action="store_true", help="Use night-only maps."
+    )
+    parser.add_argument(
+        "--full-nl", action="store_true", help="Do not assume estimator is optimal for Nl weighting."
+    )
     parser.add_argument(
         "--act-only-in-hres",
         action="store_true",
         help="Use ACT only maps in high-res instead of ACT+Planck.",
     )
-    parser.add_argument("--save-power", action="store_true", help="Save power spectrum of each stamp.")
-    parser.add_argument("--no-150", action="store_true", help="Do not use the 150 GHz map.")
-    parser.add_argument("--freq-null", action="store_true", help="Use 90-150 GHz for high-res.")
-    parser.add_argument("--no-filter", action="store_true", help="Remove filters and stack without lensing reconstruction (use with --debug-stack)")
-    parser.add_argument("--hres-grad", action="store_true", help="Replace tSZ-free gradient with high-res ACT+Planck co-adds (use with --inpaint)")
-
+    parser.add_argument(
+        "--save-power", action="store_true", help="Save power spectrum of each stamp."
+    )
+    parser.add_argument(
+        "--no-150", action="store_true", help="Do not use the 150 GHz map."
+    )
+    parser.add_argument(
+        "--freq-null", action="store_true", help="Use 90-150 GHz for high-res."
+    )
+    parser.add_argument(
+        "--no-filter", 
+        action="store_true", 
+        help="Remove filters and stack without lensing reconstruction (use with --debug-stack)"
+    )
+    parser.add_argument(
+        "--hres-grad", 
+        action="store_true", 
+        help="Replace tSZ-free gradient with high-res co-adds (may want to use with --inpaint)"
+    )
+    parser.add_argument(
+        "--grad-noszsub", 
+        action="store_true", 
+        help="No SZ model image subtraction when replacing tSZ-free gradient with high-res co-adds (use with --hres-grad)"
+    )
+    parser.add_argument(
+        "--decmin", type=float, default=None, help="Minimum declination in degree."
+    )
     args = parser.parse_args()
 
     if args.hres_lmin is None:
@@ -262,53 +304,59 @@ def initialize_pipeline_config():
     paths.savedir = savedir
     return start_time,paths,defaults,args,tags,rank
 
-#def cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max,mass):
-def cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max):
+def cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max,decmin,mass):
     if zmin is not None:
         ras = ras[zs>zmin]
         decs = decs[zs>zmin]
         sns = sns[zs>zmin]
         y0s = y0s[zs>zmin]
-        #mass = mass[zs>zmin]
+        mass = mass[zs>zmin]
         zs = zs[zs>zmin]
     if zmax is not None:
         ras = ras[zs<=zmax]
         decs = decs[zs<=zmax]
         sns = sns[zs<=zmax]
         y0s = y0s[zs<=zmax]
-        #mass = mass[zs<=zmax]
+        mass = mass[zs<=zmax]
         zs = zs[zs<=zmax]
     if snmin is not None:
         ras = ras[sns>snmin]
         decs = decs[sns>snmin]
         zs = zs[sns>snmin]
         y0s = y0s[sns>snmin]
-        #mass = mass[sns>snmin]
+        mass = mass[sns>snmin]
         sns = sns[sns>snmin]
     if snmax is not None:
         ras = ras[sns<=snmax]
         decs = decs[sns<=snmax]
         zs = zs[sns<=snmax]
         y0s = y0s[sns<=snmax]
-        #mass = mass[sns<=snmax]
+        mass = mass[sns<=snmax]
         sns = sns[sns<=snmax]
     if y0min is not None:
         ras = ras[y0s>y0min]
         decs = decs[y0s>y0min]
         zs = zs[y0s>y0min]
         sns = sns[y0s>y0min]
-        #mass = mass[y0s>y0min]
+        mass = mass[y0s>y0min]
         y0s = y0s[y0s>y0min]
     if y0max is not None:
         ras = ras[y0s<=y0max]
         decs = decs[y0s<=y0max]
         zs = zs[y0s<=y0max]
         sns = sns[y0s<=y0max]
-        #mass = mass[y0s<=y0max]
+        mass = mass[y0s<=y0max]
         y0s = y0s[y0s<=y0max]
-    return ras,decs,sns,zs,y0s
-    #return ras,decs,sns,zs,y0s,mass
-def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=False,snmin=None,snmax=None,y0min=None,y0max=None):
+    if decmin is not None:
+        ras = ras[np.abs(decs)<=decmin]
+        zs = zs[np.abs(decs)<=decmin]
+        y0s = y0s[np.abs(decs)<=decmin]
+        sns = sns[np.abs(decs)<=decmin] 
+        mass = mass[np.abs(decs)<=decmin] 
+        decs = decs[np.abs(decs)<=decmin] 
+    return ras,decs,sns,zs,y0s,mass
+
+def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=False,snmin=None,snmax=None,y0min=None,y0max=None,decmin=None):
     data = {}
     if cat_type=='hilton_beta':
         if is_meanfield:
@@ -332,17 +380,94 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
             ras = hdu[1].data['RADeg']
             decs = hdu[1].data['DECDeg']
             zs = hdu[1].data['redshift']
-            sns = hdu[1].data['fixed_SNR'] # mock
+            sns = hdu[1].data['SNR' if not (is_meanfield) else 'fixed_SNR']
             y0s = hdu[1].data['fixed_y_c']
-            #mass = hdu[1].data['true_M500']
-        #ras,decs,sns,zs,y0s,mass = cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max,mass)
-        ras,decs,sns,zs,y0s = cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max)
+            mass = hdu[1].data['M500' if not (is_meanfield) else 'true_M500']
+
+        ras,decs,sns,zs,y0s,mass = cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max,decmin,mass)
         ras = ras[:nmax]
         decs = decs[:nmax]
         y0s = y0s[:nmax]
-        #mass = mass[:nmax]
+        zs = zs[:nmax]
+        sns = sns[:nmax]
+        mass = mass[:nmax]
         ws = ras*0 + 1
         data['sns'] = sns
+        data['mass'] = mass
+            
+        
+    elif cat_type=='planck_union':
+
+        if is_meanfield:
+            # made using mapcat.py followed by randcat.py
+            catalogue_name = paths.data+ 'placnk_union_randoms.txt'
+            ras, decs = np.loadtxt(catalogue_name, unpack=True)
+            zs = ras*0   
+            mass = ras*0         
+
+        else:
+            catalogue_name = paths.data+ 'SZ-union_R2.08.fits'
+            hdu = fits.open(catalogue_name)
+            ras = hdu[1].data['RA']
+            decs = hdu[1].data['DEC']
+            zs = hdu[1].data['REDSHIFT']
+            mass = hdu[1].data['MSZ']
+
+            ras = ras[zs >= 0.2]
+            decs = decs[zs >= 0.2] 
+            mass = mass[zs >= 0.2]
+            zs = zs[zs >= 0.2]
+        
+        ras = ras[:nmax]
+        decs = decs[:nmax]
+        zs = zs[:nmax]
+        mass = mass[:nmax]
+        ws = ras*0 + 1
+        data['mass'] = mass
+
+
+    elif cat_type=='spt_union':
+
+        if is_meanfield:
+            # made using mapcat.py followed by randcat.py
+            catalogue_name = paths.data+ 'spt_union_randoms.txt'
+            ras, decs = np.loadtxt(catalogue_name,unpack=True)
+            zs = ras*0            
+
+        else:
+            # SPTSZ 2019 catalogue
+            catalogue_name = paths.data+ 'sptsz2500d_cluster_sample_Bocquet19.fits'
+            hdu = fits.open(catalogue_name)
+            ras0 = hdu[1].data['RA']
+            decs0 = hdu[1].data['DEC']
+            zs0 = hdu[1].data['REDSHIFT']     
+
+            # SPTECS 2019 catalogue
+            catalogue_name = paths.data+ 'sptecs_catalog_oct919.fits'
+            hdu = fits.open(catalogue_name)
+            ras1 = hdu[1].data['RA']
+            decs1 = hdu[1].data['DEC']
+            zs1 = hdu[1].data['REDSHIFT']
+
+            # SPTPol 2019 catalogue            
+            catalogue_name = paths.data+ 'sptpol100d_catalog_huang19.fits'
+            hdu = fits.open(catalogue_name)
+            ras2 = hdu[1].data['RA']
+            decs2 = hdu[1].data['Dec']
+            zs2 = hdu[1].data['redshift']    
+
+            ras = np.concatenate((ras0, ras1, ras2))  
+            decs = np.concatenate((decs0, decs1, decs2))              
+            zs = np.concatenate((zs0, zs1, zs2)) 
+
+            ras = ras[zs > 0]
+            decs = decs[zs > 0] 
+            zs = zs[zs > 0]  
+        
+        ras = ras[:nmax]
+        decs = decs[:nmax]
+        zs = zs[:nmax]
+        ws = ras*0 + 1
 
     elif cat_type=='sdss_redmapper':
         if is_meanfield:
@@ -352,7 +477,7 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
         hdu = fits.open(catalogue_name)
         ras = hdu[1].data['RA']
         decs = hdu[1].data['DEC']
-        zs = hdu[1].data['Z_LAMBDA']
+        zs = hdu[1].data['Z_LAMBDA' if not(is_meanfield) else 'Z']
         lams = hdu[1].data['LAMBDA']
         ras = ras[decs<25]
         zs = zs[decs<25]
@@ -499,7 +624,6 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
     else:
         raise NotImplementedError
         
-    #return ras,decs,zs,ws,data,mass
     return ras,decs,zs,ws,data
 
 def load_beam(freq):
@@ -978,10 +1102,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         cov = opt_covm[:nbins,:nbins]
         fbin_edges = bin_edges[:nbins+1]
         fcents = cents[:nbins]
-        lnlikes,like_fit,fit_mass,mass_err,fprofiles,fit_profile = lensing.fit_nfw_profile(profile,cov,masses,z,conc,cc,shape,wcs,fbin_edges,lmax=0,lmin=0,
-                                                                                           overdensity=args.overdensity,
-                                                                                           critical=args.critical,at_cluster_z=args.at_z0,
-                                                                                           mass_guess=mguess,sigma_guess=merr_guess,kmask=kmask,sigma_mis=sigma_mis)
+        lnlikes,like_fit,fit_mass,mass_err,fprofiles,fit_profile =lensing.fit_nfw_profile(profile,cov,masses,z,conc,cc,shape,wcs,fbin_edges,lmax=0,lmin=0,overdensity=args.overdensity,critical=args.critical,at_cluster_z=args.at_z0,mass_guess=mguess,sigma_guess=merr_guess,kmask=kmask,sigma_mis=sigma_mis)
 
         print("Fit mass : " , fit_mass/1e14,mass_err/1e14)
         snr  = fit_mass / mass_err

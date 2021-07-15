@@ -865,8 +865,8 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
             gy,gx = enmap.grad(stamp)
             gy = maps.filter_map(gy,maps.mask_kspace(shape,wcs,lmin=200,lmax=1000))
             gx = maps.filter_map(gx,maps.mask_kspace(shape,wcs,lmin=200,lmax=1000))
-            plot(f"{save_dir}/{save_name}_sm_opt_weighted_mfsub_phi.png",stamp,tap_per,pad_per,crop=None,lim=args.slim,cmap='coolwarm',quiver=[gy,gx])
-            plot(f"{save_dir}/{save_name}_sm_opt_weighted_mfsub_phi_zoom.png",stamp,tap_per,pad_per,crop=crop,lim=args.slim,cmap='coolwarm',quiver=[gy,gx])
+            # plot(f"{save_dir}/{save_name}_sm_opt_weighted_mfsub_phi.png",stamp,tap_per,pad_per,crop=None,lim=args.slim,cmap='coolwarm',quiver=[gy,gx])
+            # plot(f"{save_dir}/{save_name}_sm_opt_weighted_mfsub_phi_zoom.png",stamp,tap_per,pad_per,crop=crop,lim=args.slim,cmap='coolwarm',quiver=[gy,gx])
 
 
             # Nmean weighted
@@ -972,7 +972,10 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
 
         conc = args.conc
         #cc = None
-        cc = Cosmology()
+        from szar import counts
+        cc = counts.ClusterCosmology(skipCls=True,skipPower=True,skip_growth=True)
+
+        #cc = Cosmology()
         sigma_mis = args.sigma_mis
         mguess = args.mass_guess
         merr_guess = (1/args.snr_guess) * mguess

@@ -165,7 +165,7 @@ if not (args.inject_sim):
     with bench.show("cull"):
         coords = np.stack([decs, ras]) * utils.degree
         # Convert catalog coords to pixel coords
-        ipixs = rms_map.sky2pix(coords).astype(np.int)
+        ipixs = rms_map.sky2pix(coords).astype(int)
         Ny, Nx = rms_map.shape
         pixs = []
         # Select pixels that fall within map

@@ -14,7 +14,7 @@ from enlib import bench
 import warnings
 import re
 #from szar import counts
-from HMFunc.cosmology import Cosmology
+#from HMFunc.cosmology import Cosmology
 
 import argparse
 # Parse command line

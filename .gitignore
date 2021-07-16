@@ -6,3 +6,4 @@ script_*.sh
 *.txt
 *.tar
 archived/
+*__pycache__

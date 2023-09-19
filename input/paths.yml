@@ -1,5 +1,8 @@
-data: /scratch/r/rbond/msyriac/data/act/cmbh/
+# These should be unique to the user running the code
 scratch: /scratch/r/rbond/msyriac/data/depot/cmbh/
+postprocess_path: /scratch/r/rbond/msyriac/data/depot/cmbh/postprocess/
+# These are generally read-only paths with data shared by people
+data: /scratch/r/rbond/msyriac/data/act/cmbh/
 planck_data: /scratch/r/rbond/msyriac/data/planck/data/pr3/
 coadd_data: /home/r/rbond/sigurdkn/project/actpol/map_coadd/20200228/release2/
 boss_dr12_data: /scratch/r/rbond/msyriac/data/boss/boss_dr12/
@@ -7,4 +10,3 @@ boss_dr11_data: /scratch/r/rbond/msyriac/data/boss/boss_dr11/
 hsc_data: /scratch/r/rbond/msyriac/data/hsc/
 boss_vrec_data: /scratch/r/rbond/msyriac/data/boss/cmass_kendrick/
 full_sim: /scratch/r/rbond/msyriac/data/depot/cmbh/full_sims/
-postprocess_path: /scratch/r/rbond/msyriac/data/depot/cmbh/postprocess/

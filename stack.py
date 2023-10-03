@@ -1203,9 +1203,9 @@ for task in my_tasks:
     if not(args.is_meanfield) and not(args.inject_sim):
         s.add_to_stats("data", (z,weight,*[cdata[key][i] for key in sorted(cdata.keys())]))                
         s.add_to_stats("redshift", (z,))
-        s.add_to_stats("mass", (cdata['mass'][i],))
-        s.add_to_stats("y0s", (cdata['y0s'][i],))
-        s.add_to_stats("wmass", (cdata['mass'][i] * weight,))  
+        #s.add_to_stats("mass", (cdata['mass'][i],))
+        #s.add_to_stats("y0s", (cdata['y0s'][i],))
+        #s.add_to_stats("wmass", (cdata['mass'][i] * weight,))  
       
     j = j + 1
 
@@ -1335,7 +1335,7 @@ if rank == 0:
         np.savetxt(f"{paths.savedir}/bin_edges.txt", bin_edges)
         if not(args.is_meanfield) and not (args.debug_stack):
             np.savetxt(f"{paths.savedir}/profiles.txt",s.vectors['k1d'])
-            np.savetxt(f"{paths.savedir}/z_mass_y.txt", np.c_[s.vectors['redshift'], s.vectors['mass'], s.vectors['y0s']])
+            #np.savetxt(f"{paths.savedir}/z_mass_y.txt", np.c_[s.vectors['redshift'], s.vectors['mass'], s.vectors['y0s']])
 
     for ctkey in [
         "selected"
@@ -1352,10 +1352,10 @@ if rank == 0:
         assert N_stamp == s.stack_count["kmap"]
         assert N_stamp == s.vectors["kw"].shape[0]
 
-        if not (args.is_meanfield):
-            kappa_w = s.vectors['kw'].sum()
-            w_mass = s.vectors['wmass'].sum(axis=0)/kappa_w
-            print("weighted SZ mean mass : ", w_mass, "1e14 Msun")   
+        # if not (args.is_meanfield):
+        #     kappa_w = s.vectors['kw'].sum()
+        #     w_mass = s.vectors['wmass'].sum(axis=0)/kappa_w
+        #     print("weighted SZ mean mass : ", w_mass, "1e14 Msun")   
 
     # Some debug plots if requested
     if args.debug_powers:

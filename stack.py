@@ -77,37 +77,46 @@ if not (args.inject_sim):
         else:
             try:
                 pmap = enmap.read_map(fplc_map, delayed=False)
+
             except:
                 plc_map = paths.planck_data + "COM_CMB_IQU-smica-nosz_2048_R3.00_full.fits"
+                
                 # reproject the Planck map (healpix -> CAR)
                 fshape, fwcs = enmap.fullsky_geometry(res=2.0 * utils.arcmin, proj="car")
-                pmap = reproject.enmap_from_healpix(
-                    plc_map, fshape, fwcs, ncomp=1, unit=1, lmax=6000, rot="gal,equ"
+
+                # this doesn't work with the latest pixell version (v0.20.3)
+                # pmap = reproject.enmap_from_healpix(
+                #     plc_map, fshape, fwcs, ncomp=1, unit=1, lmax=6000, rot="gal,equ"
+                # )
+
+                # reading the input map
+                p_map = np.atleast_2d(hp.read_map(plc_map, field=tuple(range(0,1)))).astype(np.float64)
+
+                # perform the actual transform
+                pmap = reproject.healpix2map(
+                    p_map, fshape, fwcs, lmax=6000, rot="gal,equ"
                 )
                 enmap.write_map(fplc_map, pmap)
+
 
         # ACT 150 GHz coadd map
         if not(args.full_sim_index is None):
             amap_150 = enmap.read_map(f'{paths.fullsim_path}/af150_sim_{args.full_sim_index:06d}.fits')
         else:
-            if data_choice.hres_map == 'dr6': act_map = (paths.coadd_data + data_choice.dr6_150)
-            elif data_choice.hres_map == 'dr6_simple': act_map = (paths.coadd_data + data_choice.dr6_simple_150)
-            else: act_map = (paths.coadd_data + data_choice.dr5_150)
+            act_map = (paths.coadd_data + data_choice.hres_150)
 
             famap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
 
             # SZ cluster model image subtraction for 150 GHz
             if args.hres_grad:            
                 if not (args.grad_noszsub): 
-                    if data_choice.hres_map == 'dr6' or 'dr6_simple': gamap_150 = famap_150 - enmap.read_map(paths.data + data_choice.dr6_model_simple_150)
-                    else: gamap_150 = famap_150 - enmap.read_map(paths.data + data_choice.dr5_model_150)
+                    gamap_150 = famap_150 - enmap.read_map(paths.data + data_choice.hres_model_150)
 
                 else: 
                     gamap_150 = famap_150
             
             if not(args.no_sz_sub):
-                if data_choice.hres_map == 'dr6' or 'dr6_simple': amap_150 = famap_150 - enmap.read_map(paths.data + data_choice.dr6_model_simple_150)
-                else: amap_150 = famap_150 - enmap.read_map(paths.data + data_choice.dr5_model_150)   
+                amap_150 = famap_150 - enmap.read_map(paths.data + data_choice.hres_model_150)   
 
             else:
                 amap_150 = famap_150
@@ -116,24 +125,20 @@ if not (args.inject_sim):
         if not(args.full_sim_index is None):
             amap_90 = enmap.read_map(f'{paths.fullsim_path}/af090_sim_{args.full_sim_index:06d}.fits')
         else:
-            if data_choice.hres_map == 'dr6': act_map = (paths.coadd_data + data_choice.dr6_090)
-            elif data_choice.hres_map == 'dr6_simple': act_map = (paths.coadd_data + data_choice.dr6_simple_090)
-            else: act_map = (paths.coadd_data + data_choice.dr5_090)
+            act_map = (paths.coadd_data + data_choice.hres_090)
 
             famap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
 
             # SZ cluster model image subtraction for 90 GHz    
             if args.hres_grad:            
                 if not (args.grad_noszsub): 
-                    if data_choice.hres_map == 'dr6' or 'dr6_simple': gamap_090 = famap_90 - enmap.read_map(paths.data + data_choice.dr6_model_simple_090)
-                    else: gamap_090 = famap_90 - enmap.read_map(paths.data + data_choice.dr5_model_090)
+                    gamap_090 = famap_90 - enmap.read_map(paths.data + data_choice.hres_model_090)
  
                 else: 
                     gamap_90 = famap_90
    
             if not(args.no_sz_sub):
-                if data_choice.hres_map == 'dr6' or 'dr6_simple': amap_90 = famap_90 - enmap.read_map(paths.data + data_choice.dr6_model_simple_090)
-                else: amap_90 = famap_90 - enmap.read_map(paths.data + data_choice.dr5_model_090) 
+                amap_90 = famap_90 - enmap.read_map(paths.data + data_choice.hres_model_090) 
 
             else:
                 amap_90 = famap_90
@@ -157,13 +162,15 @@ if not (args.inject_sim):
             null_map_90 = famap_90 - namap_90
 
         # Inv var map for 90 GHz
-        if data_choice.hres_map == 'dr6': ivar_map = (paths.coadd_data + data_choice.dr6_ivar)
-        elif data_choice.hres_map == 'dr6_simple': ivar_map = (paths.coadd_data + data_choice.dr6_simple_ivar)
-        else: ivar_map = (paths.coadd_data + data_choice.dr5_ivar)
+        ivar_map = (paths.coadd_data + data_choice.hres_ivar)
 
-        if data_choice.hres_map == 'dr6': imap_90 = enmap.read_map(ivar_map, delayed=False)
-        else: imap_90 = enmap.read_map(ivar_map, delayed=False, sel=np.s_[0, ...])
+        # if data_choice.hres_map == 'dr6': imap_90 = enmap.read_map(ivar_map, delayed=False)
+        # else: imap_90 = enmap.read_map(ivar_map, delayed=False, sel=np.s_[0, ...]) ##### fix here 
 
+        try:
+            imap_90 = enmap.read_map(ivar_map, delayed=False, sel=np.s_[0, ...]) 
+        except:
+            imap_90 = enmap.read_map(ivar_map, delayed=False)
 
         rms_map = maps.rms_from_ivar(
             imap_90, cylindrical=True

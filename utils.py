@@ -358,7 +358,7 @@ def cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max,decmin,mass):
 
 def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=False,snmin=None,snmax=None,y0min=None,y0max=None,decmin=None):
     data = {}
-    if cat_type=='hilton_beta':
+    if cat_type=='hilton_dr5':
         if is_meanfield:
             #catalogue_name = paths.data+ 'selection/S18d_202003Mocks_DESSNR6Scaling/mockCatalog_combined.fits'
             catalogue_name = paths.data+ 'mocks_S18d_202006_DESSNR6Scaling/mockCatalog_combined.fits'
@@ -402,7 +402,7 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
         if is_meanfield:
             catalogue_name = paths.data+ 'mocks_S18d_202006_DESSNR6Scaling/mockCatalog_combined.fits' # needs mock for DR6, this is DR5 mock
         else:
-            catalogue_name = paths.data+ 'dr6-3freq-multipass-20220404/dr6-3freq-multipass_mass.fits' # corresponds to DR6 coadd
+            catalogue_name = paths.cat_data+ 'dr6-3freq-multipass-20220404/dr6-3freq-multipass_mass.fits' # corresponds to DR6 coadd
 
         hdu = fits.open(catalogue_name)
         ras = hdu[1].data['RADeg']
@@ -429,7 +429,7 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
         if is_meanfield:
             catalogue_name = paths.data+ 'mocks_S18d_202006_DESSNR6Scaling/mockCatalog_combined.fits' # needs mock for DR6, this is DR5 mock
         else:
-            catalogue_name = paths.data+ 'dr6-3freq-multipass-20230721-simple/catalogs/s08s21-3freq-flagdust-multipass-extended_mass.fits' # corresponds to DR6 coadd simple
+            catalogue_name = paths.data+ '20230721/catalogs/s08s21-3freq-flagdust-multipass-extended_mass.fits' # corresponds to DR6 coadd simple
         
         hdu = fits.open(catalogue_name)
         ras = hdu[1].data['RADeg']

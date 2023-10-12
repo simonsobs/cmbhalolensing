@@ -1,21 +1,28 @@
-# choose coadd map to use for hres leg
-# available maps are dr5 / dr6 / dr6_simple
-hres_map: 'dr6'  
+# choose coadd maps to use for hres leg
 
-dr5_090: act_planck_dr5.01_s08s18_AA_f090_night_map_srcfree.fits
-dr5_150: act_planck_dr5.01_s08s18_AA_f150_night_map_srcfree.fits
-dr5_ivar: act_planck_dr5.01_s08s18_AA_f090_night_ivar.fits
+hres_090: 20211219/act_planck_daynight_f090_map_srcfree.fits
+hres_150: 20211219/act_planck_daynight_f150_map_srcfree.fits
+hres_ivar: 20211219/act_planck_daynight_f090_ivar.fits
+hres_model_090: 20230721/modelImages/DR6_candidates_SNR5_model_f090.fits
+hres_model_150: 20230721/modelImages/DR6_candidates_SNR5_model_f150.fits
 
-dr6_090: act_planck_daynight_f090_map_srcfree.fits
-dr6_150: act_planck_daynight_f150_map_srcfree.fits
-dr6_ivar: act_planck_daynight_f090_ivar.fits 
 
-dr6_simple_090: act_planck_s08_s21_daynight_f090_map_srcfree.fits
-dr6_simple_150: act_planck_s08_s21_daynight_f150_map_srcfree.fits
-dr6_simple_ivar: act_planck_s08_s21_daynight_f090_ivar.fits
+# dr5_090: act_planck_dr5.01_s08s18_AA_f090_night_map_srcfree.fits
+# dr5_150: act_planck_dr5.01_s08s18_AA_f150_night_map_srcfree.fits
+# dr5_ivar: act_planck_dr5.01_s08s18_AA_f090_night_ivar.fits
 
-dr5_model_090: S18d_202006_pass2_confirmed_model_f090.fits
-dr5_model_150: S18d_202006_pass2_confirmed_model_f150.fits 
+# dr6_090: 20211219/act_planck_daynight_f090_map_srcfree.fits
+# dr6_150: 20211219/act_planck_daynight_f150_map_srcfree.fits
+# dr6_ivar: 20211219/act_planck_daynight_f090_ivar.fits 
 
-dr6_model_simple_090: dr6-3freq-multipass-20230721-simple/modelImages/DR6_candidates_SNR5_model_f090.fits
-dr6_model_simple_150: dr6-3freq-multipass-20230721-simple/modelImages/DR6_candidates_SNR5_model_f150.fits
+# dr6_simple_090: 20220909_simple/act_planck_s08_s21_daynight_f090_map_srcfree.fits
+# dr6_simple_150: 20220909_simple/act_planck_s08_s21_daynight_f150_map_srcfree.fits
+# dr6_simple_ivar: 20220909_simple/act_planck_s08_s21_daynight_f090_ivar.fits
+ 
+# dr5_model_090: S18d_202006_pass2_confirmed_model_f090.fits
+# dr5_model_150: S18d_202006_pass2_confirmed_model_f150.fits 
+
+# dr6_model_simple_090: 20230721/modelImages/DR6_candidates_SNR5_model_f090.fits
+# dr6_model_simple_150: 20230721/modelImages/DR6_candidates_SNR5_model_f150.fits
+
+

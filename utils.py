@@ -10,7 +10,7 @@ from enlib import bench
 import argparse
 import time
 
-#from HMFunc.cosmology import Cosmology
+from HMFunc.cosmology import Cosmology
 
 try:
     paths = bunch.Bunch(io.config_from_yaml("input/paths_local.yml"))
@@ -19,7 +19,7 @@ except:
     raise
 
 defaults = bunch.Bunch(io.config_from_yaml("input/defaults.yml"))
-
+data_choice = bunch.Bunch(io.config_from_yaml("input/data.yml"))
 
 def initialize_pipeline_config():
     start_time = time.time()
@@ -57,8 +57,12 @@ def initialize_pipeline_config():
     parser.add_argument(
         "--klmax", type=int, default=d.kappa_Lmax, help="Maximum multipole for recon."
     )
-    parser.add_argument("--hres-lxcut", type=int, default=None, help="Lxcut for ACT.")
-    parser.add_argument("--hres-lycut", type=int, default=None, help="Lycut for ACT.")
+    parser.add_argument(
+        "--hres-lxcut", type=int, default=None, help="Lxcut for ACT."
+    )
+    parser.add_argument(
+        "--hres-lycut", type=int, default=None, help="Lycut for ACT."
+    )
     parser.add_argument(
         "--zmin", type=float, default=None, help="Minimum redshift."
     )
@@ -78,13 +82,10 @@ def initialize_pipeline_config():
         "--y0max", type=float, default=None, help="Maximum y0."
     )
     parser.add_argument(
-        "--decmin", type=float, default=None, help="Minimum dec."
-    )
-    parser.add_argument(
-        "--decmax", type=float, default=None, help="Maximum dec."
-    )
-    parser.add_argument(
-        "--full-sim-index", type=int, default=None, help="Use full-sky CMB simulations with this index. Defaults to None."
+        "--full-sim-index", 
+        type=int, 
+        default=None, 
+        help="Use full-sky CMB simulations with this index. Defaults to None."
     )
     parser.add_argument(
         "--ilc-lmin", type=int, default=d.ilc_lmin, help="Minimum ell for ILC solution."
@@ -120,9 +121,15 @@ def initialize_pipeline_config():
         action="store_true",
         help="Use day-night as data.",
     )
-    parser.add_argument("--tap-per", type=float, default=d.taper_percent, help="Taper percentage.")
-    parser.add_argument("--pad-per", type=float, default=d.pad_percent, help="Pad percentage.")
-    parser.add_argument("--debug-fit", type=str, default=None, help="Which fit to debug.")
+    parser.add_argument(
+        "--tap-per", type=float, default=d.taper_percent, help="Taper percentage."
+    )
+    parser.add_argument(
+        "--pad-per", type=float, default=d.pad_percent, help="Pad percentage."
+    )
+    parser.add_argument(
+        "--debug-fit", type=str, default=None, help="Which fit to debug."
+    )
     parser.add_argument(
         "--debug-anomalies",
         action="store_true",
@@ -138,8 +145,12 @@ def initialize_pipeline_config():
         action="store_true",
         help="Whether to plot Nl for weighting and stop after one cluster.",
     )
-    parser.add_argument("--no-90", action="store_true", help="Do not use the 90 GHz map.")
-    parser.add_argument("--inpaint", action="store_true", help="Inpaint gradient.")
+    parser.add_argument(
+        "--no-90", action="store_true", help="Do not use the 90 GHz map."
+    )
+    parser.add_argument(
+        "--inpaint", action="store_true", help="Inpaint gradient."
+    )
     parser.add_argument(
         "--no-sz-sub",
         action="store_true",
@@ -181,19 +192,44 @@ def initialize_pipeline_config():
     parser.add_argument(
         "--rand-rot", action="store_true", help="Rotate high-res stamp by random number of 90 degrees as a null test."
     )
-    parser.add_argument("--night-only", action="store_true", help="Use night-only maps.")
-    parser.add_argument("--full-nl", action="store_true", help="Do not assume estimator is optimal for Nl weighting.")
+    parser.add_argument(
+        "--night-only", action="store_true", help="Use night-only maps."
+    )
+    parser.add_argument(
+        "--full-nl", action="store_true", help="Do not assume estimator is optimal for Nl weighting."
+    )
     parser.add_argument(
         "--act-only-in-hres",
         action="store_true",
         help="Use ACT only maps in high-res instead of ACT+Planck.",
     )
-    parser.add_argument("--save-power", action="store_true", help="Save power spectrum of each stamp.")
-    parser.add_argument("--no-150", action="store_true", help="Do not use the 150 GHz map.")
-    parser.add_argument("--freq-null", action="store_true", help="Use 90-150 GHz for high-res.")
-    parser.add_argument("--no-filter", action="store_true", help="Remove filters and stack without lensing reconstruction (use with --debug-stack)")
-    parser.add_argument("--hres-grad", action="store_true", help="Replace tSZ-free gradient with high-res ACT+Planck co-adds (use with --inpaint)")
-
+    parser.add_argument(
+        "--save-power", action="store_true", help="Save power spectrum of each stamp."
+    )
+    parser.add_argument(
+        "--no-150", action="store_true", help="Do not use the 150 GHz map."
+    )
+    parser.add_argument(
+        "--freq-null", action="store_true", help="Use 90-150 GHz for high-res."
+    )
+    parser.add_argument(
+        "--no-filter", 
+        action="store_true", 
+        help="Remove filters and stack without lensing reconstruction (use with --debug-stack)"
+    )
+    parser.add_argument(
+        "--hres-grad", 
+        action="store_true", 
+        help="Replace tSZ-free gradient with high-res co-adds (may want to use with --inpaint)"
+    )
+    parser.add_argument(
+        "--grad-noszsub", 
+        action="store_true", 
+        help="No SZ model image subtraction when replacing tSZ-free gradient with high-res co-adds (use with --hres-grad)"
+    )
+    parser.add_argument(
+        "--decmin", type=float, default=None, help="Minimum declination in degree."
+    )
     args = parser.parse_args()
 
     if args.hres_lmin is None:
@@ -225,7 +261,7 @@ def initialize_pipeline_config():
     tags.apstr = "act" if args.act_only_in_hres else "act_planck"
     tags.mstr = "_meanfield" if args.is_meanfield else ""
     tags.n90str = "_no90" if args.no_90 else ""
-    tags.s19str = "s19" if args.s19 else "s18"
+    tags.s19str = "s19" if args.s19 else "s18" 
     curlstr = "_curl" if args.curl else ""
     findstr = f"_{args.full_sim_index:06d}" if not(args.full_sim_index is None) else ""
     if not(args.full_sim_index is None):
@@ -266,64 +302,71 @@ def initialize_pipeline_config():
 
     paths.debugdir = debugdir
     paths.savedir = savedir
-    return start_time,paths,defaults,args,tags,rank
+    return start_time,paths,defaults,args,tags,rank,data_choice
 
-#def cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max,mass):
-def cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s=None,y0min=None,y0max=None):
-    if  not(zmin is None):
+def cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max,decmin,mass):
+    if zmin is not None:
         ras = ras[zs>zmin]
         decs = decs[zs>zmin]
         sns = sns[zs>zmin]
-        # y0s = y0s[zs>zmin]
-        #mass = mass[zs>zmin]
+        y0s = y0s[zs>zmin]
+        mass = mass[zs>zmin]
         zs = zs[zs>zmin]
-    if not(zmax is None):
+    if zmax is not None:
         ras = ras[zs<=zmax]
         decs = decs[zs<=zmax]
         sns = sns[zs<=zmax]
-        # y0s = y0s[zs<=zmax]
-        #mass = mass[zs<=zmax]
+        y0s = y0s[zs<=zmax]
+        mass = mass[zs<=zmax]
         zs = zs[zs<=zmax]
-    if not(snmin is None):
+    if snmin is not None:
         ras = ras[sns>snmin]
         decs = decs[sns>snmin]
         zs = zs[sns>snmin]
-        # y0s = y0s[sns>snmin]
-        #mass = mass[sns>snmin]
+        y0s = y0s[sns>snmin]
+        mass = mass[sns>snmin]
         sns = sns[sns>snmin]
-    if not(snmax is None):
+    if snmax is not None:
         ras = ras[sns<=snmax]
         decs = decs[sns<=snmax]
         zs = zs[sns<=snmax]
-        # y0s = y0s[sns<=snmax]
-        #mass = mass[sns<=snmax]
+        y0s = y0s[sns<=snmax]
+        mass = mass[sns<=snmax]
         sns = sns[sns<=snmax]
-    if not(y0min is None):
+    if y0min is not None:
         ras = ras[y0s>y0min]
         decs = decs[y0s>y0min]
         zs = zs[y0s>y0min]
         sns = sns[y0s>y0min]
-        #mass = mass[y0s>y0min]
-        # y0s = y0s[y0s>y0min]
-    if not(y0max is None):
+        mass = mass[y0s>y0min]
+        y0s = y0s[y0s>y0min]
+    if y0max is not None:
         ras = ras[y0s<=y0max]
         decs = decs[y0s<=y0max]
         zs = zs[y0s<=y0max]
         sns = sns[y0s<=y0max]
-        #mass = mass[y0s<=y0max]
-        # y0s = y0s[y0s<=y0max]
-    return ras,decs,sns,zs#,y0s
-    #return ras,decs,sns,zs,y0s,mass
-def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=False,snmin=None,snmax=None,y0min=None,y0max=None,decmin=None,decmax=None):
+        mass = mass[y0s<=y0max]
+        y0s = y0s[y0s<=y0max]
+    if decmin is not None:
+        ras = ras[np.abs(decs)<=decmin]
+        zs = zs[np.abs(decs)<=decmin]
+        y0s = y0s[np.abs(decs)<=decmin]
+        sns = sns[np.abs(decs)<=decmin] 
+        mass = mass[np.abs(decs)<=decmin] 
+        decs = decs[np.abs(decs)<=decmin] 
+    return ras,decs,sns,zs,y0s,mass
+
+def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=False,snmin=None,snmax=None,y0min=None,y0max=None,decmin=None):
     data = {}
-    if cat_type=='hilton_beta':
+    if cat_type=='hilton_dr5':
         if is_meanfield:
             #catalogue_name = paths.data+ 'selection/S18d_202003Mocks_DESSNR6Scaling/mockCatalog_combined.fits'
-            catalogue_name = paths.data+ 'selection/mocks_S18d_202006_DESSNR6Scaling/mockCatalog_combined.fits'
+            catalogue_name = paths.data+ 'mocks_S18d_202006_DESSNR6Scaling/mockCatalog_combined.fits'
         else:
             #catalogue_name = paths.data+ 'AdvACT_S18Clusters_v1.0-beta.fits'
-            catalogue_name = paths.data+ 'DR5_cluster-catalog_v1.0b2.fits'
-            #catalogue_name = paths.data+ 'AdvACT_unconfirmed_fixedSNR5p5.fits'
+            #catalogue_name = paths.data+ 'AdvACT_unconfirmed_fixedSNR5p5.fits'            
+            catalogue_name = paths.data+ 'DR5_cluster-catalog_v1.0b2.fits' # DR5 baseline
+
         hdu = fits.open(catalogue_name)
         if bcg:
             ras = hdu[1].data['opt_RADeg']
@@ -338,17 +381,148 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
             ras = hdu[1].data['RADeg']
             decs = hdu[1].data['DECDeg']
             zs = hdu[1].data['redshift']
-            sns = hdu[1].data['fixed_SNR'] # mock
+            sns = hdu[1].data['SNR' if not (is_meanfield) else 'fixed_SNR']
             y0s = hdu[1].data['fixed_y_c']
-            #mass = hdu[1].data['true_M500']
-        #ras,decs,sns,zs,y0s,mass = cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max,mass)
-        ras,decs,sns,zs,y0s = cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max)
+            mass = hdu[1].data['M500' if not (is_meanfield) else 'true_M500']
+
+        ras,decs,sns,zs,y0s,mass = cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max,decmin,mass)
         ras = ras[:nmax]
         decs = decs[:nmax]
         y0s = y0s[:nmax]
-        #mass = mass[:nmax]
+        zs = zs[:nmax]
+        sns = sns[:nmax]
+        mass = mass[:nmax]
         ws = ras*0 + 1
         data['sns'] = sns
+        data['mass'] = mass
+        data['y0s'] = y0s
+
+    elif cat_type=='hilton_dr6':
+
+        if is_meanfield:
+            catalogue_name = paths.data+ 'mocks_S18d_202006_DESSNR6Scaling/mockCatalog_combined.fits' # needs mock for DR6, this is DR5 mock
+        else:
+            catalogue_name = paths.cat_data+ 'dr6-3freq-multipass-20220404/dr6-3freq-multipass_mass.fits' # corresponds to DR6 coadd
+
+        hdu = fits.open(catalogue_name)
+        ras = hdu[1].data['RADeg']
+        decs = hdu[1].data['DECDeg']
+        zs = hdu[1].data['redshift']
+        sns = hdu[1].data['SNR' if not (is_meanfield) else 'fixed_SNR']
+        y0s = hdu[1].data['fixed_y_c']
+        mass = hdu[1].data['M500c' if not (is_meanfield) else 'true_M500']
+
+        ras,decs,sns,zs,y0s,mass = cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max,decmin,mass)
+        ras = ras[:nmax]
+        decs = decs[:nmax]
+        y0s = y0s[:nmax]
+        zs = zs[:nmax]
+        sns = sns[:nmax]
+        mass = mass[:nmax]
+        ws = ras*0 + 1
+        data['sns'] = sns
+        data['mass'] = mass
+        data['y0s'] = y0s      
+
+    elif cat_type=='hilton_dr6_simple':
+
+        if is_meanfield:
+            catalogue_name = paths.data+ 'mocks_S18d_202006_DESSNR6Scaling/mockCatalog_combined.fits' # needs mock for DR6, this is DR5 mock
+        else:
+            catalogue_name = paths.data+ '20230721/catalogs/s08s21-3freq-flagdust-multipass-extended_mass.fits' # corresponds to DR6 coadd simple
+        
+        hdu = fits.open(catalogue_name)
+        ras = hdu[1].data['RADeg']
+        decs = hdu[1].data['DECDeg']
+        zs = hdu[1].data['redshift']
+        sns = hdu[1].data['SNR' if not (is_meanfield) else 'fixed_SNR']
+        y0s = hdu[1].data['fixed_y_c']
+        mass = hdu[1].data['M500c' if not (is_meanfield) else 'true_M500']
+
+        ras,decs,sns,zs,y0s,mass = cut_z_sn(ras,decs,sns,zs,zmin,zmax,snmin,snmax,y0s,y0min,y0max,decmin,mass)
+        ras = ras[:nmax]
+        decs = decs[:nmax]
+        y0s = y0s[:nmax]
+        zs = zs[:nmax]
+        sns = sns[:nmax]
+        mass = mass[:nmax]
+        ws = ras*0 + 1
+        data['sns'] = sns
+        data['mass'] = mass
+        data['y0s'] = y0s            
+        
+    elif cat_type=='planck_union':
+
+        if is_meanfield:
+            # made using mapcat.py followed by randcat.py
+            catalogue_name = paths.data+ 'placnk_union_randoms.txt'
+            ras, decs = np.loadtxt(catalogue_name, unpack=True)
+            zs = ras*0   
+            mass = ras*0         
+
+        else:
+            catalogue_name = paths.data+ 'SZ-union_R2.08.fits'
+            hdu = fits.open(catalogue_name)
+            ras = hdu[1].data['RA']
+            decs = hdu[1].data['DEC']
+            zs = hdu[1].data['REDSHIFT']
+            mass = hdu[1].data['MSZ']
+
+            ras = ras[zs >= 0.2]
+            decs = decs[zs >= 0.2] 
+            mass = mass[zs >= 0.2]
+            zs = zs[zs >= 0.2]
+        
+        ras = ras[:nmax]
+        decs = decs[:nmax]
+        zs = zs[:nmax]
+        mass = mass[:nmax]
+        ws = ras*0 + 1
+        data['mass'] = mass
+
+
+    elif cat_type=='spt_union':
+
+        if is_meanfield:
+            # made using mapcat.py followed by randcat.py
+            catalogue_name = paths.data+ 'spt_union_randoms.txt'
+            ras, decs = np.loadtxt(catalogue_name,unpack=True)
+            zs = ras*0            
+
+        else:
+            # SPTSZ 2019 catalogue
+            catalogue_name = paths.data+ 'sptsz2500d_cluster_sample_Bocquet19.fits'
+            hdu = fits.open(catalogue_name)
+            ras0 = hdu[1].data['RA']
+            decs0 = hdu[1].data['DEC']
+            zs0 = hdu[1].data['REDSHIFT']     
+
+            # SPTECS 2019 catalogue
+            catalogue_name = paths.data+ 'sptecs_catalog_oct919.fits'
+            hdu = fits.open(catalogue_name)
+            ras1 = hdu[1].data['RA']
+            decs1 = hdu[1].data['DEC']
+            zs1 = hdu[1].data['REDSHIFT']
+
+            # SPTPol 2019 catalogue            
+            catalogue_name = paths.data+ 'sptpol100d_catalog_huang19.fits'
+            hdu = fits.open(catalogue_name)
+            ras2 = hdu[1].data['RA']
+            decs2 = hdu[1].data['Dec']
+            zs2 = hdu[1].data['redshift']    
+
+            ras = np.concatenate((ras0, ras1, ras2))  
+            decs = np.concatenate((decs0, decs1, decs2))              
+            zs = np.concatenate((zs0, zs1, zs2)) 
+
+            ras = ras[zs > 0]
+            decs = decs[zs > 0] 
+            zs = zs[zs > 0]  
+        
+        ras = ras[:nmax]
+        decs = decs[:nmax]
+        zs = zs[:nmax]
+        ws = ras*0 + 1
 
     elif cat_type=='sdss_redmapper':
         if is_meanfield:
@@ -358,7 +532,7 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
         hdu = fits.open(catalogue_name)
         ras = hdu[1].data['RA']
         decs = hdu[1].data['DEC']
-        zs = hdu[1].data['Z_LAMBDA']
+        zs = hdu[1].data['Z_LAMBDA' if not(is_meanfield) else 'Z']
         lams = hdu[1].data['LAMBDA']
         ras = ras[decs<25]
         zs = zs[decs<25]
@@ -414,7 +588,7 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
         ras = ras[decs<25]
         zs = zs[decs<25]
         decs = decs[decs<25]
-        if not(nmax is None):
+        if nmax is not None:
             """
             We have to be a bit more careful when a max number of random galaxies is requested for BOSS, because
             there is a North/South split.
@@ -505,16 +679,18 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
     else:
         raise NotImplementedError
         
-    #return ras,decs,zs,ws,data,mass
     return ras,decs,zs,ws,data
 
 def load_beam(freq):
-    if freq=='f150': fname = paths.data+'s16_pa2_f150_nohwp_night_beam_tform_jitter.txt'
-    elif freq=='f090': fname = paths.data+'s16_pa3_f090_nohwp_night_beam_tform_jitter.txt'
+    #if freq=='f150': fname = paths.data+'s16_pa2_f150_nohwp_night_beam_tform_jitter.txt'
+    #elif freq=='f090': fname = paths.data+'s16_pa3_f090_nohwp_night_beam_tform_jitter.txt'
+    if freq=='f150': fname = paths.data+'corrected_beam_150.txt'
+    elif freq=='f090': fname = paths.data+'corrected_beam_090.txt'
     ls,bls = np.loadtxt(fname,usecols=[0,1],unpack=True)
     assert ls[0]==0
     bls = bls / bls[0]
     return maps.interp(ls,bls)
+
 
 
 
@@ -596,7 +772,7 @@ def plot(fname,stamp,tap_per,pad_per,crop=None,lim=None,cmap='coolwarm',quiver=N
         tmap = kmap[trimy:-trimy,trimx:-trimx]
     else:
         tmap = kmap
-    if not(crop is None):
+    if crop is not None:
         tmap = maps.crop_center(tmap,crop)
     zfact = tmap.shape[0]*1./kmap.shape[0]
     twidth = tmap.extent()[0]/putils.arcmin
@@ -775,14 +951,14 @@ def load_vrec_catalog_boss(pathOutCatalog):
 
 def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,ignore_last=None):
 
-    if mf_path != "":
+    if mf_path is not "":
         smf_path = mf_path if (ignore_last is None) else mf_path[:-ignore_last]
         mf_paramstr = re.search(rf'plmin_(.*?)_meanfield', smf_path).group(1)
     sstack_path = stack_path if (ignore_last is None) else stack_path[:-ignore_last]
     st_paramstr = re.search(rf'plmin_(.*)', sstack_path).group(1)
 
     if not(ignore_param):
-        if mf_path != "":
+        if mf_path is not "":
             try:
                 assert mf_paramstr==st_paramstr
             except:
@@ -802,13 +978,13 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
     if not(save_name is None):
         save_dir = f'{paths.postprocess_path}/{save_name}'
         io.mkdir(f'{save_dir}')
-        if not(data is None): 
+        if data is not None: 
             io.save_cols(f'{save_dir}/{save_name}_catalog_data.txt',[data[key] for key in sorted(data.keys())],header=' '.join([key for key in sorted(data.keys())]))
 
-    if mf_path != "":
+    if mf_path is not "":
         s_mf, shape_mf, wcs_mf = load_dumped_stats(mf_path)
 
-    if mf_path != "":
+    if mf_path is not "":
         assert np.all(shape_stack==shape_mf)
         assert wcsutils.equal(wcs_stack,wcs_mf)
     assert np.all(shape_stack==kmask.shape)
@@ -820,10 +996,10 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         crop = int(args.cwidth / defaults.pix_width_arcmin)
 
     unweighted_stack,nmean_weighted_kappa_stack,opt_weighted_kappa_stack,opt_binned,opt_covm,opt_corr,opt_errs,binned,covm,corr,errs = analyze(s_stack,wcs)
-    if mf_path != "":
+    if mf_path is not "":
         mf_unweighted_stack,mf_nmean_weighted_kappa_stack,mf_opt_weighted_kappa_stack,mf_opt_binned,mf_opt_covm,mf_opt_corr,mf_opt_errs,mf_binned,mf_covm,mf_corr,mf_errs = analyze(s_mf,wcs)
 
-    # if not(profs is None):
+    # if profs is not None:
     #     profs = profs - mf_binned
     #     arcmax = 8.
     #     profs = profs[:,cents<arcmax].sum(axis=1)
@@ -847,7 +1023,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         plot(f"{save_dir}/{save_name}_unweighted_nomfsub.png",unweighted_stack,tap_per,pad_per,crop=None,lim=args.plim)
         plot(f"{save_dir}/{save_name}_unweighted_nomfsub_zoom.png",unweighted_stack,tap_per,pad_per,crop=crop,lim=args.plim)
 
-        if mf_path != "":
+        if mf_path is not "":
             # Opt weighted
             stamp = opt_weighted_kappa_stack - mf_opt_weighted_kappa_stack
             plot(f"{save_dir}/{save_name}_opt_weighted_mfsub.png",stamp,tap_per,pad_per,crop=None,lim=args.plim)
@@ -859,14 +1035,21 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
             plot(f"{save_dir}/{save_name}_sm_opt_weighted_mfsub_zoom.png",stamp,tap_per,pad_per,crop=crop,lim=args.slim)
             enmap.write_map(f"{save_dir}/{save_name}_sm_opt_weighted_mfsub.fits",stamp)
 
+            modlmap0 = unweighted_stack.modlmap()
+            stamp0 = maps.filter_map(unweighted_stack - mf_unweighted_stack,maps.gauss_beam(modlmap0,args.fwhm))
+            plot(f"{save_dir}/{save_name}_sm_unweighted_mfsub.png",stamp0,tap_per,pad_per,crop=None,lim=args.slim)
+            plot(f"{save_dir}/{save_name}_sm_unweighted_mfsub_zoom.png",stamp0,tap_per,pad_per,crop=crop,lim=args.slim)
+            enmap.write_map(f"{save_dir}/{save_name}_sm_unweighted_mfsub.fits",stamp0)            
+            
+
             filt = maps.gauss_beam(modlmap,args.fwhm)/modlmap**2.
             filt[modlmap<200] = 0
             stamp = maps.filter_map(opt_weighted_kappa_stack - mf_opt_weighted_kappa_stack,filt)
             gy,gx = enmap.grad(stamp)
             gy = maps.filter_map(gy,maps.mask_kspace(shape,wcs,lmin=200,lmax=1000))
             gx = maps.filter_map(gx,maps.mask_kspace(shape,wcs,lmin=200,lmax=1000))
-            # plot(f"{save_dir}/{save_name}_sm_opt_weighted_mfsub_phi.png",stamp,tap_per,pad_per,crop=None,lim=args.slim,cmap='coolwarm',quiver=[gy,gx])
-            # plot(f"{save_dir}/{save_name}_sm_opt_weighted_mfsub_phi_zoom.png",stamp,tap_per,pad_per,crop=crop,lim=args.slim,cmap='coolwarm',quiver=[gy,gx])
+            #plot(f"{save_dir}/{save_name}_sm_opt_weighted_mfsub_phi.png",stamp,tap_per,pad_per,crop=None,lim=args.slim,cmap='coolwarm',quiver=[gy,gx])
+            #plot(f"{save_dir}/{save_name}_sm_opt_weighted_mfsub_phi_zoom.png",stamp,tap_per,pad_per,crop=crop,lim=args.slim,cmap='coolwarm',quiver=[gy,gx])
 
 
             # Nmean weighted
@@ -905,7 +1088,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         io.plot_img(corr,f'{save_dir}/{save_name}_corr.png')
 
         pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
-        if mf_path != "":
+        if mf_path is not "":
             pl.add_err(cents, opt_binned - mf_opt_binned, yerr=opt_errs,ls="-",label="Filtered kappa, mean-field subtracted (optimal)")
             pl.add_err(cents+0.2, binned - mf_binned, yerr=errs,ls="-",label="Filtered kappa, mean-field subtracted")
             pl.add_err(cents, mf_opt_binned, yerr=mf_opt_errs,label="Mean-field (optimal)",ls="-",alpha=0.5)
@@ -920,7 +1103,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         pl.done(f'{save_dir}/{save_name}_profile.png')
 
         pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
-        if mf_path != "":
+        if mf_path is not "":
             pl.add_err(cents, opt_binned - mf_opt_binned, yerr=opt_errs,ls="-",label="Filtered kappa, mean-field subtracted (optimal)")
             pl.add_err(cents, mf_opt_binned, yerr=mf_opt_errs,label="Mean-field (optimal)",ls="-",alpha=0.5)
         else:
@@ -932,7 +1115,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
 
         arcmax = 5.
         nbins = bin_edges[bin_edges<arcmax].size - 1
-        if mf_path == "":
+        if mf_path is "":
             mf_opt_binned = opt_binned*0
             mf_binned = opt_binned*0
         diff = (opt_binned - mf_opt_binned)[:nbins]
@@ -953,7 +1136,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         io.save_cols(f'{save_dir}/{save_name}_profile.txt', (cents, ret_data))
         io.save_cols(f'{save_dir}/{save_name}_profile_errs.txt', (cents, errs))
         io.save_cols(f'{save_dir}/{save_name}_mf.txt', (cents, mf_binned))
-        if mf_path != "":
+        if mf_path is not "":
             io.save_cols(f'{save_dir}/{save_name}_mf_errs.txt', (cents, mf_opt_errs))
         np.savetxt(f'{save_dir}/{save_name}_opt_covm.txt', ret_opt_cov)
         np.savetxt(f'{save_dir}/{save_name}_covm.txt', ret_cov)
@@ -972,10 +1155,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
 
         conc = args.conc
         #cc = None
-        from szar import counts
-        cc = counts.ClusterCosmology(skipCls=True,skipPower=True,skip_growth=True)
-
-        #cc = Cosmology()
+        cc = Cosmology()
         sigma_mis = args.sigma_mis
         mguess = args.mass_guess
         merr_guess = (1/args.snr_guess) * mguess
@@ -987,10 +1167,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         cov = opt_covm[:nbins,:nbins]
         fbin_edges = bin_edges[:nbins+1]
         fcents = cents[:nbins]
-        lnlikes,like_fit,fit_mass,mass_err,fprofiles,fit_profile = lensing.fit_nfw_profile(profile,cov,masses,z,conc,cc,shape,wcs,fbin_edges,lmax=0,lmin=0,
-                                                                                           overdensity=args.overdensity,
-                                                                                           critical=args.critical,at_cluster_z=args.at_z0,
-                                                                                           mass_guess=mguess,sigma_guess=merr_guess,kmask=kmask,sigma_mis=sigma_mis)
+        lnlikes,like_fit,fit_mass,mass_err,fprofiles,fit_profile =lensing.fit_nfw_profile(profile,cov,masses,z,conc,cc,shape,wcs,fbin_edges,lmax=0,lmin=0,overdensity=args.overdensity,critical=args.critical,at_cluster_z=args.at_z0,mass_guess=mguess,sigma_guess=merr_guess,kmask=kmask,sigma_mis=sigma_mis)
 
         print("Fit mass : " , fit_mass/1e14,mass_err/1e14)
         snr  = fit_mass / mass_err
@@ -1012,7 +1189,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         pl.done(f'{save_dir}/{save_name}_fprofiles.png')
 
 
-        if not(args.theory is None):
+        if args.theory is not None:
             savedir = p['scratch'] + f"/{args.theory}/"
             lensed_version = args.theory
             bfact = float(re.search(rf'bfact_(.*?)_pfact', args.theory).group(1))

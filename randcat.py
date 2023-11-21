@@ -14,13 +14,14 @@ a random catalog.
 paths = cutils.paths
 #cat_type = "wise_panstarrs"
 #cat_type = "madcows_photz"
-cat_type = args.sys[1]
-Nx = int(args.sys[2])
+cat_type = sys.argv[1]
+Nx = int(sys.argv[2])
+meanfield = False
 
-ras,decs,_,_,_ = cutils.catalog_interface(cat_type,is_meanfield=False)
+ras,decs,_,_,_ = cutils.catalog_interface(cat_type,is_meanfield=meanfield)
 N = Nx * len(ras)
 
-mask = enmap.read_map(f'{paths.scratch}{cat_type}_mask.fits')
+mask = enmap.read_map(f'{paths.data}{cat_type}_mask.fits')
 shape,wcs = mask.shape,mask.wcs
 Npix = mask[mask>0].size
 inds = np.random.choice(Npix,size=N,replace=False)

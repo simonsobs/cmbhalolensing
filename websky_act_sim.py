@@ -1,7 +1,7 @@
 import time as t
 from astropy.io import fits
 import matplotlib
-matplotlib.use('Agg')
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from pixell import enmap, reproject, utils, curvedsky, wcsutils
@@ -19,15 +19,17 @@ my_path = "/home3/eunseong/cmbhalolensing/data"
 sim_path = "/data5/sims/websky/data"
 act_sim_path = "/data5/sims/websky/dr5_clusters"
 output_path = "/home3/eunseong/cmbhalolensing/wsky_outs"
+mat_path = "/home1/mathm/repos/cmbhalolensing"
 
 #-------------------------------------------------------------------------------
 
 save_name = "test"
-save_dir = f'{output_path}/{save_name}'
-io.mkdir(f'{save_dir}')
+save_dir = f"{output_path}/{save_name}"
+io.mkdir(f"{save_dir}")
 print(" ::: saving to ", save_dir)
 
 # options: halo, act_tsz, act_tsz_ksz_cib
+# which_cat = "act_tsz"
 which_cat = "act_tsz_ksz_cib"
 
 # options: l_only, l_tsz, l_tsz_msub, l_ksz_cib, l_tsz_ksz_cib, l_tsz_ksz_cib_msub
@@ -81,12 +83,21 @@ def bin(data, modrmap, bin_edges):
     return ret 
     
 def load_beam(freq):
-    if freq=='f150': fname = f'{act_sim_path}/beam_gaussian_la145.txt'
-    elif freq=='f090': fname = f'{act_sim_path}/beam_gaussian_la093.txt'    
+    if freq=="f150": fname = f"{act_sim_path}/beam_gaussian_la145.txt"
+    elif freq=="f090": fname = f"{act_sim_path}/beam_gaussian_la093.txt"    
     ls,bls = np.loadtxt(fname,usecols=[0,1],unpack=True)
     assert ls[0]==0
     bls = bls / bls[0]
     return maps.interp(ls,bls)     
+
+def apply_beam(imap): 
+    # map2alm of the maps, almxfl(alm, beam_1d) to convolve with beam, alm2map to convert back to map
+    alm_lmax = 8192 * 3
+    bfunc150 = cutils.load_beam("f150")      
+    imap_alm = curvedsky.map2alm(imap, lmax=alm_lmax)
+    beam_convoloved_alm = curvedsky.almxfl(imap_alm, bfunc150)
+    return curvedsky.alm2map(beam_convoloved_alm, enmap.empty(imap.shape, imap.wcs))
+
 
 # reading catalogue ------------------------------------------------------------
 
@@ -94,12 +105,12 @@ if mean_field == True:
 
     # load random catalogue - created by mapcat.py + randcat.py
     if which_cat == "halo":
-        cat = f'{my_path}/webskysim_halo_randoms_actlike.txt'
+        cat = f"{my_path}/websky_halo_randoms_actlike.txt"
     elif which_cat == "act_tsz": 
-        cat = f'{my_path}/webskysim_ACT_cmb_tsz_randoms.txt'
+        cat = f"{my_path}/websky_ACT_cmb_tsz_randoms.txt"
     elif which_cat == "act_tsz_ksz_cib": 
-        cat = f'{my_path}/webskysim_ACT_cmb_tsz_ksz_cib_randoms.txt'
-        # cat = f'{my_path}/webskysim_ACT_cmb_tsz_ksz_cib_randoms_snr5p5.txt'
+        cat = f"{my_path}/websky_ACT_cmb_tsz_ksz_cib_randoms.txt"
+        #cat = f"{my_path}/websky_ACT_cmb_tsz_ksz_cib_randoms_snr5p5.txt"
         
     ras, decs = np.loadtxt(cat, unpack=True)
     print(" ::: this is a mean-field run")
@@ -133,7 +144,7 @@ else:
         zofchi = interp1d(chia,za)
 
         # load the entire halo catalogue 
-        f = open(f'{sim_path}/halos.pksc')
+        f = open(f"{sim_path}/halos.pksc")
         N = np.fromfile(f, count=3, dtype=np.int32)[0]
         catalog = np.fromfile(f, count=N*10, dtype=np.float32)
         catalog = np.reshape(catalog, (N,10))
@@ -156,9 +167,9 @@ else:
         print(" ::: min and max redshift: ", zs.min(), zs.max())
 
         print(" ::: selecting the sample that's similar to ACT DR5 sim catalogue") 
-        temp_cat = f'{act_sim_path}/ACTSim_CMB-T_cmb-tsz-ksz-cib_MFMF_pass2_mass.fits' # 7943
+        temp_cat = f"{act_sim_path}/ACTSim_CMB-T_cmb-tsz-ksz-cib_MFMF_pass2_mass.fits" # 7943
         hdu = fits.open(temp_cat)
-        act_mass = hdu[1].data['M200m'] # 1e14 Msun
+        act_mass = hdu[1].data["M200m"] # 1e14 Msun
         num_mbin = 30 # chosen to return a similar mass distribution of the sample
 
         mbins = np.linspace(act_mass.min(), act_mass.max(), num_mbin)
@@ -202,23 +213,23 @@ else:
 
     elif which_cat == "act_tsz":
 
-        cat = f'{act_sim_path}/ACTSim_CMB-T_cmb-tsz_MFMF_pass2_mass.fits' # 11902
+        cat = f"{act_sim_path}/ACTSim_CMB-T_cmb-tsz_MFMF_pass2_mass.fits" # 11902
         hdu = fits.open(cat)
-        ras = hdu[1].data['RADeg']
-        decs = hdu[1].data['DECDeg']
-        mass = hdu[1].data['M500c'] # 1e14 Msun
-        snr = hdu[1].data['SNR']
-        zs = hdu[1].data['redshift'] 
+        ras = hdu[1].data["RADeg"]
+        decs = hdu[1].data["DECDeg"]
+        mass = hdu[1].data["M500c"] # 1e14 Msun
+        snr = hdu[1].data["SNR"]
+        zs = hdu[1].data["redshift"] 
         
     elif which_cat == "act_tsz_ksz_cib":
 
-        cat = f'{act_sim_path}/ACTSim_CMB-T_cmb-tsz-ksz-cib_MFMF_pass2_mass.fits' # 7943
+        cat = f"{act_sim_path}/ACTSim_CMB-T_cmb-tsz-ksz-cib_MFMF_pass2_mass.fits" # 7943
         hdu = fits.open(cat)
-        ras = hdu[1].data['RADeg']
-        decs = hdu[1].data['DECDeg']
-        mass = hdu[1].data['M500c'] # 1e14 Msun
-        snr = hdu[1].data['SNR']
-        zs = hdu[1].data['redshift']
+        ras = hdu[1].data["RADeg"]
+        decs = hdu[1].data["DECDeg"]
+        mass = hdu[1].data["M500c"] # 1e14 Msun
+        snr = hdu[1].data["SNR"]
+        zs = hdu[1].data["redshift"]
 
         # # SNR cut corresponds to data cosmological sample
         # snr_cut = 5.5 # 2956
@@ -232,122 +243,170 @@ print(" ::: total number of clusters for stacking = ", len(ras))
 
 # reading maps -----------------------------------------------------------------
 
-if which_cat == "halo":
-    shape, wcs = enmap.fullsky_geometry(res=px*utils.arcmin, proj='car') 
-
-else:
-    # read tSZ cluster model image map by Matt Hilton
-    if which_cat == "act_tsz":
-        if freq_sz == 150:
-            imap = f'{act_sim_path}/model_MFMF_pass2_cmb-tsz_f150.fits'
-        elif freq_sz == 90:
-            imap = f'{act_sim_path}/model_MFMF_pass2_cmb-tsz_f090.fits'    
-    elif which_cat == "act_tsz_ksz_cib":
-        if freq_sz == 150:
-            imap = f'{act_sim_path}/model_MFMF_pass2_cmb-tsz-ksz-cib_f150.fits'
-        elif freq_sz == 90:
-            imap = f'{act_sim_path}/model_MFMF_pass2_cmb-tsz-ksz-cib_f090.fits'
-            
-    modelmap = enmap.read_map(imap)
-    shape, wcs = modelmap.shape, modelmap.wcs # (10320, 43200)  
-    print(" ::: reading tsz cluster model image map at %d GHz:" %freq_sz, imap)
-    print("modelmap", np.shape(modelmap))
+# read tSZ cluster model image map by Matt Hilton
+if which_cat == "act_tsz":
+    if freq_sz == 150:
+        imap = f"{act_sim_path}/model_MFMF_pass2_cmb-tsz_f150.fits"
+    elif freq_sz == 90:
+        imap = f"{act_sim_path}/model_MFMF_pass2_cmb-tsz_f090.fits"    
+elif which_cat == "act_tsz_ksz_cib":
+    if freq_sz == 150:
+        imap = f"{act_sim_path}/model_MFMF_pass2_cmb-tsz-ksz-cib_f150.fits"
+    elif freq_sz == 90:
+        imap = f"{act_sim_path}/model_MFMF_pass2_cmb-tsz-ksz-cib_f090.fits"
+        
+modelmap = enmap.read_map(imap)
+shape, wcs = modelmap.shape, modelmap.wcs # (10320, 43200)  
+print(" ::: reading tsz cluster model image map at %d GHz:" %freq_sz, imap)
+print("modelmap", np.shape(modelmap))
 
 
 
-# reading true kappa map 
-ifile = f'{sim_path}/kap.fits' # CMB lensing convergence from 0<z<1100
-#ifile = f'{sim_path}/kap_lt4.5.fits' # CMB lensing convergence from z<4.5 from halo+field websky
-imap = np.atleast_2d(hp.read_map(ifile, field=tuple(range(0,1)))).astype(np.float64)
-kmap = reproject.healpix2map(imap, shape, wcs)[0,:,:]
-print(" ::: reading true kappa map:", ifile) 
-print("kmap", np.shape(kmap))
+r_kmap = f"{my_path}/reproj_actfoot_kap_lt4.5.fits"
+r_lmap = f"{my_path}/reproj_actfoot_dlensed.fits"
+r_tszmap = f"{my_path}/reproj_actfoot_tsz_8192.fits"
+r_kszmap = f"{my_path}/reproj_actfoot_ksz.fits"
+r_cibmap = f"{my_path}/reproj_actfoot_cib_nu0145.fits"    
 
-# reading lensed alm map
-ifile = f'{sim_path}/lensed_alm.fits'
-alm = np.complex128(hp.read_alm(ifile, hdu=(1, 2, 3)))
-lmap = curvedsky.alm2map(alm[0,:], enmap.empty(shape, wcs, dtype=np.float64))
-print(" ::: reading lensed alm map and converting to lensed cmb map:", ifile) 
-print("lmap", np.shape(lmap))
+b_lmap = f"{my_path}/beam_convolved_actfoot_lmap.fits"
+b_l_tsz_map = f"{my_path}/beam_convolved_actfoot_l_tsz_map.fits"
+b_l_ksz_cib_map = f"{my_path}/beam_convolved_actfoot_l_ksz_cib_map.fits"
+b_l_tsz_ksz_cib_map = f"{my_path}/beam_convolved_actfoot_l_tsz_ksz_cib_map.fits"
 
-# reading tSZ map
-ifile = f'{sim_path}/tsz_2048.fits'
-imap = np.atleast_2d(hp.read_map(ifile, field=tuple(range(0,1)))).astype(np.float64)
-ymap = reproject.healpix2map(imap, shape, wcs)[0,:,:]
-print(" ::: reading tsz map:", ifile) 
-print("ymap", np.shape(ymap))
 
-# # reading high resolution tsz map
-# imap = f'{sim_path}/tsz_8192_alm.fits'
-# alm = np.complex128(hp.read_alm(imap, 1))
-# ymap = curvedsky.alm2map(alm, enmap.empty(shape, wcs, dtype=np.float32))
-# print(" ::: reading high resolution tsz map:", imap) 
+try:
+    # it takes too long to reproject the maps and convolve with the beam 
+    print(" ::: loading the maps that are already saved (reprojected and beam-convolved)")    
+    kmap = enmap.read_map(r_kmap, delayed=False) 
+    lmap = enmap.read_map(b_lmap, delayed=False)
+    l_tsz_map = enmap.read_map(b_l_tsz_map, delayed=False)
+    l_ksz_cib_map = enmap.read_map(b_l_ksz_cib_map, delayed=False)
+    l_tsz_ksz_cib_map = enmap.read_map(b_l_tsz_ksz_cib_map, delayed=False)
 
-# convert compton-y to delta-T (in uK) 
-tcmb = 2.726
-tcmb_uK = tcmb * 1e6 #micro-Kelvin
-H_cgs = 6.62608e-27
-K_cgs = 1.3806488e-16
+except:
 
-def fnu(nu):
-    """
-    nu in GHz
-    tcmb in Kelvin
-    """
-    mu = H_cgs*(1e9*nu)/(K_cgs*tcmb)
-    ans = mu/np.tanh(old_div(mu,2.0)) - 4.0
-    return ans
+    try:  
+        print(" ::: loading the reprojected maps that are already saved")    
+        kmap = enmap.read_map(r_kmap, delayed=False)
+        lmap = enmap.read_map(r_lmap, delayed=False)
+        tszmap = enmap.read_map(r_tszmap, delayed=False)
+        kszmap = enmap.read_map(r_kszmap, delayed=False)
+        cibmap = enmap.read_map(r_cibmap, delayed=False)
 
-tszmap = fnu(freq_sz) * ymap * tcmb_uK
-print(" ::: convering ymap to tsz map at %d GHz" %freq_sz)
-l_tsz_map = lmap + tszmap
+    except:
+        # reading lensed alm map (switching to the map that Mat generated 2024.03.26, this matches the model map shape)
+        ifile = f"{mat_path}/dlensed_actfoot.fits"
+        lmap = enmap.read_map(ifile)
+        print(" ::: reading lensed cmb map:", ifile) 
+        print("lmap", np.shape(lmap)) # (10320, 43200)
 
-if which_cat != "act_tsz":
+        # # reading websky lensed alm map 
+        # ifile = f"{sim_path}/lensed_alm.fits"
+        # alm = np.complex128(hp.read_alm(ifile, hdu=(1, 2, 3)))
+        # lmap = curvedsky.alm2map(alm[0,:], enmap.empty(shape, wcs, dtype=np.float64))
+        # print(" ::: reading lensed alm map and converting to lensed cmb map:", ifile) 
+        # print("lmap", np.shape(lmap))
 
-    # reading kSZ map
-    ifile = f'{sim_path}/ksz.fits'
-    imap = np.atleast_2d(hp.read_map(ifile, field=tuple(range(0,1)))).astype(np.float64)
-    kszmap = reproject.healpix2map(imap, shape, wcs)[0,:,:]
-    print(" ::: reading ksz map:", ifile)
-    print("kszmap", np.shape(kszmap))
-
-    # frequency for CIB 
-    if freq_sz == 150: freq_cib = 145
-    elif freq_sz == 90: freq_cib = 93
-
-    # reading CIB map
-    if freq_sz == 90:
-        # reading CIB 93GHz map
-        ifile = f'{sim_path}/cib_nu0093.fits'
+        # reading true kappa map 
+        # ifile = f"{sim_path}/kap.fits" # CMB lensing convergence from 0<z<1100
+        ifile = f"{sim_path}/kap_lt4.5.fits" # CMB lensing convergence from z<4.5 from halo+field websky - Mat's map corresonds to this
         imap = np.atleast_2d(hp.read_map(ifile, field=tuple(range(0,1)))).astype(np.float64)
-        cibmap_i = reproject.healpix2map(imap, shape, wcs)[0,:,:]
+        kmap = reproject.healpix2map(imap, shape, wcs)[0,:,:]
+        print(" ::: reading true kappa map:", ifile) 
+        print("kmap", np.shape(kmap))
 
-    elif freq_sz == 150: 
-        # reading CIB 145GHz map
-        ifile = f'{sim_path}/cib_nu0145.fits'
+        # reading high resolution tSZ map
+        ifile = f"{sim_path}/tsz_8192.fits"
         imap = np.atleast_2d(hp.read_map(ifile, field=tuple(range(0,1)))).astype(np.float64)
-        cibmap_i = reproject.healpix2map(imap, shape, wcs)[0,:,:]
+        ymap = reproject.healpix2map(imap, shape, wcs)[0,:,:]
+        print(" ::: reading high resolution tsz map:", ifile) 
+        print("ymap", np.shape(ymap))
 
-    print(" ::: reading cib map at %d GHz:" %freq_cib, ifile)
-    print("cibmap", np.shape(cibmap_i))
+        # convert compton-y to delta-T (in uK) 
+        tcmb = 2.726
+        tcmb_uK = tcmb * 1e6 #micro-Kelvin
+        H_cgs = 6.62608e-27
+        K_cgs = 1.3806488e-16
 
-    kboltz = 1.3806503e-23 #MKS
-    hplanck = 6.626068e-34 #MKS
-    clight = 299792458.0 #MKS
+        def fnu(nu):
+            """
+            nu in GHz
+            tcmb in Kelvin
+            """
+            mu = H_cgs*(1e9*nu)/(K_cgs*tcmb)
+            ans = mu/np.tanh(old_div(mu,2.0)) - 4.0
+            return ans
 
-    def ItoDeltaT(nu):
-        # conversion from specific intensity to Delta T units (i.e., 1/dBdT|T_CMB)
-        #   i.e., from W/m^2/Hz/sr (1e-26 Jy/sr) --> uK_CMB
-        #   i.e., you would multiply a map in 1e-26 Jy/sr by this factor to get an output map in uK_CMB
-        nu *= 1e9
-        X = hplanck*nu/(kboltz*tcmb)
-        dBnudT = (2.*hplanck*nu**3.)/clight**2. * (np.exp(X))/(np.exp(X)-1.)**2. * X/tcmb_uK * 1e26
-        return 1./dBnudT
+        tszmap = fnu(freq_sz) * ymap * tcmb_uK
+        print(" ::: convering ymap to tsz map at %d GHz" %freq_sz)
 
-    cibmap = ItoDeltaT(freq_cib) * cibmap_i 
+        # reading kSZ map
+        ifile = f"{sim_path}/ksz.fits"
+        imap = np.atleast_2d(hp.read_map(ifile, field=tuple(range(0,1)))).astype(np.float64)
+        kszmap = reproject.healpix2map(imap, shape, wcs)[0,:,:]
+        print(" ::: reading ksz map:", ifile)
+        print("kszmap", np.shape(kszmap))
 
-    l_ksz_cib_map = lmap + kszmap + cibmap 
-    l_tsz_ksz_cib_map = lmap + tszmap + kszmap + cibmap
+        # frequency for CIB 
+        if freq_sz == 150: freq_cib = 145
+        elif freq_sz == 90: freq_cib = 93
+
+        # reading CIB map
+        if freq_sz == 90:
+            # reading CIB 93GHz map
+            ifile = f"{sim_path}/cib_nu0093.fits"
+            imap = np.atleast_2d(hp.read_map(ifile, field=tuple(range(0,1)))).astype(np.float64)
+            cibmap_i = reproject.healpix2map(imap, shape, wcs)[0,:,:]
+
+        elif freq_sz == 150: 
+            # reading CIB 145GHz map
+            ifile = f"{sim_path}/cib_nu0145.fits"
+            imap = np.atleast_2d(hp.read_map(ifile, field=tuple(range(0,1)))).astype(np.float64)
+            cibmap_i = reproject.healpix2map(imap, shape, wcs)[0,:,:]
+
+        print(" ::: reading cib map at %d GHz:" %freq_cib, ifile)
+        print("cibmap", np.shape(cibmap_i))
+
+        kboltz = 1.3806503e-23 #MKS
+        hplanck = 6.626068e-34 #MKS
+        clight = 299792458.0 #MKS
+
+        def ItoDeltaT(nu):
+            # conversion from specific intensity to Delta T units (i.e., 1/dBdT|T_CMB)
+            #   i.e., from W/m^2/Hz/sr (1e-26 Jy/sr) --> uK_CMB
+            #   i.e., you would multiply a map in 1e-26 Jy/sr by this factor to get an output map in uK_CMB
+            nu *= 1e9
+            X = hplanck*nu/(kboltz*tcmb)
+            dBnudT = (2.*hplanck*nu**3.)/clight**2. * (np.exp(X))/(np.exp(X)-1.)**2. * X/tcmb_uK * 1e26
+            return 1./dBnudT
+
+        cibmap = ItoDeltaT(freq_cib) * cibmap_i 
+
+        # enmap.write_map(r_kmap, kmap)
+        # enmap.write_map(r_lmap, lmap)
+        # enmap.write_map(r_tszmap, tszmap)
+        # enmap.write_map(r_kszmap, kszmap)
+        # enmap.write_map(r_cibmap, cibmap)
+
+    print(" ::: applying the act beam to the maps")  
+    lmap = apply_beam(lmap)
+    l_tsz_map = apply_beam(lmap + tszmap)
+    l_ksz_cib_map = apply_beam(lmap + kszmap + cibmap)
+    l_tsz_ksz_cib_map = apply_beam(lmap + tszmap + kszmap + cibmap)
+  
+    # enmap.write_map(b_lmap, lmap)
+    # enmap.write_map(b_l_tsz_map, l_tsz_map)
+    # enmap.write_map(b_l_ksz_cib_map, l_ksz_cib_map)
+    # enmap.write_map(b_l_tsz_ksz_cib_map, l_tsz_ksz_cib_map)
+
+print(" ::: model image subtraction")
+l_tsz_msub_map = l_tsz_map - modelmap
+l_tsz_ksz_cib_msub_map = l_tsz_ksz_cib_map - modelmap
+
+print(" ::: maps are ready!")
+
+
+
 
 #-------------------------------------------------------------------------------
 
@@ -373,20 +432,20 @@ for task in my_tasks:
         res=px * utils.arcmin,
         proj="tan",
         oversample=2,
-        pixwin=False # only needed for maps made natively in CAR
-    ) # true kappa stamp
+        pixwin=False
+    ) # true kappa
 
-    lstamp = reproject.thumbnails(
+    l_only = reproject.thumbnails(
         lmap,
         coords,
         r=maxr,
         res=px * utils.arcmin,
         proj="tan",
         oversample=2,
-        pixwin=False
-    ) # lensed alm
+        pixwin=True # only needed for maps made natively in CAR
+    ) # lensed cmb
 
-    l_tsz_stamp = reproject.thumbnails(
+    l_tsz = reproject.thumbnails(
         l_tsz_map,
         coords,
         r=maxr,
@@ -394,55 +453,63 @@ for task in my_tasks:
         proj="tan",
         oversample=2,
         pixwin=False
-    ) # lensed alm + tsz
+    ) # lensed cmb + tsz
 
-    if which_cat != "halo":
-        model_stamp = reproject.thumbnails(
-            modelmap,
-            coords,
-            r=maxr,
-            res=px * utils.arcmin,
-            proj="tan",
-            oversample=2,
-            pixwin=False
-        ) # tsz model map  
+    l_ksz_cib = reproject.thumbnails(
+        l_ksz_cib_map,
+        coords,
+        r=maxr,
+        res=px * utils.arcmin,
+        proj="tan",
+        oversample=2,
+        pixwin=False
+    ) # lensed cmb + ksz + cib 
 
-    if which_cat != "act_tsz": 
-        l_ksz_cib_stamp = reproject.thumbnails(
-            l_ksz_cib_map,
-            coords,
-            r=maxr,
-            res=px * utils.arcmin,
-            proj="tan",
-            oversample=2,
-            pixwin=False
-        ) # lensed alm + ksz + cib
+    l_tsz_ksz_cib = reproject.thumbnails(
+        l_tsz_ksz_cib_map,
+        coords,
+        r=maxr,
+        res=px * utils.arcmin,
+        proj="tan",
+        oversample=2,
+        pixwin=False
+    ) # lensed cmb + tsz + ksz + cib
 
-        l_tsz_ksz_cib_stamp = reproject.thumbnails(
-            l_tsz_ksz_cib_map,
-            coords,
-            r=maxr,
-            res=px * utils.arcmin,
-            proj="tan",
-            oversample=2,
-            pixwin=False
-        ) # lensed alm + tsz + ksz + cib
+    l_tsz_msub = reproject.thumbnails(
+        l_tsz_msub_map,
+        coords,
+        r=maxr,
+        res=px * utils.arcmin,
+        proj="tan",
+        oversample=2,
+        pixwin=False
+    ) # lensed cmb + tsz - tszmodel
+
+    l_tsz_ksz_cib_msub = reproject.thumbnails(
+        l_tsz_ksz_cib_msub_map,
+        coords,
+        r=maxr,
+        res=px * utils.arcmin,
+        proj="tan",
+        oversample=2,
+        pixwin=False
+    ) # lensed cmb + tsz + ksz + cib - tszmodel
 
     # initialise calculations based on geometry 
     if j == 0:     
 
         # get geometry and Fourier info   
-        shape = lstamp.shape
-        wcs = lstamp.wcs
+        shape = kstamp.shape
+        wcs = kstamp.wcs
         modlmap = enmap.modlmap(shape, wcs)
         modrmap = enmap.modrmap(shape, wcs)
         
-        assert wcsutils.equal(lstamp.wcs, kstamp.wcs)
+        assert wcsutils.equal(kstamp.wcs, l_only.wcs)
 
         # get an edge taper map and apodize
         taper = maps.get_taper(
-            lstamp.shape,
-            lstamp.wcs,
+            kstamp.shape,
+            kstamp.wcs,
             taper_percent=tap_per,
             pad_percent=pad_per,
             weight=None,
@@ -472,7 +539,7 @@ for task in my_tasks:
 
         # get theory spectrum and build interpolated 2D Fourier CMB from theory and maps      
         theory = cosmology.default_theory()
-        ucltt2d = theory.lCl('TT', modlmap)
+        ucltt2d = theory.lCl("TT", modlmap)
 
         # total spectrum includes beam-deconvolved noise       
         npower = (nlevel * np.pi/180./60.)**2.
@@ -481,21 +548,9 @@ for task in my_tasks:
 
     # same filter as the post-reconstuction for true kappa
     k_stamp = maps.filter_map(kstamp, kmask)   
-    s.add_to_stack('kstamp', k_stamp)
+    s.add_to_stack("kstamp", k_stamp)
     binned_true = bin(k_stamp, modrmap * (180 * 60 / np.pi), bin_edges)   
     s.add_to_stats("tk1d", binned_true)     
-
-    # model image map is beam-convolved so we apply the same beam to the maps
-    l_only = maps.filter_map(lstamp, beam2d)
-    l_tsz = maps.filter_map(l_tsz_stamp, beam2d)
-    if which_cat != "act_tsz":
-        l_ksz_cib = maps.filter_map(l_ksz_cib_stamp, beam2d)
-        l_tsz_ksz_cib = maps.filter_map(l_tsz_ksz_cib_stamp, beam2d)
-
-    # model image subtraction for the map including tsz
-    l_tsz_msub = l_tsz - model_stamp
-    if which_cat != "act_tsz":
-        l_tsz_ksz_cib_msub = l_tsz_ksz_cib - model_stamp
         
     hres = globals()[hres_choice]
     grad = globals()[grad_choice]
@@ -533,7 +588,7 @@ for task in my_tasks:
         tapered_grad[cutout_sel] = cutout.copy()
         
         inp_stamp = tapered_grad / taper
-        s.add_to_stack('inp_stamp_st', inp_stamp)   
+        s.add_to_stack("inp_stamp_st", inp_stamp)   
 
     # get a beam deconvolved Fourier transformed stamp
     k_hres = enmap.fft(tapered_hres, normalize="phys")/beam2d
@@ -547,19 +602,19 @@ for task in my_tasks:
 
     # build symlens dictionary 
     feed_dict = {
-        'uC_T_T' : ucltt2d, 
-        'tC_T_T' : tcltt2d, 
-        'X' : k_grad, # grad leg
-        'Y' : k_hres, # hres leg
+        "uC_T_T" : ucltt2d, 
+        "tC_T_T" : tcltt2d, 
+        "X" : k_grad, # grad leg
+        "Y" : k_hres, # hres leg
     }  
 
     # do lensing reconstruction in Fourier space    
-    rkmap = qe.reconstruct(shape, wcs, feed_dict, estimator='hdv', XY="TT", xmask=xmask, ymask=ymask, kmask=kmask, physical_units=True)
+    rkmap = qe.reconstruct(shape, wcs, feed_dict, estimator="hdv", XY="TT", xmask=xmask, ymask=ymask, kmask=kmask, physical_units=True)
       
     assert np.all(np.isfinite(rkmap))
         
     # transform to real space
-    kappa = enmap.ifft(rkmap, normalize='phys').real    
+    kappa = enmap.ifft(rkmap, normalize="phys").real    
 
     # stack reconstructed kappa     
     s.add_to_stack("lstamp", kappa)    
@@ -569,8 +624,8 @@ for task in my_tasks:
     # stack stamps pre-reconstruction as well (same filter as hres leg)
     hres_stamp = maps.filter_map(hres, ymask) 
     grad_stamp = maps.filter_map(grad, ymask)  
-    s.add_to_stack('hres_stamp_st', hres_stamp)
-    s.add_to_stack('grad_stamp_st', grad_stamp) 
+    s.add_to_stack("hres_stamp_st", hres_stamp)
+    s.add_to_stack("grad_stamp_st", grad_stamp) 
 
     # save the list of masses and redshifts for matched stack mass fitting
     if mean_field == False:     
@@ -590,8 +645,8 @@ if rank==0:
         save_name = save_name + "_mf" 
 
     # stacks before lensing reconstruction   
-    hres_st = s.stacks['hres_stamp_st']
-    grad_st = s.stacks['grad_stamp_st']     
+    hres_st = s.stacks["hres_stamp_st"]
+    grad_st = s.stacks["grad_stamp_st"]     
  
     hres_zoom = hres_st[100:140,100:140]  
     grad_zoom = grad_st[100:140,100:140] 
@@ -602,27 +657,27 @@ if rank==0:
     hbinned = bin(hres_zoom, modrmap, bin_edges)
     gbinned = bin(grad_zoom, modrmap, bin_edges)
 
-    io.plot_img(hres_st, f'{save_dir}/{save_name}_0hres.png')  
-    io.plot_img(grad_st, f'{save_dir}/{save_name}_0grad.png')             
-    io.plot_img(hres_zoom, f'{save_dir}/{save_name}_0hres_zoom.png')   
-    io.plot_img(grad_zoom, f'{save_dir}/{save_name}_0grad_zoom.png')  
-    np.save(f'{save_dir}/{save_name}_0hres.npy', hres_st) 
-    np.save(f'{save_dir}/{save_name}_0grad.npy', grad_st)  
-    io.save_cols(f'{save_dir}/{save_name}_0binned_hres.txt', (centers, hbinned))   
-    io.save_cols(f'{save_dir}/{save_name}_0binned_grad.txt', (centers, gbinned))  
+    io.plot_img(hres_st, f"{save_dir}/{save_name}_0hres.png")  
+    io.plot_img(grad_st, f"{save_dir}/{save_name}_0grad.png")             
+    io.plot_img(hres_zoom, f"{save_dir}/{save_name}_0hres_zoom.png")   
+    io.plot_img(grad_zoom, f"{save_dir}/{save_name}_0grad_zoom.png")  
+    np.save(f"{save_dir}/{save_name}_0hres.npy", hres_st) 
+    np.save(f"{save_dir}/{save_name}_0grad.npy", grad_st)  
+    io.save_cols(f"{save_dir}/{save_name}_0binned_hres.txt", (centers, hbinned))   
+    io.save_cols(f"{save_dir}/{save_name}_0binned_grad.txt", (centers, gbinned))  
     
     if inpainting == True:
-        inp_st = s.stacks['inp_stamp_st']     
+        inp_st = s.stacks["inp_stamp_st"]     
         inp_zoom = inp_st[100:140,100:140]         
         ibinned = bin(inp_zoom, modrmap, bin_edges)
-        io.plot_img(inp_st, f'{save_dir}/{save_name}_02inp.png')              
-        io.plot_img(inp_zoom, f'{save_dir}/{save_name}_02inp_zoom.png')  
-        np.save(f'{save_dir}/{save_name}_02inp.npy', inp_st)    
-        io.save_cols(f'{save_dir}/{save_name}_02binned_inp.txt', (centers, ibinned))      
+        io.plot_img(inp_st, f"{save_dir}/{save_name}_02inp.png")              
+        io.plot_img(inp_zoom, f"{save_dir}/{save_name}_02inp_zoom.png")  
+        np.save(f"{save_dir}/{save_name}_02inp.npy", inp_st)    
+        io.save_cols(f"{save_dir}/{save_name}_02binned_inp.txt", (centers, ibinned))      
     
     # reconstructed lensing field     
-    kmap = s.stacks['kstamp']
-    lmap = s.stacks['lstamp']
+    kmap = s.stacks["kstamp"]
+    lmap = s.stacks["lstamp"]
     
     kmap_zoom = kmap[100:140,100:140] 
     lmap_zoom = lmap[100:140,100:140] 
@@ -633,39 +688,39 @@ if rank==0:
     kbinned = bin(kmap_zoom, modrmap, bin_edges)
     lbinned = bin(lmap_zoom, modrmap, bin_edges)
 
-    io.plot_img(kmap, f'{save_dir}/{save_name}_1tkappa.png')   
-    io.plot_img(lmap, f'{save_dir}/{save_name}_1rkappa.png')                 
-    io.plot_img(kmap[100:140,100:140], f'{save_dir}/{save_name}_1tkappa_zoom.png')   
-    io.plot_img(lmap[100:140,100:140], f'{save_dir}/{save_name}_1rkappa_zoom.png')  
-    np.save(f'{save_dir}/{save_name}_1tkappa.npy', kmap)     
-    np.save(f'{save_dir}/{save_name}_1rkappa.npy', lmap)                 
-    io.save_cols(f'{save_dir}/{save_name}_1binned_tkappa_from2D.txt', (centers, kbinned))
-    io.save_cols(f'{save_dir}/{save_name}_1binned_rkappa_from2D.txt', (centers, lbinned))
+    io.plot_img(kmap, f"{save_dir}/{save_name}_1tkappa.png")   
+    io.plot_img(lmap, f"{save_dir}/{save_name}_1rkappa.png")                 
+    io.plot_img(kmap[100:140,100:140], f"{save_dir}/{save_name}_1tkappa_zoom.png")   
+    io.plot_img(lmap[100:140,100:140], f"{save_dir}/{save_name}_1rkappa_zoom.png")  
+    np.save(f"{save_dir}/{save_name}_1tkappa.npy", kmap)     
+    np.save(f"{save_dir}/{save_name}_1rkappa.npy", lmap)                 
+    io.save_cols(f"{save_dir}/{save_name}_1binned_tkappa_from2D.txt", (centers, kbinned))
+    io.save_cols(f"{save_dir}/{save_name}_1binned_rkappa_from2D.txt", (centers, lbinned))
 
-    tbinned = s.stats['tk1d']['mean']
-    tcovm = s.stats['tk1d']['covmean']
-    tcorr = stats.cov2corr(s.stats['tk1d']['covmean'])
-    terrs = s.stats['tk1d']['errmean']
+    tbinned = s.stats["tk1d"]["mean"]
+    tcovm = s.stats["tk1d"]["covmean"]
+    tcorr = stats.cov2corr(s.stats["tk1d"]["covmean"])
+    terrs = s.stats["tk1d"]["errmean"]
     
-    binned = s.stats['k1d']['mean']
-    covm = s.stats['k1d']['covmean']
-    corr = stats.cov2corr(s.stats['k1d']['covmean'])
-    errs = s.stats['k1d']['errmean']
+    binned = s.stats["k1d"]["mean"]
+    covm = s.stats["k1d"]["covmean"]
+    corr = stats.cov2corr(s.stats["k1d"]["covmean"])
+    errs = s.stats["k1d"]["errmean"]
 
-    np.savetxt(f'{save_dir}/{save_name}_1tkappa_errs.txt', terrs)               
-    np.savetxt(f'{save_dir}/{save_name}_1rkappa_errs.txt', errs)    
-    np.savetxt(f'{save_dir}/{save_name}_1tkappa_covm.txt', tcovm)
-    np.savetxt(f'{save_dir}/{save_name}_1rkappa_covm.txt', covm)
-    np.save(f'{save_dir}/{save_name}_1tkappa_corr.npy', tcorr)  
-    np.save(f'{save_dir}/{save_name}_1rkappa_corr.npy', corr) 
-    io.save_cols(f'{save_dir}/{save_name}_1binned_tkappa.txt', (centers, tbinned))
-    io.save_cols(f'{save_dir}/{save_name}_1binned_rkappa.txt', (centers, binned)) 
+    np.savetxt(f"{save_dir}/{save_name}_1tkappa_errs.txt", terrs)               
+    np.savetxt(f"{save_dir}/{save_name}_1rkappa_errs.txt", errs)    
+    np.savetxt(f"{save_dir}/{save_name}_1tkappa_covm.txt", tcovm)
+    np.savetxt(f"{save_dir}/{save_name}_1rkappa_covm.txt", covm)
+    np.save(f"{save_dir}/{save_name}_1tkappa_corr.npy", tcorr)  
+    np.save(f"{save_dir}/{save_name}_1rkappa_corr.npy", corr) 
+    io.save_cols(f"{save_dir}/{save_name}_1binned_tkappa.txt", (centers, tbinned))
+    io.save_cols(f"{save_dir}/{save_name}_1binned_rkappa.txt", (centers, binned)) 
 
-    enmap.write_map(f'{save_dir}/{save_name}_kmask.fits', kmask)   
-    np.savetxt(f'{save_dir}/{save_name}_bin_edges.txt', bin_edges)
+    enmap.write_map(f"{save_dir}/{save_name}_kmask.fits", kmask)   
+    np.savetxt(f"{save_dir}/{save_name}_bin_edges.txt", bin_edges)
 
     if mean_field == False: 
-        np.savetxt(f"{save_dir}/{save_name}_z_mass1e14.txt", np.c_[s.vectors['redshift'], s.vectors['mass']])
+        np.savetxt(f"{save_dir}/{save_name}_z_mass1e14.txt", np.c_[s.vectors["redshift"], s.vectors["mass"]])
 
 elapsed = t.time() - start
 print("\r ::: entire run took %.1f seconds" %elapsed)

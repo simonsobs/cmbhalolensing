@@ -17,13 +17,14 @@ start = t.time()
 
 my_path = "/home3/eunseong/cmbhalolensing/data"
 sim_path = "/data5/sims/websky/data"
-act_sim_path = "/data5/sims/websky/dr5_clusters"
+act_sim_path = "/data5/sims/websky/es"
 output_path = "/home3/eunseong/cmbhalolensing/wsky_outs"
 mat_path = "/home1/mathm/repos/cmbhalolensing"
 #-------------------------------------------------------------------------------
 
-
-save_name = "7halo_cmb_tsz_ksz_cib_inp"
+# save_name = "1test" 
+# save_name = "1halo_cmb" 
+save_name = "1halo_cmb_tsz" 
 save_dir = f"{output_path}/{save_name}"
 io.mkdir(f"{save_dir}")
 print(" ::: saving to ", save_dir)
@@ -32,13 +33,15 @@ print(" ::: saving to ", save_dir)
 which_cat = "halo"
 
 # options: l_only, l_tsz, l_ksz_cib, l_tsz_ksz_cib
-hres_choice = "l_tsz_ksz_cib"
-grad_choice = "l_ksz_cib"
+# hres_choice = "l_only" 
+# grad_choice = "l_only"
+hres_choice = "l_tsz" 
+grad_choice = "l_only"
 print(" ::: hres =", hres_choice, "and grad =", grad_choice)
 
 test = False
 mean_field = True
-inpainting = True
+inpainting = False
 
 print(" ::: test:", test, "/ mean_field:", mean_field, "/ inpainting:", inpainting)
 
@@ -46,7 +49,7 @@ freq_sz = 150
 
 # simulation setting -----------------------------------------------------------
 
-xlmin = 200
+xlmin = 200 
 xlmax = 2000
 
 ylmin = 200
@@ -56,7 +59,7 @@ ylcut = 2
 
 klmin = 200
 # klmax = 5000 # high lmax cut
-klmax = 3000  # low lmax cut
+klmax = 3000  # low lmax cut 
 
 print(" ::: hlmax =", ylmax, "and klmax =", klmax)
 
@@ -64,7 +67,7 @@ tap_per = 12.0
 pad_per = 3.0
 
 fwhm = 1.4
-nlevel = 20
+nlevel = 20   
 
 px = 0.5
 width = 120./60.
@@ -81,43 +84,52 @@ centers = (bin_edges[1:] + bin_edges[:-1]) / 2.0
 def bin(data, modrmap, bin_edges):
     binner = stats.bin2D(modrmap, bin_edges)
     cents, ret = binner.bin(data)
-    return ret
-
+    return ret 
+    
 def load_beam(freq):
-    if freq=="f150": fname = f"{act_sim_path}/beam_gaussian_la145.txt"
-    elif freq=="f090": fname = f"{act_sim_path}/beam_gaussian_la093.txt"
+    if freq=="f150": fname = f"{my_path}/corrected_beam_150.txt" # new beam
+    elif freq=="f090": fname = f"{my_path}/corrected_beam_090.txt"   
     ls,bls = np.loadtxt(fname,usecols=[0,1],unpack=True)
     assert ls[0]==0
     bls = bls / bls[0]
-    return maps.interp(ls,bls)
+    return maps.interp(ls,bls)     
+
+def apply_beam(imap): 
+    # map2alm of the maps, almxfl(alm, beam_1d) to convolve with beam, alm2map to convert back to map
+    alm_lmax = 8192 * 3
+    # if freq_sz == 150: bfunc = load_beam("f150") 
+    # elif freq_sz == 90: bfunc = load_beam("f090")    
+    bfunc = lambda x: maps.gauss_beam(fwhm, x)
+    imap_alm = curvedsky.map2alm(imap, lmax=alm_lmax)
+    beam_convoloved_alm = curvedsky.almxfl(imap_alm, bfunc)
+    return curvedsky.alm2map(beam_convoloved_alm, enmap.empty(imap.shape, imap.wcs))
+
 
 # reading catalogue ------------------------------------------------------------
 
-if mean_field == True:
+if mean_field == True: 
 
     # load random catalogue - created by mapcat.py + randcat.py
     if which_cat == "halo":
-        cat = f"{my_path}/websky_halo_randoms_actlike.txt"
-    elif which_cat == "act_tsz":
+        cat = f"{my_path}/websky_halo_cmb_tsz_randoms_lensed_alm.txt"
+    elif which_cat == "act_tsz": 
         cat = f"{my_path}/websky_ACT_cmb_tsz_randoms.txt"
-    elif which_cat == "act_tsz_ksz_cib":
+    elif which_cat == "act_tsz_ksz_cib": 
         cat = f"{my_path}/websky_ACT_cmb_tsz_ksz_cib_randoms.txt"
-        #cat = f"{my_path}/websky_ACT_cmb_tsz_ksz_cib_randoms_snr5p5.txt"
-
+        
     ras, decs = np.loadtxt(cat, unpack=True)
     print(" ::: this is a mean-field run")
 
 else:
 
     if which_cat == "halo":
-
         try:
-            cat = f"{my_path}/websky_halo_actlike.txt"
+            cat = f"{my_path}/websky_halo_cmb_tsz_lensed_alm.txt" # 5125
             ras, decs, zs, mass = np.loadtxt(cat, unpack=True)
 
-            print(" ::: loading txt version of pre-selected halo cat")
-            print(" ::: min and max mass: ", mass.min(), mass.max())
-            print(" ::: min and max redshift: ", zs.min(), zs.max())
+            print(" ::: loading txt version of pre-selected actdr5-like halo cat")        
+            print(" ::: min and max mass: ", mass.min(), mass.max(), mass.mean())
+            print(" ::: min and max redshift: ", zs.min(), zs.max(), zs.mean())
 
         except:
             cat = "halos.pksc"
@@ -130,7 +142,7 @@ else:
             sigma8 = 0.81
 
             rho = 2.775e11 * omegam * h**2 # Msun/Mpc^3
-            c = 3e5
+            c = 3e5 
 
             H0 = 100*h
             nz = 100000
@@ -138,13 +150,13 @@ else:
             z2 = 6.0
             za = np.linspace(z1,z2,nz)
             dz = za[1]-za[0]
-
+        
             H      = lambda z: H0*np.sqrt(omegam*(1+z)**3+1-omegam)
             dchidz = lambda z: c/H(z)
             chia   = np.cumsum(dchidz(za))*dz
             zofchi = interp1d(chia,za)
 
-            # load the entire halo catalogue
+            # load the entire halo catalogue 
             f = open(f"{sim_path}/halos.pksc")
             N = np.fromfile(f, count=3, dtype=np.int32)[0]
             catalog = np.fromfile(f, count=N*10, dtype=np.float32)
@@ -154,12 +166,12 @@ else:
             R  = catalog[:,6] # Mpc
 
             # convert to mass, redshift, RA and DEC
-            M200m      = 4*np.pi/3.*rho*R**3  # this is M200m (mean density 200 times mean) in Msun
+            M200m      = 4*np.pi/3.*rho*R**3  # this is M200m (mean density 200 times mean) in Msun 
             chi        = np.sqrt(x**2+y**2+z**2)  # Mpc
             theta, phi = hp.vec2ang(np.column_stack((x,y,z))) # in radians
-
+            
             mass     = M200m/1e14
-            zs       = zofchi(chi)
+            zs       = zofchi(chi)                 
             ras      = np.rad2deg(phi)
             decs     = np.rad2deg(np.pi/2. - theta)
 
@@ -167,8 +179,10 @@ else:
             print(" ::: min and max mass: ", mass.min(), mass.max()) # 0.012929761 34.642567
             print(" ::: min and max redshift: ", zs.min(), zs.max())
 
-            print(" ::: selecting the sample that's similar to ACT DR5 sim catalogue")
-            temp_cat = f"{act_sim_path}/ACTSim_CMB-T_cmb-tsz-ksz-cib_MFMF_pass2_mass.fits" # 7943
+            print(" ::: selecting the sample that's similar to ACT DR5 sim catalogue") 
+            # temp_cat = f"{act_sim_path}/ACTSim_CMB-T_cmb-tsz-ksz-cib_MFMF_pass2_mass.fits" # 7943
+            # temp_cat = f"{act_sim_path}/NemoWebSky_CustomLensedCMB_tenToA0Tuned_ACT-DR5-2Pass_2degTiles/NemoWebSky_CustomLensedCMB_tenToA0Tuned_ACT-DR5-2Pass_2degTiles_mass.fits" # 4514
+            temp_cat = f"{act_sim_path}/NemoWebSky_CustomLensedCMB_tenToA0Tuned_ACT-DR5-2Pass_2degTiles_mass.fits" # 5126
             hdu = fits.open(temp_cat)
             act_mass = hdu[1].data["M200m"] # 1e14 Msun
             num_mbin = 30 # chosen to return a similar mass distribution of the sample
@@ -182,6 +196,7 @@ else:
             new_decs = []
 
             for i in range(len(mhist)):
+
                 min_mass = mbin_edges[i]
                 max_mass = mbin_edges[i+1]
 
@@ -191,8 +206,13 @@ else:
                 temp_ras = ras[ind0]
                 temp_decs = decs[ind0]
 
+                if mhist[i] == 0 or len(temp_mass) == 0:
+                    continue
+                # print(mhist[i], len(temp_mass))
+
                 np.random.seed(100)
-                ind1 = np.random.choice(len(temp_mass), size=mhist[i])
+                ind1 = np.random.choice(len(temp_mass), size=mhist[i]) 
+                # ind1 = np.random.choice(len(temp_mass), size=int(mhist[i]/0.62)) # ~62% of halo sample falls in ACT footprint, this is to generate a halo sample on ACT footprint with a similar ACT sample size  
                 temp_mass = temp_mass[ind1]
                 temp_zs = temp_zs[ind1]
                 temp_ras = temp_ras[ind1]
@@ -208,11 +228,12 @@ else:
             ras = np.concatenate(new_ras, axis=None)
             decs = np.concatenate(new_decs, axis=None)
 
-            print(" ::: sample selection is done!")
+            print(" ::: sample selection is done!")        
             print(" ::: min and max mass: ", mass.min(), mass.max())
             print(" ::: min and max redshift: ", zs.min(), zs.max())
 
-            # np.savetxt(f"{my_path}/websky_halo_actlike.txt", np.c_[ras, decs, zs, mass])
+            # np.savetxt(f"{my_path}/websky_halo_cmb_tsz_lensed_alm.txt", np.c_[ras, decs, zs, mass])
+            # np.savetxt(f"{my_path}/websky_halo_cmb_tsz_lensed_alm062.txt", np.c_[ras, decs, zs, mass])
             # sys.exit()
 
     elif which_cat == "act_tsz":
@@ -223,8 +244,8 @@ else:
         decs = hdu[1].data["DECDeg"]
         mass = hdu[1].data["M500c"] # 1e14 Msun
         snr = hdu[1].data["SNR"]
-        zs = hdu[1].data["redshift"]
-
+        zs = hdu[1].data["redshift"] 
+        
     elif which_cat == "act_tsz_ksz_cib":
 
         cat = f"{act_sim_path}/ACTSim_CMB-T_cmb-tsz-ksz-cib_MFMF_pass2_mass.fits" # 7943
@@ -243,12 +264,12 @@ else:
         # zs = zs[snr > snr_cut]
 
 print(" ::: name of catalogue = ", cat)
-print(" ::: total number of clusters for stacking = ", len(ras))
+print(" ::: total number of clusters for stacking = ", len(ras)) 
 
 # reading maps -----------------------------------------------------------------
 
 if which_cat == "halo":
-    shape, wcs = enmap.fullsky_geometry(res=px*utils.arcmin, proj="car")
+    shape, wcs = enmap.fullsky_geometry(res=px*utils.arcmin, proj="car") 
 
 else:
     # read tSZ cluster model image map by Matt Hilton
@@ -256,30 +277,32 @@ else:
         if freq_sz == 150:
             imap = f"{act_sim_path}/model_MFMF_pass2_cmb-tsz_f150.fits"
         elif freq_sz == 90:
-            imap = f"{act_sim_path}/model_MFMF_pass2_cmb-tsz_f090.fits"
+            imap = f"{act_sim_path}/model_MFMF_pass2_cmb-tsz_f090.fits"    
     elif which_cat == "act_tsz_ksz_cib":
         if freq_sz == 150:
             imap = f"{act_sim_path}/model_MFMF_pass2_cmb-tsz-ksz-cib_f150.fits"
         elif freq_sz == 90:
             imap = f"{act_sim_path}/model_MFMF_pass2_cmb-tsz-ksz-cib_f090.fits"
-
+            
     modelmap = enmap.read_map(imap)
-    shape, wcs = modelmap.shape, modelmap.wcs # (10320, 43200)
+    shape, wcs = modelmap.shape, modelmap.wcs # (10320, 43200)  
     print(" ::: reading tsz cluster model image map at %d GHz:" %freq_sz, imap)
     print("modelmap", np.shape(modelmap))
 
 
 # -----------------------------------------------------------------------------------------------
 
+
 r_kmap = f"{my_path}/reproj_full_kap_lt4.5.fits"
-r_lmap = f"{my_path}/reproj_full_dlensed.fits"
+r_lmap = f"{my_path}/reproj_full_lensed_alm.fits"
+# r_lmap = f"{my_path}/reproj_full_dlensed.fits"
 r_tszmap = f"{my_path}/reproj_full_tsz_8192.fits"
 r_kszmap = f"{my_path}/reproj_full_ksz.fits"
-r_cibmap = f"{my_path}/reproj_full_cib_nu0145.fits"
+r_cibmap = f"{my_path}/reproj_full_cib_nu0145.fits"  
 
 try:
     # it takes too long to reproject the maps
-    print(" ::: loading the reprojected maps that are already saved")
+    print(" ::: loading the reprojected maps that are already saved")    
     kmap = enmap.read_map(r_kmap, delayed=False)
     lmap = enmap.read_map(r_lmap, delayed=False)
     tszmap = enmap.read_map(r_tszmap, delayed=False)
@@ -293,26 +316,26 @@ try:
     print(" ::: reading cib map:", r_cibmap)
 
 except:
-    # reading lensed alm map (switching to the map that Mat generated 2024.03.21)
-    ifile = f"{mat_path}/dlensed.fits"
-    lmap = enmap.read_map(ifile)
-    print(" ::: reading lensed alm map and converting to lensed cmb map:", ifile)
-    print("lmap", np.shape(lmap)) # (21360, 43200)
-    shape, wcs = lmap.shape, lmap.wcs
+    # # reading lensed alm map (switching to the map that Mat generated 2024.03.21)
+    # ifile = f"{mat_path}/dlensed.fits"
+    # lmap = enmap.read_map(ifile)
+    # print(" ::: reading lensed alm map and converting to lensed cmb map:", ifile) 
+    # print("lmap", np.shape(lmap)) # (21360, 43200)
+    # shape, wcs = lmap.shape, lmap.wcs
 
-    # # reading lensed alm map (from websky)
-    # ifile = f"{sim_path}/lensed_alm.fits"
-    # alm = np.complex128(hp.read_alm(ifile, hdu=(1, 2, 3)))
-    # lmap = curvedsky.alm2map(alm[0,:], enmap.empty(shape, wcs, dtype=np.float64))
-    # print(" ::: reading lensed alm map and converting to lensed cmb map:", ifile)
-    # print("lmap", np.shape(lmap))
+    # reading lensed alm map (from websky)
+    ifile = f"{sim_path}/lensed_alm.fits" 
+    alm = np.complex128(hp.read_alm(ifile, hdu=(1, 2, 3)))
+    lmap = curvedsky.alm2map(alm[0,:], enmap.empty(shape, wcs, dtype=np.float64))
+    print(" ::: reading lensed alm map and converting to lensed cmb map:", ifile) 
+    print("lmap", np.shape(lmap)) # (21601, 43200)
 
-    # reading true kappa map
+    # reading true kappa map 
     # ifile = f"{sim_path}/kap.fits" # CMB lensing convergence from 0<z<1100
     ifile = f"{sim_path}/kap_lt4.5.fits" # CMB lensing convergence from z<4.5 from halo+field websky - Mat's map corresonds to this
     imap = np.atleast_2d(hp.read_map(ifile, field=tuple(range(0,1)))).astype(np.float64)
     kmap = reproject.healpix2map(imap, shape, wcs)[0,:,:]
-    print(" ::: reading true kappa map:", ifile)
+    print(" ::: reading true kappa map:", ifile) 
     print("kmap", np.shape(kmap))
 
     # # reading tSZ map (low resoultion)
@@ -320,17 +343,17 @@ except:
     # # imap = hp.read_map(ifile)
     # imap = np.atleast_2d(hp.read_map(ifile, field=tuple(range(0,1)))).astype(np.float64)
     # ymap = reproject.healpix2map(imap, shape, wcs)[0,:,:]
-    # print(" ::: reading tsz map:", ifile)
+    # print(" ::: reading tsz map:", ifile) 
     # print("ymap", np.shape(ymap))
 
     # reading high resolution tSZ map
     ifile = f"{sim_path}/tsz_8192.fits"
     imap = np.atleast_2d(hp.read_map(ifile, field=tuple(range(0,1)))).astype(np.float64)
     ymap = reproject.healpix2map(imap, shape, wcs)[0,:,:]
-    print(" ::: reading high resolution tsz map:", ifile)
+    print(" ::: reading high resolution tsz map:", ifile) 
     print("ymap", np.shape(ymap))
 
-    # convert compton-y to delta-T (in uK)
+    # convert compton-y to delta-T (in uK) 
     tcmb = 2.726
     tcmb_uK = tcmb * 1e6 #micro-Kelvin
     H_cgs = 6.62608e-27
@@ -355,7 +378,7 @@ except:
     print(" ::: reading ksz map:", ifile)
     print("kszmap", np.shape(kszmap))
 
-    # frequency for CIB
+    # frequency for CIB 
     if freq_sz == 150: freq_cib = 145
     elif freq_sz == 90: freq_cib = 93
 
@@ -366,7 +389,7 @@ except:
         imap = np.atleast_2d(hp.read_map(ifile, field=tuple(range(0,1)))).astype(np.float64)
         cibmap_i = reproject.healpix2map(imap, shape, wcs)[0,:,:]
 
-    elif freq_sz == 150:
+    elif freq_sz == 150: 
         # reading CIB 145GHz map
         ifile = f"{sim_path}/cib_nu0145.fits"
         imap = np.atleast_2d(hp.read_map(ifile, field=tuple(range(0,1)))).astype(np.float64)
@@ -388,19 +411,76 @@ except:
         dBnudT = (2.*hplanck*nu**3.)/clight**2. * (np.exp(X))/(np.exp(X)-1.)**2. * X/tcmb_uK * 1e26
         return 1./dBnudT
 
-    cibmap = ItoDeltaT(freq_cib) * cibmap_i
+    cibmap = ItoDeltaT(freq_cib) * cibmap_i 
 
-    # enmap.write_map(r_kmap, kmap)
-    # enmap.write_map(r_lmap, lmap)
-    # enmap.write_map(r_tszmap, tszmap)
-    # enmap.write_map(r_kszmap, kszmap)
-    # enmap.write_map(r_cibmap, cibmap)
+    enmap.write_map(r_kmap, kmap)
+    enmap.write_map(r_lmap, lmap)
+    enmap.write_map(r_tszmap, tszmap)
+    enmap.write_map(r_kszmap, kszmap)
+    enmap.write_map(r_cibmap, cibmap)
 
 print(" ::: maps are ready!")
 
+# add maps
+l_tsz_map = lmap + tszmap
+l_ksz_cib_map = lmap + kszmap + cibmap
+l_tsz_ksz_cib_map = lmap + tszmap + kszmap + cibmap
+
+
+
+
+
+
+
+if inpainting == True:
+
+    print(" ::: preparing for inpainting...") 
+
+    inp_l = f"{my_path}/beam_convolved_noise_added_full_lmap.fits"
+    inp_l_tsz = f"{my_path}/beam_convolved_noise_added_full_l_tsz_map.fits"
+    inp_l_ksz_cib = f"{my_path}/beam_convolved_noise_added_full_l_ksz_cib_map.fits"
+    inp_l_tsz_ksz_cib = f"{my_path}/beam_convolved_noise_added_full_l_tsz_ksz_cib_map.fits" 
+
+    try:
+        # it takes too long to apply beams to maps
+        print(" ::: loading the beam applied and noise added maps that are already saved")    
+        lmap = enmap.read_map(inp_l, delayed=False)
+        l_tsz_map = enmap.read_map(inp_l_tsz, delayed=False)
+        l_ksz_cib_map = enmap.read_map(inp_l_ksz_cib, delayed=False)
+        l_tsz_ksz_cib_map = enmap.read_map(inp_l_tsz_ksz_cib, delayed=False)
+
+        print(" ::: reading cmb map:", inp_l)
+        print(" ::: reading cmb+tsz map:", inp_l_tsz)
+        print(" ::: reading cmb+ksz+cib map:", inp_l_ksz_cib)
+        print(" ::: reading cmb+tsz+ksz+cib map:", inp_l_tsz_ksz_cib)
+
+    except:
+
+        # apply beam and add white noise for inpainting 
+        print(" ::: applying beams and adding white noise")
+        
+        white_noise = maps.white_noise(lmap.shape, lmap.wcs, noise_muK_arcmin=10)
+
+        lmap = apply_beam(lmap) + white_noise
+        print(" ::: applying beam on lmap and adding white noise is done")
+        l_tsz_map = apply_beam(l_tsz_map) + white_noise
+        print(" ::: applying beam on l_tsz_map and adding white noise is done")
+        l_ksz_cib_map = apply_beam(l_ksz_cib_map) + white_noise
+        print(" ::: applying beam on l_ksz_cib_map and adding white noise is done")
+        l_tsz_ksz_cib_map = apply_beam(l_tsz_ksz_cib_map) + white_noise
+        print(" ::: applying beam on l_tsz_ksz_cib_map and adding white noise is done")
+
+        enmap.write_map(inp_l, lmap)
+        enmap.write_map(inp_l_tsz, l_tsz_map)
+        enmap.write_map(inp_l_ksz_cib, l_ksz_cib_map)
+        enmap.write_map(inp_l_tsz_ksz_cib, l_tsz_ksz_cib_map)
+        print(" ::: maps are saved!")
+
+
+
 #-------------------------------------------------------------------------------
 
-if test == True: nsims = 10 # just for a quick check
+if test == True: nsims = 10 # just for a quick check 
 else: nsims = len(ras)
 
 comm, rank, my_tasks = mpi.distribute(nsims)
@@ -411,8 +491,8 @@ for task in my_tasks:
     i = task
     cper = int((j + 1) / len(my_tasks) * 100.0)
     if rank==0: print(f"Rank {rank} performing task {task} as index {j} ({cper}% complete.).")
-
-    coords = np.array([decs[i], ras[i]]) * utils.degree
+      
+    coords = np.array([decs[i], ras[i]]) * utils.degree  
 
     # cut out a stamp from the simulated map
     kstamp = reproject.thumbnails(
@@ -425,7 +505,7 @@ for task in my_tasks:
         pixwin=False
     ) # true kappa
 
-    lstamp = reproject.thumbnails(
+    l_only = reproject.thumbnails(
         lmap,
         coords,
         r=maxr,
@@ -433,122 +513,116 @@ for task in my_tasks:
         proj="tan",
         oversample=2,
         pixwin=True # only needed for maps made natively in CAR
-    ) # lensed alm
+    ) # lensed cmb
 
-    tsz_stamp = reproject.thumbnails(
-        tszmap,
+    l_tsz = reproject.thumbnails(
+        l_tsz_map,
         coords,
         r=maxr,
         res=px * utils.arcmin,
         proj="tan",
         oversample=2,
         pixwin=False
-    ) # tsz
+    ) # lensed cmb + tsz
 
-    ksz_stamp = reproject.thumbnails(
-        kszmap,
+    l_ksz_cib = reproject.thumbnails(
+        l_ksz_cib_map,
         coords,
         r=maxr,
         res=px * utils.arcmin,
         proj="tan",
         oversample=2,
         pixwin=False
-    ) # ksz
+    ) # lensed cmb + ksz + cib
 
-    cib_stamp = reproject.thumbnails(
-        cibmap,
+    l_tsz_ksz_cib = reproject.thumbnails(
+        l_tsz_ksz_cib_map,
         coords,
         r=maxr,
         res=px * utils.arcmin,
         proj="tan",
         oversample=2,
         pixwin=False
-    ) # cib
+    ) # lensed cmb + tsz + ksz + cib
 
-    # initialise calculations based on geometry
-    if j == 0:
+    # initialise calculations based on geometry 
+    if j == 0:     
 
-        # get geometry and Fourier info
-        shape = lstamp.shape
-        wcs = lstamp.wcs
+        # get geometry and Fourier info   
+        shape = kstamp.shape
+        wcs = kstamp.wcs
         modlmap = enmap.modlmap(shape, wcs)
         modrmap = enmap.modrmap(shape, wcs)
-
-        assert wcsutils.equal(lstamp.wcs, kstamp.wcs)
+        
+        assert wcsutils.equal(kstamp.wcs, l_only.wcs)
 
         # get an edge taper map and apodize
         taper = maps.get_taper(
-            lstamp.shape,
-            lstamp.wcs,
+            kstamp.shape,
+            kstamp.wcs,
             taper_percent=tap_per,
             pad_percent=pad_per,
             weight=None,
         )
-        taper = taper[0]
+        taper = taper[0]  
 
         # evaluate the 2D Gaussian beam on an isotropic Fourier grid
-        beam2d_gauss = maps.gauss_beam(modlmap, fwhm)
-        bfunc150 = cutils.load_beam("f150")
-        bfunc90 = cutils.load_beam("f090")
-        beam2d_150 = bfunc150(modlmap)
-        beam2d_90 = bfunc90(modlmap)
+        beam2d_gauss = maps.gauss_beam(modlmap, fwhm)    
+        # bfunc150 = load_beam("f150")
+        # bfunc90 = load_beam("f090")         
+        # beam2d_150 = bfunc150(modlmap)
+        # beam2d_90 = bfunc90(modlmap)
 
-        # select the beam
+        # select the beam 
         if which_cat == "halo":
             beam2d = beam2d_gauss
-        else: # for the ACT sim
-            if freq_sz == 150:
+        else: # for the ACT sim 
+            if freq_sz == 150: 
                 beam2d = beam2d_150
             elif freq_sz == 90:
                 beam2d = beam2d_90
-
+        
         # build Fourier space masks for lensing reconstruction
         xmask = maps.mask_kspace(shape, wcs, lmin=xlmin, lmax=xlmax) # grad
         ymask = maps.mask_kspace(shape, wcs, lmin=ylmin, lmax=ylmax, lxcut=ylcut, lycut=ylcut) # hres
         kmask = maps.mask_kspace(shape, wcs, lmin=klmin, lmax=klmax) # kappa
 
-        # get theory spectrum and build interpolated 2D Fourier CMB from theory and maps
+        # get theory spectrum and build interpolated 2D Fourier CMB from theory and maps      
         theory = cosmology.default_theory()
         ucltt2d = theory.lCl("TT", modlmap)
 
-        # total spectrum includes beam-deconvolved noise
+        # total spectrum includes beam-deconvolved noise       
         npower = (nlevel * np.pi/180./60.)**2.
         tcltt2d = ucltt2d + npower/beam2d**2.
         tcltt2d[~np.isfinite(tcltt2d)] = 0
 
     # same filter as the post-reconstuction for true kappa
-    k_stamp = maps.filter_map(kstamp, kmask)
+    k_stamp = maps.filter_map(kstamp, kmask)   
     s.add_to_stack("kstamp", k_stamp)
-    binned_true = bin(k_stamp, modrmap * (180 * 60 / np.pi), bin_edges)
-    s.add_to_stats("tk1d", binned_true)
+    binned_true = bin(k_stamp, modrmap * (180 * 60 / np.pi), bin_edges)   
+    s.add_to_stats("tk1d", binned_true)     
 
-    # no beam applied to websky maps
-    l_only = lstamp
-    l_tsz = lstamp + tsz_stamp
-    l_ksz_cib = lstamp + ksz_stamp + cib_stamp
-    l_tsz_ksz_cib = lstamp + tsz_stamp + ksz_stamp + cib_stamp
-
-    # choose the map for each leg
+    # choose the map for each leg 
     hres = globals()[hres_choice]
     grad = globals()[grad_choice]
 
-    # # inpainting the gradient leg
+    # # inpainting the gradient leg - new inpainting method
     # if inpainting == True:
     #     mask = np.zeros(grad.shape, dtype=bool)
     #     mask[grad.modrmap()<10.0 * utils.arcmin] = True
     #     mask[mask==0] = False
-    #     grad = maps.gapfill_edge_conv_flat(grad, mask)
+    #     grad = maps.gapfill_edge_conv_flat(grad, mask) 
 
     # taper stamp
     tapered_hres = hres * taper
-    tapered_grad = grad * taper
-
-    # inpainting the gradient leg - old inpainting method
+    tapered_grad = grad * taper  
+    
+    # inpainting the gradient leg - old inpainting method 
     if inpainting == True:
-        """
-        If inpainting, we
+        """ 
+        If inpainting, we 
         (1) resample the stamp to 64x64 (2 arcmin pixels)
-        (2) Inpaint a hole of radius 4 arcmin
+        (2) Inpaint a hole of radius 4 arcmin 
         """
         rmin = 4 * utils.arcmin
         crop_pixels = int(16. / px) # 16 arcminutes wide
@@ -556,7 +630,7 @@ for task in my_tasks:
         cutout_sel = maps.crop_center(tapered_grad, cropy=crop_pixels, cropx=crop_pixels, sel=True)
         Ndown, Ndown2 = cutout.shape[-2:]
         if Ndown != Ndown2: raise Exception
-        hres_fiducial_rms = 20
+        hres_fiducial_rms = 10
 
         if j==0:
             from orphics import pixcov
@@ -565,116 +639,132 @@ for task in my_tasks:
             beam_fn = lambda x: maps.gauss_beam(fwhm, x)
             ipsizemap = enmap.pixsizemap(pshape, pwcs)
             pivar = maps.ivar(pshape, pwcs, hres_fiducial_rms, ipsizemap=ipsizemap)
-            pcov = pixcov.tpcov_from_ivar(Ndown, pivar, theory.lCl, beam_fn)
+            pcov = pixcov.tpcov_from_ivar(Ndown, pivar, theory.lCl, beam_fn)            
             geo = pixcov.make_geometry(pshape, pwcs, rmin, n=Ndown, deproject=True, iau=False, res=None, pcov=pcov)
 
         cutout = pixcov.inpaint_stamp(cutout, geo)
         tapered_grad[cutout_sel] = cutout.copy()
+         
+        # stack stamps pre-reconstruction as well (same filter as hres leg) 
+        inp_stamp = maps.filter_map(tapered_grad/taper, ymask)
+        s.add_to_stack("inp_stamp_st", inp_stamp)   
 
-        inp_stamp = tapered_grad / taper
-        s.add_to_stack("inp_stamp_st", inp_stamp)
+        # inp = tapered_grad/taper
+        # io.plot_img(inp, f"{save_dir}/{save_name}_after_inp.png") 
+        # io.plot_img(inp[100:140,100:140], f"{save_dir}/{save_name}_after_inp_zoom.png")  
 
-    # get a Fourier transformed stamp
-    k_hres = enmap.fft(tapered_hres, normalize="phys")
-    k_grad = enmap.fft(tapered_grad, normalize="phys")
+    if inpainting == True:
+        # get a beam deconvolved Fourier transformed stamp (inpainting assumes a beam and noise in the maps)
+        k_hres = enmap.fft(tapered_hres, normalize="phys")/beam2d
+        k_grad = enmap.fft(tapered_grad, normalize="phys")/beam2d
+    else:
+        # get a Fourier transformed stamp (no beam applied to websky maps)
+        k_hres = enmap.fft(tapered_hres, normalize="phys") 
+        k_grad = enmap.fft(tapered_grad, normalize="phys")
 
-    assert np.all(np.isfinite(k_hres))
-    assert np.all(np.isfinite(k_grad))
+    assert np.all(np.isfinite(k_hres))            
+    assert np.all(np.isfinite(k_grad)) 
 
-    # build symlens dictionary
+    # build symlens dictionary 
     feed_dict = {
-        "uC_T_T" : ucltt2d,
-        "tC_T_T" : tcltt2d,
+        "uC_T_T" : ucltt2d, 
+        "tC_T_T" : tcltt2d, 
         "X" : k_grad, # grad leg
         "Y" : k_hres, # hres leg
-    }
+    }  
 
-    # do lensing reconstruction in Fourier space
+    # do lensing reconstruction in Fourier space    
     rkmap = qe.reconstruct(shape, wcs, feed_dict, estimator="hdv", XY="TT", xmask=xmask, ymask=ymask, kmask=kmask, physical_units=True)
-
+      
     assert np.all(np.isfinite(rkmap))
-
+        
     # transform to real space
-    kappa = enmap.ifft(rkmap, normalize="phys").real
+    kappa = enmap.ifft(rkmap, normalize="phys").real    
 
-    # stack reconstructed kappa
-    s.add_to_stack("lstamp", kappa)
-    binned_kappa = bin(kappa, modrmap * (180 * 60 / np.pi), bin_edges)
-    s.add_to_stats("k1d", binned_kappa)
+    # stack reconstructed kappa     
+    s.add_to_stack("lstamp", kappa)    
+    binned_kappa = bin(kappa, modrmap * (180 * 60 / np.pi), bin_edges)   
+    s.add_to_stats("k1d", binned_kappa) 
 
     # stack stamps pre-reconstruction as well (same filter as hres leg)
-    hres_stamp = maps.filter_map(hres, ymask)
-    grad_stamp = maps.filter_map(grad, ymask)
+    hres_stamp = maps.filter_map(hres, ymask) 
+    grad_stamp = maps.filter_map(grad, ymask)  
     s.add_to_stack("hres_stamp_st", hres_stamp)
-    s.add_to_stack("grad_stamp_st", grad_stamp)
+    s.add_to_stack("grad_stamp_st", grad_stamp) 
+
+    # io.plot_img(grad, f"{save_dir}/{save_name}_before_inp.png") 
+    # io.plot_img(grad[100:140,100:140], f"{save_dir}/{save_name}_before_inp_zoom.png")   
+    # sys.exit()
 
     # save the list of masses and redshifts for matched stack mass fitting
-    if mean_field == False:
+    if mean_field == False:     
         s.add_to_stats("redshift", (zs[i],))
         s.add_to_stats("mass", (mass[i],))
 
     j = j + 1
 
 #-------------------------------------------------------------------------------
+            
+
 
 s.get_stacks()
 s.get_stats()
-
+   
 if rank==0:
 
     if mean_field == True:
-        save_name = save_name + "_mf"
+        save_name = save_name + "_mf" 
 
-    # stacks before lensing reconstruction
+    # stacks before lensing reconstruction   
     hres_st = s.stacks["hres_stamp_st"]
-    grad_st = s.stacks["grad_stamp_st"]
-
-    hres_zoom = hres_st[100:140,100:140]
-    grad_zoom = grad_st[100:140,100:140]
-
+    grad_st = s.stacks["grad_stamp_st"]     
+ 
+    hres_zoom = hres_st[100:140,100:140]  
+    grad_zoom = grad_st[100:140,100:140] 
+         
     modrmap = hres_zoom.modrmap()
-    modrmap = np.rad2deg(modrmap)*60.
-
+    modrmap = np.rad2deg(modrmap)*60. 
+    
     hbinned = bin(hres_zoom, modrmap, bin_edges)
     gbinned = bin(grad_zoom, modrmap, bin_edges)
 
-    io.plot_img(hres_st, f"{save_dir}/{save_name}_0hres.png")
-    io.plot_img(grad_st, f"{save_dir}/{save_name}_0grad.png")
-    io.plot_img(hres_zoom, f"{save_dir}/{save_name}_0hres_zoom.png")
-    io.plot_img(grad_zoom, f"{save_dir}/{save_name}_0grad_zoom.png")
-    np.save(f"{save_dir}/{save_name}_0hres.npy", hres_st)
-    np.save(f"{save_dir}/{save_name}_0grad.npy", grad_st)
-    io.save_cols(f"{save_dir}/{save_name}_0binned_hres.txt", (centers, hbinned))
-    io.save_cols(f"{save_dir}/{save_name}_0binned_grad.txt", (centers, gbinned))
+    io.plot_img(hres_st, f"{save_dir}/{save_name}_0hres.png")  
+    io.plot_img(grad_st, f"{save_dir}/{save_name}_0grad.png")             
+    io.plot_img(hres_zoom, f"{save_dir}/{save_name}_0hres_zoom.png")   
+    io.plot_img(grad_zoom, f"{save_dir}/{save_name}_0grad_zoom.png")  
+    np.save(f"{save_dir}/{save_name}_0hres.npy", hres_st) 
+    np.save(f"{save_dir}/{save_name}_0grad.npy", grad_st)  
+    io.save_cols(f"{save_dir}/{save_name}_0binned_hres.txt", (centers, hbinned))   
+    io.save_cols(f"{save_dir}/{save_name}_0binned_grad.txt", (centers, gbinned))      
 
     if inpainting == True:
-        inp_st = s.stacks["inp_stamp_st"]
-        inp_zoom = inp_st[100:140,100:140]
+        inp_st = s.stacks["inp_stamp_st"]     
+        inp_zoom = inp_st[100:140,100:140]         
         ibinned = bin(inp_zoom, modrmap, bin_edges)
-        io.plot_img(inp_st, f"{save_dir}/{save_name}_0inp.png")
-        io.plot_img(inp_zoom, f"{save_dir}/{save_name}_0inp_zoom.png")
-        np.save(f"{save_dir}/{save_name}_0inp.npy", inp_st)
+        io.plot_img(inp_st, f"{save_dir}/{save_name}_0inp.png")              
+        io.plot_img(inp_zoom, f"{save_dir}/{save_name}_0inp_zoom.png")  
+        np.save(f"{save_dir}/{save_name}_0inp.npy", inp_st)    
         io.save_cols(f"{save_dir}/{save_name}_0binned_inp.txt", (centers, ibinned))
 
-    # reconstructed lensing field
+    # reconstructed lensing field     
     kmap = s.stacks["kstamp"]
     lmap = s.stacks["lstamp"]
-
-    kmap_zoom = kmap[100:140,100:140]
-    lmap_zoom = lmap[100:140,100:140]
-
+    
+    kmap_zoom = kmap[100:140,100:140] 
+    lmap_zoom = lmap[100:140,100:140] 
+            
     modrmap = kmap_zoom.modrmap()
-    modrmap = np.rad2deg(modrmap)*60.
+    modrmap = np.rad2deg(modrmap)*60. 
 
     kbinned = bin(kmap_zoom, modrmap, bin_edges)
     lbinned = bin(lmap_zoom, modrmap, bin_edges)
 
-    io.plot_img(kmap, f"{save_dir}/{save_name}_1tkappa.png")
-    io.plot_img(lmap, f"{save_dir}/{save_name}_1rkappa.png")
-    io.plot_img(kmap[100:140,100:140], f"{save_dir}/{save_name}_1tkappa_zoom.png")
-    io.plot_img(lmap[100:140,100:140], f"{save_dir}/{save_name}_1rkappa_zoom.png")
-    np.save(f"{save_dir}/{save_name}_1tkappa.npy", kmap)
-    np.save(f"{save_dir}/{save_name}_1rkappa.npy", lmap)
+    io.plot_img(kmap, f"{save_dir}/{save_name}_1tkappa.png")   
+    io.plot_img(lmap, f"{save_dir}/{save_name}_1rkappa.png")                 
+    io.plot_img(kmap[100:140,100:140], f"{save_dir}/{save_name}_1tkappa_zoom.png")   
+    io.plot_img(lmap[100:140,100:140], f"{save_dir}/{save_name}_1rkappa_zoom.png")  
+    np.save(f"{save_dir}/{save_name}_1tkappa.npy", kmap)     
+    np.save(f"{save_dir}/{save_name}_1rkappa.npy", lmap)                 
     io.save_cols(f"{save_dir}/{save_name}_1binned_tkappa_from2D.txt", (centers, kbinned))
     io.save_cols(f"{save_dir}/{save_name}_1binned_rkappa_from2D.txt", (centers, lbinned))
 
@@ -682,25 +772,25 @@ if rank==0:
     tcovm = s.stats["tk1d"]["covmean"]
     tcorr = stats.cov2corr(s.stats["tk1d"]["covmean"])
     terrs = s.stats["tk1d"]["errmean"]
-
+    
     binned = s.stats["k1d"]["mean"]
     covm = s.stats["k1d"]["covmean"]
     corr = stats.cov2corr(s.stats["k1d"]["covmean"])
     errs = s.stats["k1d"]["errmean"]
 
-    np.savetxt(f"{save_dir}/{save_name}_1tkappa_errs.txt", terrs)
-    np.savetxt(f"{save_dir}/{save_name}_1rkappa_errs.txt", errs)
+    np.savetxt(f"{save_dir}/{save_name}_1tkappa_errs.txt", terrs)               
+    np.savetxt(f"{save_dir}/{save_name}_1rkappa_errs.txt", errs)    
     np.savetxt(f"{save_dir}/{save_name}_1tkappa_covm.txt", tcovm)
     np.savetxt(f"{save_dir}/{save_name}_1rkappa_covm.txt", covm)
-    np.save(f"{save_dir}/{save_name}_1tkappa_corr.npy", tcorr)
-    np.save(f"{save_dir}/{save_name}_1rkappa_corr.npy", corr)
+    np.save(f"{save_dir}/{save_name}_1tkappa_corr.npy", tcorr)  
+    np.save(f"{save_dir}/{save_name}_1rkappa_corr.npy", corr) 
     io.save_cols(f"{save_dir}/{save_name}_1binned_tkappa.txt", (centers, tbinned))
-    io.save_cols(f"{save_dir}/{save_name}_1binned_rkappa.txt", (centers, binned))
+    io.save_cols(f"{save_dir}/{save_name}_1binned_rkappa.txt", (centers, binned)) 
 
-    enmap.write_map(f"{save_dir}/{save_name}_kmask.fits", kmask)
+    enmap.write_map(f"{save_dir}/{save_name}_kmask.fits", kmask)   
     np.savetxt(f"{save_dir}/{save_name}_bin_edges.txt", bin_edges)
 
-    if mean_field == False:
+    if mean_field == False: 
         np.savetxt(f"{save_dir}/{save_name}_z_mass1e14.txt", np.c_[s.vectors["redshift"], s.vectors["mass"]])
 
 elapsed = t.time() - start

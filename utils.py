@@ -228,6 +228,11 @@ def initialize_pipeline_config():
         help="No SZ model image subtraction when replacing tSZ-free gradient with high-res co-adds (use with --hres-grad)"
     )
     parser.add_argument(
+        "--ilc-maps", 
+        action="store_true", 
+        help="Use ILC dr6v3 maps for both legs (use with --night-only and --no-90 and --no-sz-sub)"
+    )    
+    parser.add_argument(
         "--decmin", type=float, default=None, help="Minimum declination in degree."
     )
     args = parser.parse_args()

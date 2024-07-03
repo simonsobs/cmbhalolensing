@@ -29,6 +29,7 @@ if rank==0:
     print("Tags: ",tags)
     print("Defaults: ",defaults)
     print("Arguments: ",args)
+    print("Data: ",data_choice)
 
 # Load a fiducial CMB theory object
 theory = cosmology.default_theory()
@@ -76,10 +77,15 @@ if not (args.inject_sim):
             pmap = enmap.read_map(f'{paths.fullsim_path}/planck_sim_{args.full_sim_index:06d}.fits') / 1e6
         else:
             try:
-                pmap = enmap.read_map(fplc_map, delayed=False)
+                if not (args.ilc_maps): 
+                    pmap = enmap.read_map(fplc_map, delayed=False)
+                else:
+                    fplc_map = (paths.act_data + data_choice.grad)
+                    pmap = enmap.read_map(fplc_map, delayed=False, sel=np.s_[0, ...])
+                    print(np.shape(pmap))
 
             except:
-                plc_map = paths.planck_data + "COM_CMB_IQU-smica-nosz_2048_R3.00_full.fits"
+                plc_map = paths.data + "COM_CMB_IQU-smica-nosz_2048_R3.00_full.fits"
                 
                 # reproject the Planck map (healpix -> CAR)
                 fshape, fwcs = enmap.fullsky_geometry(res=2.0 * utils.arcmin, proj="car")
@@ -103,43 +109,43 @@ if not (args.inject_sim):
         if not(args.full_sim_index is None):
             amap_150 = enmap.read_map(f'{paths.fullsim_path}/af150_sim_{args.full_sim_index:06d}.fits')
         else:
-            act_map = (paths.coadd_data + data_choice.hres_150)
-
-            famap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+            if not (args.ilc_maps): 
+                act_map = (paths.act_data + data_choice.hres_150)
+                famap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+            else:
+                act_map = (paths.act_data + data_choice.hres)
+                famap_150 = enmap.read_map(act_map, delayed=False)
+                print(np.shape(famap_150))
 
             # SZ cluster model image subtraction for 150 GHz
             if args.hres_grad:            
                 if not (args.grad_noszsub): 
-                    gamap_150 = famap_150 - enmap.read_map(paths.data + data_choice.hres_model_150)
-
+                    gamap_150 = famap_150 - enmap.read_map(paths.act_data + data_choice.hres_model_150)
                 else: 
                     gamap_150 = famap_150
             
             if not(args.no_sz_sub):
-                amap_150 = famap_150 - enmap.read_map(paths.data + data_choice.hres_model_150)   
-
+                amap_150 = famap_150 - enmap.read_map(paths.act_data + data_choice.hres_model_150)   
             else:
                 amap_150 = famap_150
 
+        
         # ACT 90 GHz coadd map
         if not(args.full_sim_index is None):
             amap_90 = enmap.read_map(f'{paths.fullsim_path}/af090_sim_{args.full_sim_index:06d}.fits')
         else:
-            act_map = (paths.coadd_data + data_choice.hres_090)
-
+            act_map = (paths.act_data + data_choice.hres_090)
             famap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
 
             # SZ cluster model image subtraction for 90 GHz    
             if args.hres_grad:            
                 if not (args.grad_noszsub): 
-                    gamap_090 = famap_90 - enmap.read_map(paths.data + data_choice.hres_model_090)
- 
+                    gamap_090 = famap_90 - enmap.read_map(paths.act_data + data_choice.hres_model_090)
                 else: 
                     gamap_90 = famap_90
-   
-            if not(args.no_sz_sub):
-                amap_90 = famap_90 - enmap.read_map(paths.data + data_choice.hres_model_090) 
 
+            if not(args.no_sz_sub):
+                amap_90 = famap_90 - enmap.read_map(paths.act_data + data_choice.hres_model_090) 
             else:
                 amap_90 = famap_90
       
@@ -162,7 +168,7 @@ if not (args.inject_sim):
             null_map_90 = famap_90 - namap_90
 
         # Inv var map for 90 GHz
-        ivar_map = (paths.coadd_data + data_choice.hres_ivar)
+        ivar_map = (paths.act_data + data_choice.hres_ivar)
 
         # if data_choice.hres_map == 'dr6': imap_90 = enmap.read_map(ivar_map, delayed=False)
         # else: imap_90 = enmap.read_map(ivar_map, delayed=False, sel=np.s_[0, ...]) ##### fix here 
@@ -355,6 +361,7 @@ def fit_p1d(
 
 # beam and FWHM
 plc_beam_fwhm = defaults.planck_smica_beam_fwhm     # 5 arcmin
+ilc_beam_fwhm = defaults.ilc_dr6v3_beam_fwhm        # 1.6 arcmin
 
 # Planck mask
 xlmin = args.grad_lmin ; xlmax = args.grad_lmax     # 200, 2000
@@ -470,7 +477,7 @@ for task in my_tasks:
             proj="tan",
             oversample=2,
             pixwin=True
-        )
+        )       
         astamp_90 = reproject.thumbnails(
             amap_90,
             coords,
@@ -516,7 +523,7 @@ for task in my_tasks:
                     xlabel="$\\theta_x$ (arcmin)",
                     ylabel="$\\theta_y$ (arcmin)",
                 )
-            if args.debug_anomalies:
+            if args.debug_anomalies: 
                 io.plot_img(
                     astamp_90,
                     f"{paths.debugdir}act_90_err_stamp_large_stamp_{task}.png",
@@ -550,14 +557,13 @@ for task in my_tasks:
                 )
             continue
 
-
         if not (args.hres_grad):
             """ 
             !! CUT OUT PLANCK STAMP
             """
             # cut out a stamp from the Planck map (CAR -> tangent)
             pstamp = reproject.thumbnails(
-                pmap, coords, r=maxr, res=pixel * utils.arcmin, proj="tan", oversample=2, pixwin=False
+                    pmap, coords, r=maxr, res=pixel * utils.arcmin, proj="tan", oversample=2, pixwin=True if args.ilc_maps else False
             )
 
             # Check that all the WCS agree
@@ -583,8 +589,11 @@ for task in my_tasks:
                     )
                 continue
 
-            # Planck unit conversion: K -> uK
-            pstamp = pstamp[0] * 1e6
+            # # Planck unit conversion: K -> uK 
+            if not (args.ilc_maps): 
+                pstamp = pstamp[0] * 1e6
+            else: pstamp = pstamp * 1e6
+
 
         else:
             # using hres map for gradient leg 
@@ -680,7 +689,7 @@ for task in my_tasks:
     if args.debug_stack:
         sweight = ivar_90.mean()
 
-	# to obtain tsz profile and covmat for act stamp 
+	    # to obtain tsz profile and covmat for act stamp 
         shape = astamp_150.shape
         wcs = astamp_150.wcs
         modrmap = enmap.modrmap(shape, wcs)        
@@ -765,8 +774,8 @@ for task in my_tasks:
             s.add_to_stats("gsz90w", sz90w)        
 
 
-        j = j + 1                        
-        continue
+        # j = j + 1                        
+        # continue # commented for now 
 
     """ 
     !! STAMP FFTs
@@ -800,13 +809,22 @@ for task in my_tasks:
         modlmap = enmap.modlmap(shape, wcs)
 
         # High-res beam functions
-        bfunc150 = cutils.load_beam("f150")
-        bfunc90 = cutils.load_beam("f090")
+        if not (args.ilc_maps): 
+            bfunc150 = cutils.load_beam("f150")
+            bfunc90 = cutils.load_beam("f090")
+        else:
+            bfunc150 = lambda x: maps.gauss_beam(ilc_beam_fwhm, x)
+            bfunc90 = lambda x: maps.gauss_beam(ilc_beam_fwhm, x)
 
         # evaluate the 2D Gaussian beam on an isotropic Fourier grid
-        act_150_kbeam2d = bfunc150(modlmap)
-        act_90_kbeam2d = bfunc90(modlmap)
-        plc_kbeam2d = maps.gauss_beam(modlmap, plc_beam_fwhm)
+        if not (args.ilc_maps): 
+            act_150_kbeam2d = bfunc150(modlmap)
+            act_90_kbeam2d = bfunc90(modlmap)
+            plc_kbeam2d = maps.gauss_beam(modlmap, plc_beam_fwhm)
+        else:
+            act_150_kbeam2d = maps.gauss_beam(modlmap, ilc_beam_fwhm)
+            act_90_kbeam2d = maps.gauss_beam(modlmap, ilc_beam_fwhm)
+            plc_kbeam2d = maps.gauss_beam(modlmap, ilc_beam_fwhm)
 
         # get theory spectrum - this should be the lensed spectrum!
         ells = np.arange(8000)
@@ -821,7 +839,7 @@ for task in my_tasks:
         minell = 2 * maps.minimum_ell(shape, wcs)
         l_edges = np.arange(minell / 2, 8001, minell)
         lbinner = stats.bin2D(modlmap, l_edges)
-	# PS correction factor
+	    # PS correction factor
         w2 = np.mean(taper ** 2) 
         # fsky for bandpower variance
         fsky = enmap.area(shape, wcs) * w2 / 4.0 / np.pi
@@ -917,8 +935,8 @@ for task in my_tasks:
             plc_p1d,
             "plc",
             modlmap,
-            lambda x: maps.gauss_beam(x, plc_beam_fwhm),
-            lambda x: maps.gauss_beam(x, plc_beam_fwhm),
+            lambda x: maps.gauss_beam(x, ilc_beam_fwhm if args.ilc_maps else plc_beam_fwhm),
+            lambda x: maps.gauss_beam(x, ilc_beam_fwhm if args.ilc_maps else plc_beam_fwhm),
             rms=defaults.gradient_fiducial_rms,
             lmin=defaults.gradient_fit_ellmin,
             lmax=defaults.gradient_fit_ellmax,
@@ -1324,11 +1342,7 @@ if rank == 0:
             cutils.plot(f"{paths.savedir}/inp_a150_cmb.png",a150,0,0,crop=None,lim=None,label='$\\mu$K')
             cutils.plot(f"{paths.savedir}/inp_a150_cmb_zoom.png",a150,0,0,crop=crop,lim=None,label='$\\mu$K')
             cutils.plot(f"{paths.savedir}/inp_a90_cmb.png",a90,0,0,crop=None,lim=None,label='$\\mu$K')
-            cutils.plot(f"{paths.savedir}/inp_a90_cmb_zoom.png",a90,0,0,crop=crop,lim=None,label='$\\mu$K')
-
-        elapsed = time.time() - start_time
-        print("\r ::: entire run took %.1f seconds" % elapsed)
-        sys.exit()   
+            cutils.plot(f"{paths.savedir}/inp_a90_cmb_zoom.png",a90,0,0,crop=crop,lim=None,label='$\\mu$K')  
 
     # Dump all collected statistics
     with bench.show("dump"):
@@ -1354,7 +1368,7 @@ if rank == 0:
             pass
 
     if not (args.debug_stack):
-	# Sanity checks
+	    # Sanity checks
         N_stamp = s.vectors[f"ct_{ctkey}"].sum()
         assert N_stamp == s.stack_count["kmap"]
         assert N_stamp == s.vectors["kw"].shape[0]

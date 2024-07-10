@@ -7,7 +7,7 @@ import numpy as np
 from pixell import enmap, reproject, utils, wcsutils, bunch
 from orphics import mpi, maps, stats, io, cosmology
 from symlens import qe
-import argparse, sys
+import argparse
 
 start = t.time()
 

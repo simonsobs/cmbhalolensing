@@ -91,7 +91,7 @@ for res in [0.25]:
         dumap = enmap.extract(odumap,oshape,owcs)
     else:
         dlmap = odlmap
-        dumap = dumap
+        dumap = odumap
         
     enmap.write_map(f"dlensed{footstr}.fits",dlmap)
     enmap.write_map(f"dunlensed{footstr}.fits",dumap)

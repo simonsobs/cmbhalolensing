@@ -9,6 +9,7 @@ from orphics import io
 import healpy as hp
 from websky_cosmo import *
 import argparse
+import pandas as pd
 
 start = t.time()
 
@@ -20,25 +21,26 @@ print("Paths: ", paths)
 
 parser = argparse.ArgumentParser() 
 parser.add_argument(
-    "save_name", type=str, help="Name you want for your output."
+    "which_sim", type=str, help="Choose the sim e.g. websky or sehgal or agora."
 )
 parser.add_argument(
-    "which_sim", type=str, help="Choose the sim e.g. websky or sehgal."
+    "sim_version", type=str, help="Choose the nemo-sim-kit version for act tsz cat."
 )
 args = parser.parse_args() 
 
 
-output_path = paths.simsuite_path
-save_name = args.save_name
+output_path = paths.cat_path
+sim_version = args.sim_version
 if args.which_sim == "websky": 
     print(" ::: producing catalogues for WEBSKY sim")
-    save_name = "websky_" + save_name
     sim_path = paths.websky_sim_path
 elif args.which_sim == "sehgal": 
     print(" ::: producing catalogues for SEHGAL sim")
-    save_name = "sehgal_" + save_name
     sim_path = paths.sehgal_sim_path
-save_dir = f"{output_path}/{save_name}/"
+elif args.which_sim == "agora": 
+    print(" ::: producing catalogues for AGORA sim")
+    sim_path = paths.agora_sim_path    
+save_dir = f"{output_path}/{sim_version}/"
 io.mkdir(f"{save_dir}")
 print(" ::: saving to", save_dir)
 
@@ -49,63 +51,73 @@ print(" ::: saving to", save_dir)
 
 # CATALOGUE RESAMPLE -----------------------------------------------------------
 
-def resample_halo(ras, decs, mass, zs, tsz_cat, snr_cut, num_bins):
-    # resample websky or sehgal halo catalogue 
-    # to match the mass distribution of a given tsz catalogue
-    # num_bins: number of mass bins for resampling 
+##### this needs to be sped up! 
+def resample_halo(ras, decs, masses, zs, tsz_cat, snr_cut, num_bins):
+    # resample websky or sehgal or agora halo catalogue 
+    # to match the mass and redshift distribution of a given tsz catalogue
+    # num_bins: number of mass and redshift bins for resampling 
 
     hdu = fits.open(tsz_cat)
-    tsz_mass = hdu[1].data["M200m"] # in units of 1e14 Msun
-    snr = hdu[1].data["SNR"]
-    tsz_mass = tsz_mass[snr > snr_cut] 
-    print(" ::: snr cut = %.1f" %snr_cut) 
-    print(" ::: total number of clusters in tsz cat =", len(tsz_mass))  
+    tsz_zs = hdu[1].data["redshift"]
+    if args.which_sim == "websky": 
+        tsz_masses = hdu[1].data["M200m"]
+    elif args.which_sim == "sehgal" or args.which_sim == "agora":
+        tsz_masses = hdu[1].data["M200c"]    
+    tsz_snr = hdu[1].data["SNR"]
 
-    # create mass bins based on the tsz masses
-    mbins = np.linspace(tsz_mass.min(), tsz_mass.max(), num_bins)
-    mhist, mbin_edges = np.histogram(tsz_mass, bins=mbins)
+    keep = tsz_snr > snr_cut
+    tsz_zs = tsz_zs[keep] 
+    tsz_masses = tsz_masses[keep] 
+    print(" ::: snr cut = %.1f" %snr_cut) 
+    print(" ::: total number of clusters in tsz cat =", len(tsz_masses))  
+
+    # create mass and redshift bins based on the tsz catalogue
+    mbins = np.linspace(tsz_masses.min(), tsz_masses.max(), num_bins)
+    zbins = np.linspace(tsz_zs.min(), tsz_zs.max(), num_bins)
+    mzhist, mbin_edges, zbin_edges = np.histogram2d(tsz_masses, tsz_zs, bins=[mbins, zbins])
 
     resampled_ras = []
     resampled_decs = []
-    resampled_mass = []
+    resampled_masses = []
     resampled_zs = []    
 
-    # loop through each mass bin and resample the input catalogue
-    for i in range(len(mhist)):
-        min_mass = mbin_edges[i]
-        max_mass = mbin_edges[i+1]
+    # loop through each bin in the 2D histogram and resample the input catalogue
+    for i in range(len(mbin_edges)-1):
+        for j in range(len(zbin_edges)-1):
+            min_masses = mbin_edges[i]
+            max_masses = mbin_edges[i+1]
+            min_zs = zbin_edges[j]
+            max_zs = zbin_edges[j+1]        
 
-        # find indices of input cat entries within the current mass bin
-        ind0 = np.where((mass > min_mass) & (mass < max_mass))[0]
-        bin_ras = ras[ind0]
-        bin_decs = decs[ind0]
-        bin_mass = mass[ind0]
-        bin_zs = zs[ind0]        
+            # find indices of input cat entries within the current mass and redshift bin
+            mask = (masses > min_masses) & (masses <= max_masses) & (zs > min_zs) & (zs <= max_zs)
+            bin_ras = ras[mask]
+            bin_decs = decs[mask]
+            bin_masses = masses[mask]
+            bin_zs = zs[mask]        
 
-        # skip empty bins
-        if mhist[i] == 0 or len(bin_mass) == 0:
-            continue
+            # skip empty bins
+            if int(mzhist[i, j]) == 0 or len(bin_masses) == 0:
+                continue
 
-        # resample the entries to match the histogran count
-        np.random.seed(100)
-        ind1 = np.random.choice(len(bin_mass), size=mhist[i], replace=True) 
-        resampled_ras.append(bin_ras[ind1])
-        resampled_decs.append(bin_decs[ind1])
-        resampled_mass.append(bin_mass[ind1])
-        resampled_zs.append(bin_zs[ind1])
+            # resample the entries to match the histogram count
+            np.random.seed(100)
+            ind = np.random.choice(len(bin_masses), size=int(mzhist[i, j]), replace=True)
+            resampled_ras.append(bin_ras[ind])
+            resampled_decs.append(bin_decs[ind])
+            resampled_masses.append(bin_masses[ind])
+            resampled_zs.append(bin_zs[ind])
 
     ras = np.concatenate(resampled_ras, axis=None)
     decs = np.concatenate(resampled_decs, axis=None)
-    mass = np.concatenate(resampled_mass, axis=None)
+    masses = np.concatenate(resampled_masses, axis=None)
     zs = np.concatenate(resampled_zs, axis=None)
 
     print(" ::: min and max redshift = %.2f and %.2f" %(zs.min(), zs.max()), "(mean = %.2f)" %zs.mean()) 
-    print(" ::: min and max M200m = %.2f and %.2f" %(mass.min(), mass.max()), "(mean = %.2f)" %mass.mean()) 
+    print(" ::: min and max M200 = %.2f and %.2f" %(masses.min(), masses.max()), "(mean = %.2f)" %masses.mean()) 
     print(" ::: total number of halos after resampling =", len(ras)) 
 
-    return ras, decs, mass, zs
-
-
+    return ras, decs, masses, zs
 
 
 # PREPARING HALO CATALOGUES ----------------------------------------------------
@@ -119,22 +131,21 @@ if args.which_sim == "websky":
     catalog = np.fromfile(f, count=N*10, dtype=np.float32)
     catalog = np.reshape(catalog, (N,10))
 
-    x  = catalog[:,0];  y = catalog[:,1];  z = catalog[:,2] # Mpc (comoving)
-    R  = catalog[:,6] # Mpc
+    x  = catalog[:,0];  y = catalog[:,1];  z = catalog[:,2] # in Mpc (comoving)
+    R  = catalog[:,6] # in Mpc
 
     # convert to mass, redshift, RA and DEC
-    rho        = 2.775e11*omegam*h**2     # Msun/Mpc^3
+    rho        = 2.775e11*omegam*h**2     # in Msun/Mpc^3
     M200m      = 4*np.pi/3.*rho*R**3      # in Msun 
-    chi        = np.sqrt(x**2+y**2+z**2)  # Mpc
+    chi        = np.sqrt(x**2+y**2+z**2)  # in Mpc
     theta, phi = hp.vec2ang(np.column_stack((x,y,z))) # in radians
 
     ras      = np.rad2deg(phi)
     decs     = np.rad2deg(np.pi/2. - theta)  
-    mass     = M200m / 1e14
+    masses     = M200m / 1e14 
     zs       = zofchi(chi)                 
 
     act_cat = paths.websky_tsz_cat
-
 
 elif args.which_sim == "sehgal": 
 
@@ -144,23 +155,44 @@ elif args.which_sim == "sehgal":
     data = np.genfromtxt(f_coords)
     ras, decs = data[:,1], data[:,2] # degrees
     zs = data[:,0]
-    mass = data[:,12] # this is M200c
-    # mass = data[:,14] # this is M500c
-    mass = mass / 1e14    
+    M200c = data[:,12] # in Msun
+    # M500c = data[:,14] # in Msun
+    masses = M200c / 1e14
 
     act_cat = paths.sehgal_tsz_cat
 
+elif args.which_sim == "agora":
+
+    df = pd.read_parquet(sim_path+'../../agora_halo.parquet.gzip') 
+    ras = df['totra'].to_numpy()
+    decs = df['totdec'].to_numpy()
+    zs = df['totz'].to_numpy()
+    M200c = df['totm200'].to_numpy() # in Msun/h
+
+    h = 0.6777
+    masses = M200c / 1e14 * h  
+
+    min_mass = 0.1 
+    keep = masses > min_mass
+    ras = ras[keep] 
+    decs = decs[keep]
+    zs = zs[keep]
+    masses = masses[keep]
+
+    print(" ::: mass cut applied: N =", len(ras))
+
+    act_cat = paths.agora_tsz_cat
+
 print(" ::: tsz cat used is:", act_cat)
 print(" ::: min and max redshift = %.2f and %.2f" %(zs.min(), zs.max()), "(mean = %.2f)" %zs.mean()) 
-print(" ::: min and max M200m = %.2f and %.2f" %(mass.min(), mass.max()), "(mean = %.2f)" %mass.mean()) 
+print(" ::: min and max M200 = %.4f and %.2f" %(masses.min(), masses.max()), "(mean = %.2f)" %masses.mean()) 
 print(" ::: total number of halos = ", len(ras))
 
+ras, decs, masses, zs = resample_halo(ras, decs, masses, zs, act_cat, snr_cut=4, num_bins=30)
+np.savetxt(f"{save_dir}{args.which_sim}_halo.txt", np.c_[ras, decs, zs, masses])
 
-ras, decs, mass, zs = resample_halo(ras, decs, mass, zs, act_cat, snr_cut=4, num_bins=30)
-np.savetxt(f"{save_dir}{args.which_sim}_halo.txt", np.c_[ras, decs, zs, mass])
-
-ras, decs, mass, zs = resample_halo(ras, decs, mass, zs, act_cat, snr_cut=5.5, num_bins=30)
-np.savetxt(f"{save_dir}{args.which_sim}_halo_snr5p5.txt", np.c_[ras, decs, zs, mass])
+ras, decs, masses, zs = resample_halo(ras, decs, masses, zs, act_cat, snr_cut=5.5, num_bins=30)
+np.savetxt(f"{save_dir}{args.which_sim}_halo_snr5p5.txt", np.c_[ras, decs, zs, masses])
 
 
 elapsed = t.time() - start

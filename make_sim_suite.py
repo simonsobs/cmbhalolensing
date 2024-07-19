@@ -24,7 +24,7 @@ parser.add_argument(
     "save_name", type=str, help="Name you want for your output."
 )
 parser.add_argument(
-    "which_sim", type=str, help="Choose the sim e.g. websky or sehgal."
+    "which_sim", type=str, help="Choose the sim e.g. websky or sehgal or agora."
 )
 parser.add_argument(
     "--high-accuracy", action="store_true", help="If using a high accuracy websky map, choose this option."
@@ -42,6 +42,10 @@ elif args.which_sim == "sehgal":
     print(" ::: producing maps for SEHGAL sim")
     save_name = "sehgal_" + save_name
     sim_path = paths.sehgal_sim_path
+elif args.which_sim == "agora": 
+    print(" ::: producing maps for AGORA sim")
+    save_name = "agora_" + save_name
+    sim_path = paths.agora_sim_path    
 save_dir = f"{output_path}/{save_name}/"
 io.mkdir(f"{save_dir}")
 print(" ::: saving to", save_dir)
@@ -69,7 +73,7 @@ nlevel = 15.0
 
 def apply_beam(imap): 
     # map2alm of the maps, almxfl(alm, beam_1d) to convolve with beam, alm2map to convert back to map
-    if args.which_sim == "websky": nside = 8192
+    if args.which_sim == "websky" or args.which_sim == "agora": nside = 8192
     elif args.which_sim == "sehgal": nside = 4096
     alm_lmax = nside * 3
     bfunc = lambda x: maps.gauss_beam(fwhm, x)  
@@ -88,13 +92,17 @@ if args.which_sim == "websky":
         r_kmap = sim_path + paths.websky_kappa4p5_reproj
         r_tszmap = sim_path + paths.websky_dtsz_reproj
     else: 
-        r_lmap = sim_path + paths.websky_lensed_cmb_reproj
+        r_lmap = sim_path + paths.websky_cmb_reproj
         r_kmap = sim_path + paths.websky_kappa_reproj
         r_tszmap = sim_path + paths.websky_tsz_reproj
 elif args.which_sim == "sehgal": 
-    r_lmap = sim_path + paths.sehgal_lensed_cmb_reproj
+    r_lmap = sim_path + paths.sehgal_cmb_reproj
     r_kmap = sim_path + paths.sehgal_kappa_reproj
     r_tszmap = sim_path + paths.sehgal_tsz_reproj
+elif args.which_sim == "agora":
+    r_lmap = sim_path + paths.agora_cmb_reproj
+    r_kmap = sim_path + paths.agora_kappa_reproj
+    r_tszmap = sim_path + paths.agora_tsz_reproj  
 
 
 # reading lensed cmb map
@@ -104,6 +112,7 @@ try:
 
 except:
     shape, wcs = enmap.fullsky_geometry(res=px*utils.arcmin, proj="car")
+
     if args.which_sim == "websky": 
         if args.high_accuracy:
             ifile = f"{paths.mat_path}/dlensed.fits"
@@ -118,6 +127,12 @@ except:
     elif args.which_sim == "sehgal": 
         ifile = f"{sim_path}Sehgalsimparams_healpix_4096_KappaeffLSStoCMBfullsky_phi_SimLens_Tsynfastnopell_fast_lmax8000_nside4096_interp2.5_method1_1_lensed_map.fits"
         hmap = hp.read_map(ifile).astype(np.float64)
+        lmap = reproject.healpix2map(hmap, shape, wcs)
+        print(" ::: reading lensed cmb map:", ifile) 
+
+    elif args.which_sim == "agora":
+        ifile = f"{sim_path}cmb/len/tqu1/agora_tqu1_phiNG_seed1_lmax16000_nside8192_interp1.6_method1_pol_1_lensedmap.fits"
+        hmap,_,_ = hp.read_map(ifile, field=[0,1,2]).astype(np.float64)
         lmap = reproject.healpix2map(hmap, shape, wcs)
         print(" ::: reading lensed cmb map:", ifile) 
 
@@ -145,6 +160,12 @@ except:
         hmap = hp.read_map(ifile).astype(np.float64)
         kmap = reproject.healpix2map(hmap, shape, wcs)
 
+    elif args.which_sim == "agora":
+        ifile = f'{sim_path}../../kappa_alm_recon_agora_phiNG_phi1_seed1.fits'
+        hmap  = hp.read_alm(ifile).astype(np.complex128)
+        kmap = curvedsky.alm2map(hmap, enmap.empty(shape, wcs, dtype=np.float64))
+
+
     enmap.write_map(r_kmap, kmap)
     print(" ::: reading and reprojecting true kappa map:", ifile) 
 print("kmap", kmap.shape)
@@ -163,6 +184,11 @@ except:
 
     elif args.which_sim == "sehgal":
         ifile = f"{sim_path}tSZ_skymap_healpix_nopell_Nside4096_y_tSZrescale0p75.fits"
+        hmap = hp.read_map(ifile).astype(np.float64)
+        ymap = reproject.healpix2map(hmap, shape, wcs)
+
+    elif args.which_sim == "agora":
+        ifile = f"{sim_path}tsz/len/agora_ltszNG_bahamas78_bnd_unb_1.0e+12_1.0e+18_lensed.fits"
         hmap = hp.read_map(ifile).astype(np.float64)
         ymap = reproject.healpix2map(hmap, shape, wcs)
 

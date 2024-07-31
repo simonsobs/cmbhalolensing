@@ -1,0 +1,68 @@
+mat_path: /home1/mathm/repos/cmbhalolensing 
+websky_sim_path: /data5/sims/websky/data/ 
+sehgal_sim_path: /data5/sims/sehgal/data/
+agora_sim_path: /data5/sims/agora_sims/full/components/
+websky_output_path: /home3/eunseong/cmbhalolensing/sim_results/websky 
+sehgal_output_path: /home3/eunseong/cmbhalolensing/sim_results/sehgal 
+agora_output_path: /home3/eunseong/cmbhalolensing/sim_results/agora
+simsuite_path: /home3/eunseong/cmbhalolensing/data/simsuite
+cat_path: /home3/eunseong/cmbhalolensing/data/cats
+
+# nemo sim catalogues 
+websky_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit11/sim-kit_NemoWebSky_CustomLensedCMB_DR5White_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoWebSky_CustomLensedCMB_DR5White_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoWebSky_CustomLensedCMB_DR5White_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles_mass.fits 
+sehgal_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit13/sim-kit_NemoSehgal_CustomLensedCMB_DR5White_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoSehgal_CustomLensedCMB_DR5White_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoSehgal_CustomLensedCMB_DR5White_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles_mass.fits
+agora_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit11/sim-kit_NemoWebSky_CustomLensedCMB_DR5White_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoWebSky_CustomLensedCMB_DR5White_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoWebSky_CustomLensedCMB_DR5White_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles_mass.fits 
+
+
+nemosim_version: nemo-sim-kit11
+# nemo-sim-kit3:  websky lensed_alm.fits + dr5white + 1/f  + actbeam
+# nemo-sim-kit4:  websky lensed_alm.fits + flatwhite       + actbeam   
+# nemo-sim-kit5:  websky dlensed.fits    + dr5white + 1/f  + actbeam   
+# nemo-sim-kit7:  websky dlensed.fits    + flatwhite       + actbeam  
+# nemo-sim-kit9:  sehgal                 + flatwhite       + actbeam
+# (nemo updated 2024.07.03)
+# nemo-sim-kit10: websky dlensed.fits    + flatwhite       + gaussbeam 
+# nemo-sim-kit11: websky dlensed.fits    + dr5white        + gaussbeam
+# nemo-sim-kit12: sehgal                 + flatwhite       + gaussbeam
+# nemo-sim-kit13: sehgal                 + dr5white        + gaussbeam
+
+simsuite_version: v0
+# websky_v0 (lensed_alm.fits)
+# websky_v1 (dlensed.fits)    
+# sehgal_v0
+# agora_v0               
+
+
+# reprojected websky maps
+websky_kappa_reproj: reproj/kap_reproj.fits
+websky_cmb_reproj: reproj/lensed_alm_reproj.fits
+websky_tsz_reproj: reproj/tsz_8192_reproj.fits
+
+websky_kappa4p5_reproj: reproj/kap_lt4.5_reproj.fits
+websky_dlensed_reproj: reproj/dlensed_reproj.fits
+websky_dtsz_reproj: reproj/dtsz_8192_reproj.fits
+websky_dksz_reproj: reproj/dksz_reproj.fits
+websky_dcib093_reproj: reproj/dcib_nu0093_reproj.fits
+websky_dcib145_reproj: reproj/dcib_nu0145_reproj.fits
+
+# reprojected sehgal maps
+sehgal_kappa_reproj: reproj/healpix_4096_KappaeffLSStoCMBfullsky_reproj.fits
+sehgal_cmb_reproj: reproj/Sehgalsimparams_healpix_4096_KappaeffLSStoCMBfullsky_phi_SimLens_Tsynfastnopell_fast_lmax8000_nside4096_interp2.5_method1_1_lensed_map_reproj.fits
+sehgal_tsz_reproj: reproj/tSZ_skymap_healpix_nopell_Nside4096_y_tSZrescale0p75_reproj.fits
+
+# reprojected agora maps
+agora_kappa_reproj: ../../reproj/kappa_alm_recon_agora_phiNG_phi1_seed1_reproj.fits
+agora_cmb_reproj: ../../reproj/agora_tqu1_phiNG_seed1_lmax16000_nside8192_interp1.6_method1_pol_1_lensedmap_reproj.fits
+agora_tsz_reproj: ../../reproj/agora_ltszNG_bahamas78_bnd_unb_1.0e+12_1.0e+18_lensed_reproj.fits
+
+
+
+# websky_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit7/sim-kit_NemoWebSky_CustomLensedCMB_tenToA0Tuned_ACT-DR5-2Pass_2degTiles/NemoWebSky_CustomLensedCMB_tenToA0Tuned_ACT-DR5-2Pass_2degTiles/NemoWebSky_CustomLensedCMB_tenToA0Tuned_ACT-DR5-2Pass_2degTiles_mass.fits 
+# sehgal_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit9/sim-kit_NemoSehgal_CustomLensedCMB_tenToA0Tuned_ACT-DR5-2Pass_2degTiles/NemoSehgal_CustomLensedCMB_tenToA0Tuned_ACT-DR5-2Pass_2degTiles/NemoSehgal_CustomLensedCMB_tenToA0Tuned_ACT-DR5-2Pass_2degTiles_mass.fits
+# sehgal_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit12/sim-kit_NemoSehgal_CustomLensedCMB_flatWhite_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoSehgal_CustomLensedCMB_flatWhite_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoSehgal_CustomLensedCMB_flatWhite_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles_mass.fits
+# agora_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit10/sim-kit_NemoWebSky_CustomLensedCMB_flatWhite_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoWebSky_CustomLensedCMB_flatWhite_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoWebSky_CustomLensedCMB_flatWhite_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles_mass.fits 
+
+
+# # beams (corresponds to the beam used in NEMO)
+# actbeam_f150: /data5/act/maps/dr5/beams/act_planck_dr5.01_s08s18_f150_daynight_beam.txt
+# actbeam_f090: /data5/act/maps/dr5/beams/act_planck_dr5.01_s08s18_f090_daynight_beam.txt

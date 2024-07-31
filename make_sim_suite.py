@@ -8,6 +8,7 @@ from orphics import maps, io
 import healpy as hp
 from past.utils import old_div
 import argparse
+import sys
 
 start = t.time()
 
@@ -91,6 +92,9 @@ if args.which_sim == "websky":
         r_lmap = sim_path + paths.websky_dlensed_reproj
         r_kmap = sim_path + paths.websky_kappa4p5_reproj
         r_tszmap = sim_path + paths.websky_dtsz_reproj
+        r_kszmap = sim_path + paths.websky_dksz_reproj
+        r_cib093map = sim_path + paths.websky_dcib093_reproj
+        r_cib145map = sim_path + paths.websky_dcib145_reproj
     else: 
         r_lmap = sim_path + paths.websky_cmb_reproj
         r_kmap = sim_path + paths.websky_kappa_reproj
@@ -216,34 +220,137 @@ except:
 print("tszmap", tszmap.shape)
 
 
+# reading ksz map
+try:
+    kszmap = enmap.read_map(r_kszmap, delayed=False)
+    print(" ::: reading reprojected ksz map:", r_kszmap) 
+
+except:
+    if args.which_sim == "websky": 
+        ifile = f"{sim_path}ksz.fits"
+        hmap = np.atleast_2d(hp.read_map(ifile, field=tuple(range(0,1)))).astype(np.float64)
+        kszmap = reproject.healpix2map(hmap, shape, wcs)[0,:,:]
+
+    enmap.write_map(r_kszmap, kszmap)
+    print(" ::: reading and reprojecting ksz map:", ifile) 
+print("kszmap", kszmap.shape) 
+
+
+# reading cib map
+try:
+    if freq_sz == 90: r_cibmap = r_cib093map
+    elif freq_sz == 150: r_cibmap = r_cib145map
+
+    cibmap = enmap.read_map(r_cibmap, delayed=False)
+    print(" ::: reading reprojected cib map:", r_cibmap) 
+
+except:
+    if args.which_sim == "websky": 
+
+        # frequency for CIB 
+        if freq_sz == 90: ifile = f"{sim_path}cib_nu0093.fits"       
+        elif freq_sz == 150: ifile = f"{sim_path}cib_nu0145.fits"
+        
+        hmap = np.atleast_2d(hp.read_map(ifile, field=tuple(range(0,1)))).astype(np.float64)
+        cibmap_i = reproject.healpix2map(hmap, shape, wcs)[0,:,:]
+
+    print(" ::: reading cib map:", ifile)
+    print("cibmap", np.shape(cibmap_i))
+
+    kboltz = 1.3806503e-23 #MKS
+    hplanck = 6.626068e-34 #MKS
+    clight = 299792458.0 #MKS
+
+    def ItoDeltaT(nu):
+        # conversion from specific intensity to Delta T units (i.e., 1/dBdT|T_CMB)
+        #   i.e., from W/m^2/Hz/sr (1e-26 Jy/sr) --> uK_CMB
+        #   i.e., you would multiply a map in 1e-26 Jy/sr by this factor to get an output map in uK_CMB
+        nu *= 1e9
+        X = hplanck*nu/(kboltz*tcmb)
+        dBnudT = (2.*hplanck*nu**3.)/clight**2. * (np.exp(X))/(np.exp(X)-1.)**2. * X/tcmb_uK * 1e26
+        return 1./dBnudT
+
+    # frequency for CIB 
+    if freq_sz == 150: freq_cib = 145
+    elif freq_sz == 90: freq_cib = 93
+
+    cibmap = ItoDeltaT(freq_cib) * cibmap_i 
+
+    print(" ::: converting cib map at %d GHz" %freq_cib)
+    enmap.write_map(r_cibmap, cibmap)
+print("cibmap", cibmap.shape)
+
 assert wcsutils.equal(kmap.wcs, lmap.wcs)  
 assert wcsutils.equal(kmap.wcs, tszmap.wcs)
-
+assert wcsutils.equal(kmap.wcs, kszmap.wcs)
+assert wcsutils.equal(kmap.wcs, cibmap.wcs)
 
 scmb = lmap
+scmb_cib = lmap + cibmap
+scmb_ksz_cib = lmap + kszmap + cibmap
+
 scmb_tsz = lmap + tszmap
+scmb_tsz_cib = lmap + tszmap + cibmap
+scmb_tsz_ksz_cib = lmap + tszmap + kszmap + cibmap
+
 print(" ::: SIGNAL maps are ready!")
 
 white_noise = maps.white_noise(lmap.shape, lmap.wcs, noise_muK_arcmin=nlevel)
 
 print(" ::: applying beam and adding white noise of %.1f uK" %nlevel)
+
 bcmb = apply_beam(scmb)
+bcmb_ksz_cib = apply_beam(scmb_ksz_cib)
+
 ocmb = apply_beam(scmb) + white_noise
+ocmb_cib = apply_beam(scmb_cib) + white_noise
+ocmb_ksz_cib = apply_beam(scmb_ksz_cib) + white_noise
+
 ocmb_tsz = apply_beam(scmb_tsz) + white_noise
+ocmb_tsz_cib = apply_beam(scmb_tsz_cib) + white_noise
+ocmb_tsz_ksz_cib = apply_beam(scmb_tsz_ksz_cib) + white_noise
+
 print(" ::: OBSERVED maps are ready!")
 
 save_scmb = f"{save_dir}scmb.fits"
+save_scmb_cib = f"{save_dir}scmb_cib.fits"
+save_scmb_ksz_cib = f"{save_dir}scmb_ksz_cib.fits"
+
 save_scmb_tsz = f"{save_dir}scmb_tsz.fits"
+save_scmb_tsz_cib = f"{save_dir}scmb_tsz_cib.fits"
+save_scmb_tsz_ksz_cib = f"{save_dir}scmb_tsz_ksz_cib.fits"
+
 save_ocmb = f"{save_dir}ocmb.fits"
+save_ocmb_cib = f"{save_dir}ocmb_cib.fits"
+save_ocmb_ksz_cib = f"{save_dir}ocmb_ksz_cib.fits"
+
 save_ocmb_tsz = f"{save_dir}ocmb_tsz.fits"
+save_ocmb_tsz_cib = f"{save_dir}ocmb_tsz_cib.fits"
+save_ocmb_tsz_ksz_cib = f"{save_dir}ocmb_tsz_ksz_cib.fits"
+
 save_bcmb = f"{save_dir}bcmb.fits"
+save_bcmb_ksz_cib = f"{save_dir}bcmb_ksz_cib.fits"
 
 print(" ::: saving all maps")
+
 enmap.write_map(save_scmb, scmb)
+enmap.write_map(save_scmb_cib, scmb_cib)
+enmap.write_map(save_scmb_ksz_cib, scmb_ksz_cib)
+
 enmap.write_map(save_scmb_tsz, scmb_tsz)
+enmap.write_map(save_scmb_tsz_cib, scmb_tsz_cib)
+enmap.write_map(save_scmb_tsz_ksz_cib, scmb_tsz_ksz_cib)
+
 enmap.write_map(save_ocmb, ocmb)
+enmap.write_map(save_ocmb_cib, ocmb_cib)
+enmap.write_map(save_ocmb_ksz_cib, ocmb_ksz_cib)
+
 enmap.write_map(save_ocmb_tsz, ocmb_tsz)
+enmap.write_map(save_ocmb_tsz_cib, ocmb_tsz_cib)
+enmap.write_map(save_ocmb_tsz_ksz_cib, ocmb_tsz_ksz_cib)
+
 enmap.write_map(save_bcmb, bcmb)
+enmap.write_map(save_bcmb_ksz_cib, bcmb_ksz_cib)
 
 
 

@@ -1,0 +1,31 @@
+#add any sim info here
+
+#sim_name:
+  #nside: of healpix maps
+  #lensed_cmb: path to lensed cmb healpix map
+  #true_kappa: path to true kappa healpix map
+  #tsz: path to tsz healpix map
+
+agora:
+  nside: 8192
+  lensed_cmb: cmb/len/tqu1/agora_tqu1_phiNG_seed1_lmax16000_nside8192_interp1.6_method1_pol_1_lensedmap.fits
+  true_kappa: ../../kappa_alm_recon_agora_phiNG_phi1_seed1.fits
+  tsz: tsz/len/agora_ltszNG_bahamas78_bnd_unb_1.0e+12_1.0e+18_lensed.fits
+
+websky:
+  nside: 8192
+  lensed_cmb: lensed_alm.fits
+  true_kappa: kap.fits
+  tsz: tsz_8192.fits
+
+websky_high_acc:
+  nside: 8192
+  lensed_cmb: /dlensed.fits
+  true_kappa: kap_lt4.5.fits
+  tsz: tsz_8192.fits
+
+sehgal:
+  nside: 4096
+  lensed_cmb: Sehgalsimparams_healpix_4096_KappaeffLSStoCMBfullsky_phi_SimLens_Tsynfastnopell_fast_lmax8000_nside4096_interp2.5_method1_1_lensed_map.fits
+  true_kappa: healpix_4096_KappaeffLSStoCMBfullsky.fits
+  tsz: tSZ_skymap_healpix_nopell_Nside4096_y_tSZrescale0p75.fits

@@ -72,7 +72,7 @@ if not (args.inject_sim):
     with bench.show("load maps"):
         # Planck SMICA NO SZ map 
 	    # if reprojected Planck map already exists, use it 
-        fplc_map = paths.data + "planck_smica_nosz_reproj.fits"
+        fplc_map = paths.planck_data + "planck_smica_nosz_reproj.fits"
         if not(args.full_sim_index is None):
             pmap = enmap.read_map(f'{paths.fullsim_path}/planck_sim_{args.full_sim_index:06d}.fits') / 1e6
         else:
@@ -420,8 +420,10 @@ def ilc(modlmap, m1, m2, p11, p22, p12, b1, b2):
 """
 
 j = 0  # local counter for this MPI task
+times = []
 for task in my_tasks:
     i = task  # global counter for all objects
+    i_start_time = time.time()
     cweight = ws[i] if not(args.inject_sim) else 1
     if not(args.inject_sim) and not(args.is_meanfield):
         z = zs[i]
@@ -1233,6 +1235,11 @@ for task in my_tasks:
         #s.add_to_stats("wmass", (cdata['mass'][i] * weight,))  
       
     j = j + 1
+    
+    i_end_time = time.time()
+    if rank==0:
+        print(f"Time for task {task}: {i_end_time-i_start_time}")
+    times.append(i_end_time-i_start_time)
 
 
 # collect from all MPI cores and calculate stacks
@@ -1410,4 +1417,5 @@ if rank == 0:
 
     elapsed = time.time() - start_time
     print("\r ::: entire run took %.1f seconds" % elapsed)
+    print(f"average time per task: {np.mean(np.asarray(times))}")
 

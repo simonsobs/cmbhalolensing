@@ -62,6 +62,7 @@ ss_path = f"{paths.simsuite_path}/{args.which_sim}_{paths.simsuite_version}/"
 print(" ::: catalogue:", args.which_sim, args.which_cat , "[ simsuite version:", paths.simsuite_version, "]")
 print(" ::: hres:", args.hres_choice, "/ grad:", args.grad_choice)
 
+
 if args.is_meanfield: print(" ::: this is a mean-field run")
 
 
@@ -141,15 +142,24 @@ elif args.which_cat == "tsz":
         snr = snr[keep]
 
     print(" ::: min and max SNR = %.2f and %.2f" %(snr.min(), snr.max()))
+
+elif args.which_cat == "cmass":
+    cat = paths.cmass_cat
+    ras, decs, zs = np.loadtxt(cat, unpack=True)
+    dec_cut = np.where(np.logical_and(decs<10, decs>-10))
+    ras = ras[dec_cut]
+    decs = decs[dec_cut]
+    zs = zs[dec_cut]
+
 print(" ::: min and max redshift = %.2f and %.2f" %(zs.min(), zs.max()), "(mean = %.2f)" %zs.mean()) 
-print(" ::: min and max M200m = %.2f and %.2f" %(mass.min(), mass.max()), "(mean = %.2f)" %mass.mean())
+# print(" ::: min and max M200m = %.2f and %.2f" %(mass.min(), mass.max()), "(mean = %.2f)" %mass.mean())
 
 if args.is_meanfield:
 
-    Nx = 100 * len(ras)
+    Nx = 10 * len(ras)
 
     # load random catalogue - created by mapcat.py + randcat.py
-    cat = ss_path + f"{args.which_sim}_{args.which_cat}_randoms.txt"
+    cat = ss_path + f"{args.which_cat}_randoms.txt"
     ras, decs = np.loadtxt(cat, unpack=True)    
 
     if not args.full_sample:
@@ -207,6 +217,7 @@ s = stats.Stats(comm)
 
 j = 0  # local counter for this MPI task
 for task in my_tasks:
+    # task_start = t.time()
     i = task
     cper = int((j + 1) / len(my_tasks) * 100.0)
     if rank==0: print(f"Rank {rank} performing task {task} as index {j} ({cper}% complete.).")
@@ -339,9 +350,11 @@ for task in my_tasks:
     # save the list of masses and redshifts for matched stack mass fitting
     if not args.is_meanfield:     
         s.add_to_stats("redshift", (zs[i],))
-        s.add_to_stats("mass", (mass[i],))
+        # s.add_to_stats("mass", (mass[i],))
 
     j = j + 1
+    # task_end = t.time()
+    # print(f"::: Task {task} took {task_end - task_start} seconds")
 
 
             
@@ -421,8 +434,8 @@ if rank==0:
     enmap.write_map(f"{save_dir}/{save_name}_kmask.fits", kmask)   
     np.savetxt(f"{save_dir}/{save_name}_bin_edges.txt", bin_edges)
 
-    if not args.is_meanfield:
-        np.savetxt(f"{save_dir}/{save_name}_z_mass1e14.txt", np.c_[s.vectors["redshift"], s.vectors["mass"]])
+    # if not args.is_meanfield:
+    #     np.savetxt(f"{save_dir}/{save_name}_z_mass1e14.txt", np.c_[s.vectors["redshift"], s.vectors["mass"]])
 
 elapsed = t.time() - start
 print("\r ::: entire run took %.1f seconds" %elapsed)

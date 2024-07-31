@@ -581,18 +581,21 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
             broot = paths.boss_dr12_data
             fstr = 'DR12v5'
         if is_meanfield:
+            broot = paths.boss_dr12_rand
             # One random has 50x, more than enough for mean-fields.
-            boss_files = [broot+x for x in  [f'random0_{fstr}_CMASS_North.fits',f'random0_{fstr}_CMASS_South.fits']]
+            # boss_files = [broot+x for x in  [f'random0_{fstr}_CMASS_North.fits.gz',f'random0_{fstr}_CMASS_South.fits.gz',
+            #                                  f'random1_{fstr}_CMASS_North.fits.gz',f'random1_{fstr}_CMASS_South.fits.gz']]
+            ras, decs, ws, zs = np.loadtxt(broot + f'CMASS_{fstr}_10x_randoms.txt')
         else:
-            boss_files = [broot+x for x in  [f'galaxy_{fstr}_CMASS_North.fits',f'galaxy_{fstr}_CMASS_South.fits']]
-        if zmin is None: zmin = 0.43
-        if zmax is None: zmax = 0.70
-        ras,decs,ws,zs = catalogs.load_boss(boss_files,zmin=zmin,zmax=zmax,do_weights=not(is_meanfield),sys_weights=False)
-        if ws is None: ws = ras*0 + 1
-        ws = ws[decs<25]
-        ras = ras[decs<25]
-        zs = zs[decs<25]
-        decs = decs[decs<25]
+            boss_files = [broot+x for x in  [f'galaxy_{fstr}_CMASS_North.fits.gz',f'galaxy_{fstr}_CMASS_South.fits.gz']]
+            if zmin is None: zmin = 0.43
+            if zmax is None: zmax = 0.70
+            ras,decs,ws,zs = catalogs.load_boss(boss_files,zmin=zmin,zmax=zmax,do_weights=not(is_meanfield),sys_weights=False)
+            if ws is None: ws = ras*0 + 1
+            ws = ws[decs<25]
+            ras = ras[decs<25]
+            zs = zs[decs<25]
+            decs = decs[decs<25]
         if nmax is not None:
             """
             We have to be a bit more careful when a max number of random galaxies is requested for BOSS, because
@@ -606,6 +609,23 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
             ws = ws[inds]
             zs = zs[inds]
 
+    elif cat_type=='eboss_lss_quasars': #using LSS data/rands from eBOSS DR16
+        if is_meanfield: 
+            catalogue_name = paths.eboss_lss_quasar_data+'eBOSS_QSO_clustering_randoms_all.csv'
+        else:
+            catalogue_name = paths.eboss_lss_quasar_data+'eBOSS_QSO_clustering_data_all.csv'
+
+        ras, decs, zs = np.loadtxt(catalogue_name, unpack=True, delimiter=",")
+
+        Ntot = len(ras)
+        np.random.seed(100)
+        inds = np.random.choice(Ntot,size=nmax,replace=False)
+        ras = ras[zs>0][inds]
+        decs = decs[zs>0][inds]
+        zs = zs[zs>0][inds]
+        ws = ras*0 + 1
+
+        
     elif cat_type=='wise_panstarrs':
         if is_meanfield:
             # made using mapcat.py followed by randcat.py
@@ -616,6 +636,7 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
         ras = ras[:nmax]
         decs = decs[:nmax]
         ws = ras*0 + 1
+        zs = ras*0
 
     elif cat_type=='madcows_photz':
         if is_meanfield:
@@ -689,8 +710,8 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
 def load_beam(freq):
     #if freq=='f150': fname = paths.data+'s16_pa2_f150_nohwp_night_beam_tform_jitter.txt'
     #elif freq=='f090': fname = paths.data+'s16_pa3_f090_nohwp_night_beam_tform_jitter.txt'
-    if freq=='f150': fname = paths.data+'corrected_beam_150.txt'
-    elif freq=='f090': fname = paths.data+'corrected_beam_090.txt'
+    if freq=='f150': fname = paths.beams+'act_planck_dr5.01_s08s18_f150_daynight_beam.txt'
+    elif freq=='f090': fname = paths.beams+'act_planck_dr5.01_s08s18_f090_daynight_beam.txt'
     ls,bls = np.loadtxt(fname,usecols=[0,1],unpack=True)
     assert ls[0]==0
     bls = bls / bls[0]

@@ -20,9 +20,10 @@ websky:
 
 websky_high_acc:
   nside: 8192
-  lensed_cmb: /dlensed.fits
+  lensed_cmb: #can't find this one
   true_kappa: kap_lt4.5.fits
   tsz: tsz_8192.fits
+  ksz: ksz.fits
   cib_nu0093: cib_nu0093.fits
   cib_nu0145: cib_nu0145.fits
 

@@ -1,0 +1,18 @@
+mat_path: /home1/mathm/repos/cmbhalolensing
+simsuite_path: /home3/nehajo/cmbhalolensing/wsky_outs/
+simsuite_version: v0
+websky_sim_path: /data5/sims/websky/data/
+scratch: /home3/nehajo/cmbhalolensing/data/
+websky_output_path: /home3/nehajo/cmbhalolensing/wsky_outs/
+
+# reprojected maps for high accuracy run
+websky_dlensed_reproj: reproj/dlensed_reproj.fits
+websky_kappa4p5_reproj: reproj/kap_reproj.fits
+websky_dtsz_reproj: reproj/tsz_reproj.fits
+websky_dksz_reproj: reproj/dksz_reproj.fits
+websky_dcib093_reproj: reproj/dcib_nu0093_reproj.fits
+websky_dcib145_reproj: reproj/dcib_nu0145_reproj.fits
+
+cmass_cat: /data5/sims/websky/cmass_hod/websky_cmass_galaxy_catalog_full_sky.txt
+
+

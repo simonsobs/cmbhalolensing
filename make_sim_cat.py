@@ -142,7 +142,7 @@ if args.which_sim == "websky":
 
     ras      = np.rad2deg(phi)
     decs     = np.rad2deg(np.pi/2. - theta)  
-    masses     = M200m / 1e14 
+    masses   = M200m / 1e14 
     zs       = zofchi(chi)                 
 
     act_cat = paths.websky_tsz_cat

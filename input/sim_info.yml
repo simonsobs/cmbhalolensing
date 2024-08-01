@@ -23,6 +23,8 @@ websky_high_acc:
   lensed_cmb: /dlensed.fits
   true_kappa: kap_lt4.5.fits
   tsz: tsz_8192.fits
+  cib_nu0093: cib_nu0093.fits
+  cib_nu0145: cib_nu0145.fits
 
 sehgal:
   nside: 4096

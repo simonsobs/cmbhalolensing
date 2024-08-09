@@ -22,16 +22,16 @@ parser.add_argument(
     "save_name", type=str, help="Name you want for your output."
 )
 parser.add_argument(
-    "which_sim", type=str, help="Choose the sim e.g. websky or sehgal or agora."
+    "which_sim", type=str, help="Choose the sim e.g. websky or sehgal."
 )
 parser.add_argument(
     "which_cat", type=str, help="Choose the catalogue type e.g. halo or tsz."
 )
 parser.add_argument(
-    "hres_choice", type=str, help="Choose the map for high resolution leg e.g. cmb, cmb_tsz, etc."
+    "hres_choice", type=str, help="Choose the map for high resolution leg e.g. cmb, cmb_tsz."
 )
 parser.add_argument(
-    "grad_choice", type=str, help="Choose the map for gradient leg e.g. cmb, cmb_tsz, etc."
+    "grad_choice", type=str, help="Choose the map for gradient leg e.g. cmb."
 )
 parser.add_argument(
     "--is-observed", action="store_true", help="Beam and noise have been applied to the map."
@@ -52,18 +52,16 @@ args = parser.parse_args()
 
 if args.which_sim == "websky": output_path = paths.websky_output_path
 elif args.which_sim == "sehgal": output_path = paths.sehgal_output_path
-elif args.which_sim == "agora": output_path = paths.agora_output_path
-# output_path = paths.{args.which_sim}_output_path
 
 save_name = args.save_name
 save_dir = f"{output_path}/{save_name}"
 io.mkdir(f"{save_dir}")
 print(" ::: saving to", save_dir)
 
-simsuite_path = f"{paths.simsuite_path}/{args.which_sim}_{paths.simsuite_version}/"
-cat_path = f"{paths.cat_path}/{paths.nemosim_version}/"
-print(" ::: catalogue:", args.which_sim, args.which_cat, "[ simsuite ver:", paths.simsuite_version, "/ nemosim ver:", paths.nemosim_version, "]")
+ss_path = f"{paths.simsuite_path}/{args.which_sim}_{paths.simsuite_version}/"
+print(" ::: catalogue:", args.which_sim, args.which_cat , "[ simsuite version:", paths.simsuite_version, "]")
 print(" ::: hres:", args.hres_choice, "/ grad:", args.grad_choice)
+
 
 if args.is_meanfield: print(" ::: this is a mean-field run")
 
@@ -107,10 +105,11 @@ def bin(data, modrmap, bin_edges):
 
 if args.which_cat == "halo":
     if not args.full_sample:
-        cat = cat_path + f"{args.which_sim}_halo_snr5p5.txt"
+        cat = ss_path + f"{args.which_sim}_halo_snr5p5.txt"
+        # cat = ss_path + f"{args.which_sim}_halo_snr7p5.txt"
     else:
-        cat = cat_path + f"{args.which_sim}_halo.txt"
-    ras, decs, zs, masses = np.loadtxt(cat, unpack=True)
+        cat = ss_path + f"{args.which_sim}_halo.txt"
+    ras, decs, zs, mass = np.loadtxt(cat, unpack=True)
 
 elif args.which_cat == "tsz":
     if args.which_sim == "websky":
@@ -118,15 +117,17 @@ elif args.which_cat == "tsz":
         hdu = fits.open(cat)
         ras = hdu[1].data["RADeg"]
         decs = hdu[1].data["DECDeg"]
-        masses = hdu[1].data["M200m"] # 1e14 Msun: websky halo cat only provides M200m
+        mass = hdu[1].data["M200m"] # 1e14 Msun: websky halo cat only provides M200m
+        # mass = hdu[1].data["M200c"]
         snr = hdu[1].data["SNR"]
         zs = hdu[1].data["redshift"] 
-    elif args.which_sim == "sehgal" or args.which_sim == "agora":    
+    elif args.which_sim == "sehgal":    
         cat = paths.sehgal_tsz_cat
         hdu = fits.open(cat)
         ras = hdu[1].data["RADeg"]
         decs = hdu[1].data["DECDeg"]
-        masses = hdu[1].data["M200c"] # 1e14 Msun
+        mass = hdu[1].data["M200m"] # 1e14 Msun: sehgal halo cat provides M200c and M500c
+        # mass = hdu[1].data["M200c"] 
         snr = hdu[1].data["SNR"]
         zs = hdu[1].data["redshift"] 
 
@@ -136,20 +137,29 @@ elif args.which_cat == "tsz":
         keep = snr > snr_cut
         ras = ras[keep]
         decs = decs[keep]
-        masses = masses[keep]
+        mass = mass[keep]
         zs = zs[keep]
         snr = snr[keep]
 
     print(" ::: min and max SNR = %.2f and %.2f" %(snr.min(), snr.max()))
+
+elif args.which_cat == "cmass":
+    cat = paths.cmass_cat
+    ras, decs, zs = np.loadtxt(cat, unpack=True)
+    dec_cut = np.where(np.logical_and(decs<10, decs>-10))
+    ras = ras[dec_cut]
+    decs = decs[dec_cut]
+    zs = zs[dec_cut]
+
 print(" ::: min and max redshift = %.2f and %.2f" %(zs.min(), zs.max()), "(mean = %.2f)" %zs.mean()) 
-print(" ::: min and max M200 = %.2f and %.2f" %(masses.min(), masses.max()), "(mean = %.2f)" %masses.mean())
+# print(" ::: min and max M200m = %.2f and %.2f" %(mass.min(), mass.max()), "(mean = %.2f)" %mass.mean())
 
 if args.is_meanfield:
 
-    Nx = 100 * len(ras)
+    Nx = 10 * len(ras)
 
     # load random catalogue - created by mapcat.py + randcat.py
-    cat = cat_path + f"{args.which_sim}_{args.which_cat}_randoms.txt"
+    cat = ss_path + f"{args.which_cat}_randoms.txt"
     ras, decs = np.loadtxt(cat, unpack=True)    
 
     if not args.full_sample:
@@ -173,46 +183,23 @@ if args.which_sim == "websky":
         true = paths.websky_sim_path + paths.websky_kappa_reproj
 elif args.which_sim == "sehgal":
     true = paths.sehgal_sim_path + paths.sehgal_kappa_reproj
-elif args.which_sim == "agora":
-    true = paths.agora_sim_path + paths.agora_kappa_reproj
 
 if not args.is_observed: 
     print(" ::: preparing for SIGNAL maps")
-
-    cmb = f"{simsuite_path}scmb.fits"
-    cmb_cib = f"{simsuite_path}scmb_cib.fits"
-    cmb_ksz_cib = f"{simsuite_path}scmb_ksz_cib.fits"
-
-    cmb_tsz = f"{simsuite_path}scmb_tsz.fits"
-    cmb_tsz_cib = f"{simsuite_path}scmb_tsz_cib.fits"
-    cmb_tsz_ksz_cib = f"{simsuite_path}scmb_tsz_ksz_cib.fits"
-    
+    cmb = f"{ss_path}scmb.fits"
+    cmb_tsz = f"{ss_path}scmb_tsz.fits"
 else: 
     print(" ::: preparing for OBSERVED maps")
-
-    cmb = f"{simsuite_path}ocmb.fits"
-    cmb_cib = f"{simsuite_path}ocmb_cib.fits"
-    cmb_ksz_cib = f"{simsuite_path}ocmb_ksz_cib.fits"
-
-    cmb_tsz = f"{simsuite_path}ocmb_tsz.fits"
-    cmb_tsz_cib = f"{simsuite_path}ocmb_tsz_cib.fits" 
-    cmb_tsz_ksz_cib = f"{simsuite_path}ocmb_tsz_ksz_cib.fits"    
+    cmb = f"{ss_path}ocmb.fits"
+    cmb_tsz = f"{ss_path}ocmb_tsz.fits"    
 
 print(" ::: reading true kappa map:", true)
 print(" ::: reading lensed cmb map:", cmb)
-print(" ::: reading lensed cmb + cib map:", cmb_cib)
-print(" ::: reading lensed cmb + ksz + cib map:", cmb_ksz_cib)
 print(" ::: reading lensed cmb + tsz map:", cmb_tsz)
-print(" ::: reading lensed cmb + tsz + cib map:", cmb_tsz_cib)
-print(" ::: reading lensed cmb + tsz + ksz + cib map:", cmb_tsz_ksz_cib)
 
 true_map = enmap.read_map(true, delayed=False)
 cmb_map = enmap.read_map(cmb, delayed=False)
-cmb_cib_map = enmap.read_map(cmb_cib, delayed=False)
-cmb_ksz_cib_map = enmap.read_map(cmb_ksz_cib, delayed=False)
 cmb_tsz_map = enmap.read_map(cmb_tsz, delayed=False)
-cmb_tsz_cib_map = enmap.read_map(cmb_tsz_cib, delayed=False)
-cmb_tsz_ksz_cib_map = enmap.read_map(cmb_tsz_ksz_cib, delayed=False)
 
 print(" ::: maps are ready!")
 
@@ -230,6 +217,7 @@ s = stats.Stats(comm)
 
 j = 0  # local counter for this MPI task
 for task in my_tasks:
+    # task_start = t.time()
     i = task
     cper = int((j + 1) / len(my_tasks) * 100.0)
     if rank==0: print(f"Rank {rank} performing task {task} as index {j} ({cper}% complete.).")
@@ -257,26 +245,6 @@ for task in my_tasks:
         pixwin=True if args.high_accuracy else False # only True for maps made natively in CAR
     ) # lensed cmb
 
-    cmb_cib = reproject.thumbnails(
-        cmb_cib_map,
-        coords,
-        r=maxr,
-        res=px * utils.arcmin,
-        proj="tan",
-        oversample=2,
-        pixwin=False
-    ) # lensed cmb + cib
-
-    cmb_ksz_cib = reproject.thumbnails(
-        cmb_ksz_cib_map,
-        coords,
-        r=maxr,
-        res=px * utils.arcmin,
-        proj="tan",
-        oversample=2,
-        pixwin=False
-    ) # lensed cmb + ksz + cib
-
     cmb_tsz = reproject.thumbnails(
         cmb_tsz_map,
         coords,
@@ -286,26 +254,6 @@ for task in my_tasks:
         oversample=2,
         pixwin=False
     ) # lensed cmb + tsz
-
-    cmb_tsz_cib = reproject.thumbnails(
-        cmb_tsz_cib_map,
-        coords,
-        r=maxr,
-        res=px * utils.arcmin,
-        proj="tan",
-        oversample=2,
-        pixwin=False
-    ) # lensed cmb + tsz + cib
-
-    cmb_tsz_ksz_cib = reproject.thumbnails(
-        cmb_tsz_ksz_cib_map,
-        coords,
-        r=maxr,
-        res=px * utils.arcmin,
-        proj="tan",
-        oversample=2,
-        pixwin=False
-    ) # lensed cmb + tsz + ksz + cib
 
     # initialise calculations based on geometry 
     if j == 0:     
@@ -402,9 +350,11 @@ for task in my_tasks:
     # save the list of masses and redshifts for matched stack mass fitting
     if not args.is_meanfield:     
         s.add_to_stats("redshift", (zs[i],))
-        s.add_to_stats("masses", (masses[i],))
+        # s.add_to_stats("mass", (mass[i],))
 
     j = j + 1
+    # task_end = t.time()
+    # print(f"::: Task {task} took {task_end - task_start} seconds")
 
 
             
@@ -484,8 +434,8 @@ if rank==0:
     enmap.write_map(f"{save_dir}/{save_name}_kmask.fits", kmask)   
     np.savetxt(f"{save_dir}/{save_name}_bin_edges.txt", bin_edges)
 
-    if not args.is_meanfield:
-        np.savetxt(f"{save_dir}/{save_name}_z_mass1e14.txt", np.c_[s.vectors["redshift"], s.vectors["masses"]])
+    # if not args.is_meanfield:
+    #     np.savetxt(f"{save_dir}/{save_name}_z_mass1e14.txt", np.c_[s.vectors["redshift"], s.vectors["mass"]])
 
 elapsed = t.time() - start
 print("\r ::: entire run took %.1f seconds" %elapsed)

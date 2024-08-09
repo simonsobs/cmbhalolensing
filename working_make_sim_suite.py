@@ -263,19 +263,3 @@ if args.high_accuracy:
 
 elapsed = t.time() - start
 print("\r ::: entire run took %.1f seconds" %elapsed)
-
-
-
-
-    
-
-
-
-
-
-
-
-
-
-
-

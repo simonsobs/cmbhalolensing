@@ -1,11 +1,17 @@
 mat_path: /home1/mathm/repos/cmbhalolensing
-simsuite_path: /home3/nehajo/projects/cmbhalolensing/websky_outs/maps/
-simsuite_version: high_acc_150
+simsuite_path: /home3/nehajo/projects/cmbhalolensing/data/simsuite/
+simsuite_version: high_acc_90
 websky_sim_path: /data5/sims/websky/data/
+agora_sim_path: /data5/sims/agora_sims/
 scratch: /home3/nehajo/projects/cmbhalolensing/data/
-websky_output_path: /home3/nehajo/projects/cmbhalolensing/websky_outs/
+websky_output_path: /home3/nehajo/projects/cmbhalolensing/sim_results/websky/
+agora_output_path: /home3/nehajo/projects/cmbhalolensing/sim_results/agora
 
-# reprojected maps for high accuracy run
+websky_cmass_cat: /data5/sims/websky/cmass_hod/websky_cmass_galaxy_catalog_full_sky.txt
+agora_cmass_cat: /home3/nehajo/projects/cmbhalolensing/data/agora_CMASS-like.npy
+
+# reprojected maps
+
 websky_dlensed_reproj: reproj/dlensed_reproj.fits
 websky_kappa4p5_reproj: reproj/kap_lt4.5_reproj.fits
 websky_dtsz_reproj: reproj/dtsz_8192_reproj.fits
@@ -13,6 +19,11 @@ websky_dksz_reproj: reproj/dksz_reproj.fits
 websky_dcib093_reproj: reproj/dcib_nu0093_reproj.fits
 websky_dcib145_reproj: reproj/dcib_nu0145_reproj.fits
 
-cmass_cat: /data5/sims/websky/cmass_hod/websky_cmass_galaxy_catalog_full_sky.txt
-
+agora_kappa_reproj: reproj/kappa_alm_recon_agora_phiNG_phi1_seed1_reproj.fits
+agora_cmb_reproj: reproj/agora_tqu1_phiNG_seed1_lmax16000_nside8192_interp1.6_method1_pol_1_lensedmap_reproj.fits
+agora_tsz_reproj: reproj/agora_ltszNG_bahamas78_bnd_unb_1.0e+12_1.0e+18_lensed_reproj.fits
+agora_ksz_reproj: cib_ksz_reproj/mdpl2_lkszNG_bahamas80_rot_sum_4_176_bnd_unb_1.0e+12_1.0e+18_v103021_lmax24000_nside8192_interp1.0_method1_1_lensed_map.fits
+agora_cib090_reproj: cib_ksz_reproj/mdpl2_len_mag_cibmap_act_90_uk.fits
+agora_cib150_reproj: cib_ksz_reproj/mdpl2_len_mag_cibmap_act_150_uk.fits
+agora_cib220_reproj: cib_ksz_reproj/mdpl2_len_mag_cibmap_act_220_uk.fits
 

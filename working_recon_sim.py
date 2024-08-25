@@ -145,17 +145,30 @@ elif args.which_cat == "tsz":
     print(" ::: min and max SNR = %.2f and %.2f" %(snr.min(), snr.max()))
 
 elif args.which_cat == "cmass":
-    cat = paths.cmass_cat
-    ras, decs, zs = np.loadtxt(cat, unpack=True)
-    dec_cut = np.where(np.logical_and(decs<10, decs>-10))
-    ras = ras[dec_cut]
-    decs = decs[dec_cut]
-    zs = zs[dec_cut]
+    if args.which_sim == "websky":
+        cat = paths.websky_cmass_cat
+        ras, decs, zs = np.loadtxt(cat, unpack=True)
+        dec_cut = np.where(np.logical_and(decs<10, decs>-10))
+        ras = ras[dec_cut]
+        decs = decs[dec_cut]
+        zs = zs[dec_cut]
 
-    mf_cat = paths.scratch + "/CMASS_DR12v5_10x_randoms.txt"
+        mf_cat = paths.scratch + "websky_cmass_10x_randoms.txt"
+
+    elif args.which_sim == "agora":
+        cat = paths.agora_cmass_cat
+        data = np.load(cat).item()
+        dec_cut = np.where(np.logical_and(data['dec']<10, data['dec']>-10))[0]
+        ras = data['ra'][dec_cut]
+        decs = data['dec'][dec_cut]
+        zs = data['z'][dec_cut]
+        masses = data['M200c'][dec_cut]
+
+        mf_cat = paths.scratch + "agora_cmass_10x_randoms.txt"
+        
+        print(" ::: min and max M200 = %.2f and %.2f" %(masses.min(), masses.max()), "(mean = %.2f)" %masses.mean())
 
 print(" ::: min and max redshift = %.2f and %.2f" %(zs.min(), zs.max()), "(mean = %.2f)" %zs.mean()) 
-# print(" ::: min and max M200 = %.2f and %.2f" %(masses.min(), masses.max()), "(mean = %.2f)" %masses.mean())
 
 if args.is_meanfield:
 

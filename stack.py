@@ -71,14 +71,20 @@ else:
 if not (args.inject_sim):
     with bench.show("load maps"):
         # Planck SMICA NO SZ map 
-	    # if reprojected Planck map already exists, use it 
+	    # if reprojected Planck map already exists, use it
+
         fplc_map = paths.planck_data + "planck_smica_nosz_reproj.fits"
         if not(args.full_sim_index is None):
             pmap = enmap.read_map(f'{paths.fullsim_path}/planck_sim_{args.full_sim_index:06d}.fits') / 1e6
         else:
             try:
                 if not (args.ilc_maps): 
-                    pmap = enmap.read_map(fplc_map, delayed=False)
+                    if not (args.ilc_grad):
+                        pmap = enmap.read_map(fplc_map, delayed=False)
+                    else: 
+                        fplc_map = (paths.ilc_maps + data_choice.grad)
+                        pmap = enmap.read_map(fplc_map, delayed=False)
+                        print(np.shape(pmap))
                 else:
                     fplc_map = (paths.act_data + data_choice.grad)
                     pmap = enmap.read_map(fplc_map, delayed=False, sel=np.s_[0, ...])
@@ -565,7 +571,8 @@ for task in my_tasks:
             """
             # cut out a stamp from the Planck map (CAR -> tangent)
             pstamp = reproject.thumbnails(
-                    pmap, coords, r=maxr, res=pixel * utils.arcmin, proj="tan", oversample=2, pixwin=True if args.ilc_maps else False
+                    pmap, coords, r=maxr, res=pixel * utils.arcmin, proj="tan", oversample=2, 
+                    pixwin=True if (args.ilc_maps or args.ilc_grad) else False
             )
 
             # Check that all the WCS agree
@@ -592,10 +599,10 @@ for task in my_tasks:
                 continue
 
             # # Planck unit conversion: K -> uK 
-            if not (args.ilc_maps): 
+            if (not (args.ilc_maps) and not (args.ilc_grad)) or (pstamp.ndim>2): 
                 pstamp = pstamp[0] * 1e6
-            else: pstamp = pstamp * 1e6
-
+            else: 
+                pstamp = pstamp * 1e6
 
         else:
             # using hres map for gradient leg 
@@ -822,10 +829,13 @@ for task in my_tasks:
         if not (args.ilc_maps): 
             act_150_kbeam2d = bfunc150(modlmap)
             act_90_kbeam2d = bfunc90(modlmap)
-            plc_kbeam2d = maps.gauss_beam(modlmap, plc_beam_fwhm)
         else:
             act_150_kbeam2d = maps.gauss_beam(modlmap, ilc_beam_fwhm)
             act_90_kbeam2d = maps.gauss_beam(modlmap, ilc_beam_fwhm)
+            
+        if (not (args.ilc_maps)) and (not (args.ilc_grad)):
+            plc_kbeam2d = maps.gauss_beam(modlmap, plc_beam_fwhm)
+        else: 
             plc_kbeam2d = maps.gauss_beam(modlmap, ilc_beam_fwhm)
 
         # get theory spectrum - this should be the lensed spectrum!

@@ -43,11 +43,18 @@ try:
 
 except:
     if cat_type == "cmass":
-        cat = output_path + f"{sim_type}_CMASS-like.npy"
-        data = np.load(cat, allow_pickle=True).item()
-        dec_cut = np.where(np.logical_and(data['dec']<10, data['dec']>-10))[0]
-        ras = data['ra'][dec_cut]
-        decs = data['dec'][dec_cut]
+        if sim_type == "agora":
+            cat = output_path + f"{sim_type}_CMASS-like.npy"
+            data = np.load(cat, allow_pickle=True).item()
+            dec_cut = np.where(np.logical_and(data['dec']<10, data['dec']>-10))[0]
+            ras = data['ra'][dec_cut]
+            decs = data['dec'][dec_cut]
+        elif sim_type == "websky":
+            cat = "/data5/sims/websky/cmass_hod/websky_cmass_galaxy_catalog_full_sky.txt"
+            ras, decs, zs = np.loadtxt(cat, unpack=True)
+            dec_cut = np.where(np.logical_and(decs<10, decs>-10))
+            ras = ras[dec_cut]
+            decs = decs[dec_cut]
     else:
         cat = output_path + f"{sim_type}_halo.txt"
         ras, decs, _, _ = np.loadtxt(cat, unpack=True)

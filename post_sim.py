@@ -1,8 +1,11 @@
-import pixell.utils as u
-from orphics.io import plot_img, Plotter
-import numpy as np
-import sys
 import matplotlib.colors as mcolors
+import numpy as np
+from orphics.io import plot_img, Plotter
+import pixell.utils as u
+import sys
+import os
+sys.path.append(os.path.abspath("/home3/nehajo/scripts/"))
+from profiles import errors
 
 savename = sys.argv[1]
 path = sys.argv[2]
@@ -12,26 +15,34 @@ prefixes = sys.argv[3:]
 ymin=-0.02
 ymax=0.04
 
-stack = {}
-mf = {}
+tk1d = {}   # true kappa stack
+stack = {}  # recon stack
+mf = {}     # meanfield
 corr = {}
 stack1d = {}
 mf1d = {}
+tk1d_err = {}
 err = {}
 mf_err = {}
 r = {}
-k1d = {}
+k1d = {}    # recon stack - mf
+all_k1d = {}
 
-for prefix in prefixes:
+
+for prefix in prefixes: #TODO: load true kappa (mf sub?)
 
     pathname = f"{path}/{prefix}/{prefix}"
 
+    tk1d[prefix] = np.load(f"{pathname}_1tkappa.npy")
     stack[prefix] = np.load(f"{pathname}_1rkappa.npy")
     mf[prefix] = np.load(f"{pathname}_mf_1rkappa.npy")
     corr[prefix] = np.load(f"{pathname}_1rkappa_corr.npy")
+    all_k1d[prefix] = np.load(f"{pathname}_mstats/mstats_dump_vectors_k1d.npy")
 
     r[prefix], stack1d[prefix] = np.loadtxt(f"{pathname}_1binned_rkappa.txt", unpack=True)
     r[prefix], mf1d[prefix] = np.loadtxt(f"{pathname}_mf_1binned_rkappa.txt", unpack=True)
+    
+    tk1d_err[prefix] = np.loadtxt(f"{pathname}_1tkappa_errs.txt")
     err[prefix] = np.loadtxt(f"{pathname}_1rkappa_errs.txt")
     mf_err[prefix] = np.loadtxt(f"{pathname}_mf_1rkappa_errs.txt")
 
@@ -64,26 +75,26 @@ o=0     #offset
 
 
 for i,prefix in enumerate(prefixes):
+    print(prefixes)
     if 'cib' in prefix:
         label = "CIB"
-    if 'kSZ' in prefix:
+    if 'ksz' in prefix:
         label+= " + kSZ"
-    elif ('cib' not in prefix) and ('ksz' not in prefix): 
-        label = "no"
-    label += " foreground"
-    # label = prefix.split("/")[-1]
-    # label = prefix.removeprefix("wsky_")
-    # label = label.replace("_", "+")
+    else: 
+        label = "no foreground"
+
+    if 'hres' not in prefix:
+        label += " (+ tSZ hres)"
+
     color=colors[i]
     pl.add_err(r[prefix]+o, k1d[prefix], yerr=err[prefix], ls="-",label=f"{label} kappa, mf sub", alpha=a, color=color)
     pl.add_err(r[prefix]+o, mf1d[prefix], yerr=mf_err[prefix],ls="--",alpha=a,color=color)
-    a*=0.6
-    o+=0.15
+    a*=0.8
+    o+=0.2
 pl.add([],[],ls="--", label="mf",color = "black")
 pl.hline(y=0)
 pl._ax.set_ylim(ymin,ymax)
 pl.done(f"{path}/{savename}_1rkappa_profile.png")
-
 
 
 # relative difference
@@ -95,7 +106,7 @@ pl_mf = Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$
 baseline = None
 foregrounds = []
 for prefix in prefixes:
-    if ('cib' not in prefix) and ('ksz' not in prefix):
+    if ('cib' not in prefix) and ('ksz' not in prefix) and ('hres' not in prefix):
         baseline = prefix
     else:
         foregrounds.append(prefix)
@@ -107,20 +118,34 @@ for i,fg in enumerate(foregrounds):
         label = "CIB"
     if 'ksz' in fg:
         label+= " + kSZ"
+    else: label = "no foreground"
+    if 'hres' not in fg:
+        label += " (+ tSZ hres)"
 
     color = colors[i+1]
     r_diff = r[fg]-r[baseline]
     assert np.sum(r_diff) == 0.
     k1d_diff = k1d[fg]-k1d[baseline]
     mf1d_diff = mf1d[fg]-mf1d[baseline]
-    err_diff = np.sqrt(err[fg]**2 + err[baseline]**2)
+    all_k1d_diff = all_k1d[fg] - all_k1d[baseline]
+    err_diff = errors(all_k1d_diff)
     mf_err_diff = np.sqrt(mf_err[fg]**2 + mf_err[baseline]**2)
     pl_data.add_err(r[baseline]+o, k1d_diff, yerr=err_diff, ls="-", label=f"{label} relative kappa, mf sub", alpha=a, color=color)
     pl_mf.add_err(r[baseline]+o, mf1d_diff, yerr=err_diff, ls="--", label=f"{label} relative mf", alpha=a, color=color)
 
-    a*=0.6
-    o+=0.15
+    a*=0.8
+    o+=0.2
 pl_data.hline(y=0)
 pl_data.done(f"{path}/{savename}_rel_1rkappa_profile.png")
 pl_mf.hline(y=0)
 pl_mf.done(f"{path}/{savename}_rel_mf_1rkappa_profile.png")
+
+# true kappa comparison
+
+pl = Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
+
+pl.add_err(r[baseline], k1d[baseline], yerr=err[baseline], ls="-",label=f"{label} kappa recon, mf sub")
+pl.add_err(r[baseline], tk1d[baseline], yerr=err[baseline], ls="-", label = "true kappa", color = "black")
+
+pl_data.hline(y=0)
+pl_data.done(f"{path}/{savename}_1tkappa_1rkappa_profile.png")

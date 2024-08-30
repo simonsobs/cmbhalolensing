@@ -62,9 +62,10 @@ print(" ::: saving to", save_dir)
 
 simsuite_path = f"{paths.simsuite_path}/{args.which_sim}_{paths.simsuite_version}/"
 # cat_path = f"{paths.cat_path}/{paths.nemosim_version}/"
-cat = paths.cmass_cat
-print(" ::: catalogue:", args.which_sim, args.which_cat, "[ simsuite ver:", paths.simsuite_version, "]")
+# cat = paths.cmass_cat
+# print(" ::: catalogue:", args.which_sim, args.which_cat, "[ simsuite ver:", paths.simsuite_version, "]")
 # print(" ::: catalogue:", args.which_sim, args.which_cat, "[ simsuite ver:", paths.simsuite_version, "/ nemosim ver:", paths.nemosim_version, "]")
+print(" ::: catalogue:", args.which_sim, args.which_cat)
 print(" ::: hres:", args.hres_choice, "/ grad:", args.grad_choice)
 
 if args.is_meanfield: print(" ::: this is a mean-field run")
@@ -148,23 +149,23 @@ elif args.which_cat == "cmass":
     if args.which_sim == "websky":
         cat = paths.websky_cmass_cat
         ras, decs, zs = np.loadtxt(cat, unpack=True)
-        dec_cut = np.where(np.logical_and(decs<10, decs>-10))
+        dec_cut = np.where(np.logical_and(decs<10, decs>-10))[0]
         ras = ras[dec_cut]
         decs = decs[dec_cut]
         zs = zs[dec_cut]
 
-        mf_cat = paths.scratch + "websky_cmass_10x_randoms.txt"
+        mf_cat = paths.websky_cmass_randoms
 
     elif args.which_sim == "agora":
         cat = paths.agora_cmass_cat
-        data = np.load(cat).item()
-        dec_cut = np.where(np.logical_and(data['dec']<10, data['dec']>-10))[0]
+        data = np.load(cat, allow_pickle=True).item()
+        dec_cut = np.where(np.logical_and(data['dec']<2, data['dec']>0))[0]
         ras = data['ra'][dec_cut]
         decs = data['dec'][dec_cut]
         zs = data['z'][dec_cut]
         masses = data['M200c'][dec_cut]
 
-        mf_cat = paths.scratch + "agora_cmass_10x_randoms.txt"
+        mf_cat = paths.agora_cmass_randoms
         
         print(" ::: min and max M200 = %.2f and %.2f" %(masses.min(), masses.max()), "(mean = %.2f)" %masses.mean())
 
@@ -177,7 +178,9 @@ if args.is_meanfield:
     # load random catalogue - created by mapcat.py + randcat.py
     # cat = cat_path + f"{args.which_sim}_{args.which_cat}_randoms.txt"
     cat = mf_cat
-    ras, decs,_,_ = np.loadtxt(cat)    
+    mf = np.loadtxt(cat)    
+    ras = mf[0]
+    decs = mf[1]
 
     if not args.full_sample:
         ras = ras[:Nx]
@@ -439,11 +442,15 @@ for task in my_tasks:
 
 s.get_stacks()
 s.get_stats()
-   
+
 if rank==0:
 
     if args.is_meanfield:
         save_name = save_name + "_mf" 
+    
+    stats_dir = f"{save_dir}/{save_name}_mstats"
+    io.mkdir(stats_dir)
+    s.dump(stats_dir)
 
     # stacks before lensing reconstruction   
     hres_st = s.stacks["hres_stamp_st"]

@@ -25,6 +25,9 @@ parser.add_argument(
     "which_sim", type=str, help="Choose the sim e.g. websky or sehgal or agora."
 )
 parser.add_argument(
+    "sim_version", type=str, help="Version name of simsuite."
+)
+parser.add_argument(
     "which_cat", type=str, help="Choose the catalogue type e.g. halo or tsz."
 )
 parser.add_argument(
@@ -40,7 +43,7 @@ parser.add_argument(
     "--is-meanfield", action="store_true", help="This is a mean-field run."
 )
 parser.add_argument(
-    "--is-test", action="store_true", help="This is a test run for first 10 entries."
+    "--is-test", action="store_true", help="This is a test run for first 100 entries."
 )
 parser.add_argument(
     "--full-sample", action="store_true", help="Entire sample will be used (SNR > 4)."
@@ -56,15 +59,16 @@ elif args.which_sim == "agora": output_path = paths.agora_output_path
 # output_path = paths.{args.which_sim}_output_path
 
 save_name = args.save_name
+
 save_dir = f"{output_path}/{save_name}"
 io.mkdir(f"{save_dir}")
 print(" ::: saving to", save_dir)
 
-simsuite_path = f"{paths.simsuite_path}/{args.which_sim}_{paths.simsuite_version}/"
+simsuite_path = f"{paths.simsuite_path}/{args.which_sim}_{args.sim_version}/"
 # cat_path = f"{paths.cat_path}/{paths.nemosim_version}/"
 # cat = paths.cmass_cat
-# print(" ::: catalogue:", args.which_sim, args.which_cat, "[ simsuite ver:", paths.simsuite_version, "]")
-# print(" ::: catalogue:", args.which_sim, args.which_cat, "[ simsuite ver:", paths.simsuite_version, "/ nemosim ver:", paths.nemosim_version, "]")
+# print(" ::: catalogue:", args.which_sim, args.which_cat, "[ simsuite ver:", args.sim_version, "]")
+# print(" ::: catalogue:", args.which_sim, args.which_cat, "[ simsuite ver:", args.sim_version, "/ nemosim ver:", paths.nemosim_version, "]")
 print(" ::: catalogue:", args.which_sim, args.which_cat)
 print(" ::: hres:", args.hres_choice, "/ grad:", args.grad_choice)
 
@@ -148,22 +152,20 @@ elif args.which_cat == "tsz":
 elif args.which_cat == "cmass":
     if args.which_sim == "websky":
         cat = paths.websky_cmass_cat
-        ras, decs, zs = np.loadtxt(cat, unpack=True)
-        dec_cut = np.where(np.logical_and(decs<10, decs>-10))[0]
-        ras = ras[dec_cut]
-        decs = decs[dec_cut]
-        zs = zs[dec_cut]
+        data = np.load(cat, allow_pickle=True).item()
+        ras = data['ra']
+        decs = data['dec']
+        zs = data['z']
 
         mf_cat = paths.websky_cmass_randoms
 
     elif args.which_sim == "agora":
         cat = paths.agora_cmass_cat
         data = np.load(cat, allow_pickle=True).item()
-        dec_cut = np.where(np.logical_and(data['dec']<2, data['dec']>0))[0]
-        ras = data['ra'][dec_cut]
-        decs = data['dec'][dec_cut]
-        zs = data['z'][dec_cut]
-        masses = data['M200c'][dec_cut]
+        ras = data['ra']
+        decs = data['dec']
+        zs = data['z']
+        masses = data['M200c']
 
         mf_cat = paths.agora_cmass_randoms
         
@@ -178,7 +180,7 @@ if args.is_meanfield:
     # load random catalogue - created by mapcat.py + randcat.py
     # cat = cat_path + f"{args.which_sim}_{args.which_cat}_randoms.txt"
     cat = mf_cat
-    mf = np.loadtxt(cat)    
+    mf = np.loadtxt(cat, unpack=True)    
     ras = mf[0]
     decs = mf[1]
 
@@ -252,7 +254,7 @@ print(" ::: maps are ready!")
 
 if args.is_test: 
     print(" ::: this is a test run!")
-    nsims = 10
+    nsims = 100
 else: nsims = len(ras)
 
 comm, rank, my_tasks = mpi.distribute(nsims)
@@ -443,13 +445,13 @@ for task in my_tasks:
 s.get_stacks()
 s.get_stats()
 
-if rank==0:
+if args.is_meanfield:
+    save_name = save_name + "_mf" 
 
-    if args.is_meanfield:
-        save_name = save_name + "_mf" 
-    
-    stats_dir = f"{save_dir}/{save_name}_mstats"
-    io.mkdir(stats_dir)
+stats_dir = f"{save_dir}/{save_name}_mstats"
+io.mkdir(stats_dir)
+
+if rank==0:
     s.dump(stats_dir)
 
     # stacks before lensing reconstruction   

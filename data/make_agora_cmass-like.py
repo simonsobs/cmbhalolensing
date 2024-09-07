@@ -73,4 +73,4 @@ for slice in np.arange(min_slice, max_slice+1):
 for key in cmass_like:
     cmass_like[key] = np.asarray(cmass_like[key])
 
-np.save("agora_CMASS-like.npy", cmass_like, allow_pickle=True)
+np.save("agora_cmasslike.npy", cmass_like, allow_pickle=True)

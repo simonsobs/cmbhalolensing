@@ -18,6 +18,7 @@ sim_paths = bunch.Bunch(io.config_from_yaml("input/sim_data.yml"))
 
 cat_type = sys.argv[1] # halo / tsz / cmass
 sim_type = sys.argv[2] # websky / sehgal / agora
+
 nemo = False
 
 try:
@@ -44,17 +45,17 @@ try:
 except:
     if cat_type == "cmass":
         if sim_type == "agora":
-            cat = output_path + f"{sim_type}_CMASS-like.npy"
+            cat = "/home3/nehajo/projects/cmbhalolensing/data/sim_cats/agora_cmasslike_deccut.npy"
             data = np.load(cat, allow_pickle=True).item()
-            dec_cut = np.where(np.logical_and(data['dec']<10, data['dec']>-10))[0]
-            ras = data['ra'][dec_cut]
-            decs = data['dec'][dec_cut]
+            ras = data['ra']
+            decs = data['dec']
+            zs = data['z']
         elif sim_type == "websky":
-            cat = "/data5/sims/websky/cmass_hod/websky_cmass_galaxy_catalog_full_sky.txt"
-            ras, decs, zs = np.loadtxt(cat, unpack=True)
-            dec_cut = np.where(np.logical_and(decs<10, decs>-10))
-            ras = ras[dec_cut]
-            decs = decs[dec_cut]
+            cat = "/home3/nehajo/projects/cmbhalolensing/data/sim_cats/websky_cmasslike_deccut.npy"
+            data = np.load(cat, allow_pickle=True).item()
+            ras = data['ra']
+            decs = data['dec']
+            zs = data['z']
     else:
         cat = output_path + f"{sim_type}_halo.txt"
         ras, decs, _, _ = np.loadtxt(cat, unpack=True)
@@ -94,7 +95,11 @@ elif cat_type == "tsz" or cat_type == "cmass":
     cmapper = catalogs.CatMapper(coords[1], coords[0], shape=shape, wcs=wcs)
     io.hplot(enmap.downgrade(cmapper.counts, 16), f'{paths.scratch}{sim_type}_{cat_type}_{Nx}x_randcounts', mask=0)
 
+    print(coords.shape)
+    print(coords[0].shape)
+    print(coords[1].shape)
     io.save_cols(output_path+f"{sim_type}_{cat_type}_{Nx}x_randoms.txt",(coords[1], coords[0]))
 
 print(" ::: min and max rand ra: ", coords[1].min(), coords[1].max())
 print(" ::: min and max rand dec: ", coords[0].min(), coords[0].max())
+print(coords.shape)

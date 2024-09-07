@@ -27,20 +27,18 @@ meanfield = False
 
 shape,wcs = enmap.fullsky_geometry(res=1 * utils.degree)
 if cat_type == "websky_cmass":
-    cat = "/data5/sims/websky/cmass_hod/websky_cmass_galaxy_catalog_full_sky.txt"
-    ras, decs, zs = np.loadtxt(cat, unpack=True)
-    dec_cut = np.where(np.logical_and(decs<10, decs>-10))
-    ras = ras[dec_cut]
-    decs = decs[dec_cut]
+    cat = "/home3/nehajo/projects/cmbhalolensing/data/sim_cats/websky_cmasslike_deccut.txt"
+    data = np.load(cat, allow_pickle=True).item()
+    ras = data['ra']
+    decs = data['dec']
+    zs = data['z']
     
 elif cat_type == "agora_cmass":
-    cat = "/home3/nehajo/projects/cmbhalolensing/data/agora_CMASS-like.npy"
+    cat = "/home3/nehajo/projects/cmbhalolensing/data/sim_cats/agora_cmasslike_deccut.npy"
     data = np.load(cat, allow_pickle=True).item()
-    dec_cut = np.where(np.logical_and(data['dec']<10, data['dec']>-10))[0]
-    ras = data['ra'][dec_cut]
-    decs = data['dec'][dec_cut]
-    zs = data['z'][dec_cut]
-    masses = data['M200c'][dec_cut]
+    ras = data['ra']
+    decs = data['dec']
+    zs = data['z']
 
 else: ras,decs,zs,ws,data = cutils.catalog_interface(cat_type,is_meanfield=meanfield)
 cmapper = catalogs.CatMapper(ras,decs,shape=shape,wcs=wcs)

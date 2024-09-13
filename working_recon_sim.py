@@ -8,6 +8,10 @@ from pixell import enmap, reproject, utils, wcsutils, bunch
 from orphics import mpi, maps, stats, io, cosmology
 from symlens import qe
 import argparse
+import sys
+import os
+sys.path.append(os.path.abspath("/home3/nehajo/scripts/"))
+import profiles
 
 start = t.time()
 
@@ -180,9 +184,7 @@ if args.is_meanfield:
     # load random catalogue - created by mapcat.py + randcat.py
     # cat = cat_path + f"{args.which_sim}_{args.which_cat}_randoms.txt"
     cat = mf_cat
-    mf = np.loadtxt(cat, unpack=True)    
-    ras = mf[0]
-    decs = mf[1]
+    ras, decs = np.loadtxt(cat, unpack=True)    
 
     if not args.full_sample:
         ras = ras[:Nx]
@@ -211,40 +213,24 @@ elif args.which_sim == "agora":
 if not args.is_observed: 
     print(" ::: preparing for SIGNAL maps")
 
-    cmb = f"{simsuite_path}scmb.fits"
-    cmb_cib = f"{simsuite_path}scmb_cib.fits"
-    cmb_ksz_cib = f"{simsuite_path}scmb_ksz_cib.fits"
+    hres = f"{simsuite_path}s{args.hres_choice}.fits"
+    grad = f"{simsuite_path}s{args.grad_choice}.fits"
 
-    cmb_tsz = f"{simsuite_path}scmb_tsz.fits"
-    cmb_tsz_cib = f"{simsuite_path}scmb_tsz_cib.fits"
-    cmb_tsz_ksz_cib = f"{simsuite_path}scmb_tsz_ksz_cib.fits"
     
 else: 
     print(" ::: preparing for OBSERVED maps")
 
-    cmb = f"{simsuite_path}ocmb.fits"
-    cmb_cib = f"{simsuite_path}ocmb_cib.fits"
-    cmb_ksz_cib = f"{simsuite_path}ocmb_ksz_cib.fits"
+    hres = f"{simsuite_path}o{args.hres_choice}.fits"
+    grad = f"{simsuite_path}o{args.grad_choice}.fits"
 
-    cmb_tsz = f"{simsuite_path}ocmb_tsz.fits"
-    cmb_tsz_cib = f"{simsuite_path}ocmb_tsz_cib.fits" 
-    cmb_tsz_ksz_cib = f"{simsuite_path}ocmb_tsz_ksz_cib.fits"    
 
 print(" ::: reading true kappa map:", true)
-print(" ::: reading lensed cmb map:", cmb)
-print(" ::: reading lensed cmb + cib map:", cmb_cib)
-print(" ::: reading lensed cmb + ksz + cib map:", cmb_ksz_cib)
-print(" ::: reading lensed cmb + tsz map:", cmb_tsz)
-print(" ::: reading lensed cmb + tsz + cib map:", cmb_tsz_cib)
-print(" ::: reading lensed cmb + tsz + ksz + cib map:", cmb_tsz_ksz_cib)
+print(" ::: reading lensed hres map:", hres)
+print(" ::: reading lensed grad map:", grad)
 
 true_map = enmap.read_map(true, delayed=False)
-cmb_map = enmap.read_map(cmb, delayed=False)
-cmb_cib_map = enmap.read_map(cmb_cib, delayed=False)
-cmb_ksz_cib_map = enmap.read_map(cmb_ksz_cib, delayed=False)
-cmb_tsz_map = enmap.read_map(cmb_tsz, delayed=False)
-cmb_tsz_cib_map = enmap.read_map(cmb_tsz_cib, delayed=False)
-cmb_tsz_ksz_cib_map = enmap.read_map(cmb_tsz_ksz_cib, delayed=False)
+hres_map = enmap.read_map(hres, delayed=False)
+grad_map = enmap.read_map(grad, delayed=False)
 
 print(" ::: maps are ready!")
 
@@ -260,14 +246,24 @@ else: nsims = len(ras)
 comm, rank, my_tasks = mpi.distribute(nsims)
 s = stats.Stats(comm)
 
+kstamps = []
+lstamps = []
+hstamps = []
+gstamps = []
+tk1ds = []
+k1ds = []
+zs = []
+# Ms = []
+
 j = 0  # local counter for this MPI task
 for task in my_tasks:
+    task_start = t.time()
     i = task
     cper = int((j + 1) / len(my_tasks) * 100.0)
     if rank==0: print(f"Rank {rank} performing task {task} as index {j} ({cper}% complete.).")
       
     coords = np.array([decs[i], ras[i]]) * utils.degree  
-
+    
     # cut out a stamp from the simulated map
     kstamp = reproject.thumbnails(
         true_map,
@@ -279,67 +275,28 @@ for task in my_tasks:
         pixwin=False
     ) # true kappa
 
-    cmb = reproject.thumbnails(
-        cmb_map,
+    hres = reproject.thumbnails(
+        hres_map,
         coords,
         r=maxr,
         res=px * utils.arcmin,
         proj="tan",
         oversample=2,
         pixwin=True if args.high_accuracy else False # only True for maps made natively in CAR
-    ) # lensed cmb
+    ) # lensed hres
 
-    cmb_cib = reproject.thumbnails(
-        cmb_cib_map,
+    grad = reproject.thumbnails(
+        grad_map,
         coords,
         r=maxr,
         res=px * utils.arcmin,
         proj="tan",
         oversample=2,
-        pixwin=False
-    ) # lensed cmb + cib
-
-    cmb_ksz_cib = reproject.thumbnails(
-        cmb_ksz_cib_map,
-        coords,
-        r=maxr,
-        res=px * utils.arcmin,
-        proj="tan",
-        oversample=2,
-        pixwin=False
-    ) # lensed cmb + ksz + cib
-
-    cmb_tsz = reproject.thumbnails(
-        cmb_tsz_map,
-        coords,
-        r=maxr,
-        res=px * utils.arcmin,
-        proj="tan",
-        oversample=2,
-        pixwin=False
-    ) # lensed cmb + tsz
-
-    cmb_tsz_cib = reproject.thumbnails(
-        cmb_tsz_cib_map,
-        coords,
-        r=maxr,
-        res=px * utils.arcmin,
-        proj="tan",
-        oversample=2,
-        pixwin=False
-    ) # lensed cmb + tsz + cib
-
-    cmb_tsz_ksz_cib = reproject.thumbnails(
-        cmb_tsz_ksz_cib_map,
-        coords,
-        r=maxr,
-        res=px * utils.arcmin,
-        proj="tan",
-        oversample=2,
-        pixwin=False
-    ) # lensed cmb + tsz + ksz + cib
+        pixwin=True if args.high_accuracy else False # only True for maps made natively in CAR
+    ) # lensed grad
 
     # initialise calculations based on geometry 
+
     if j == 0:     
 
         # get geometry and Fourier info   
@@ -348,8 +305,8 @@ for task in my_tasks:
         modlmap = enmap.modlmap(shape, wcs)
         modrmap = enmap.modrmap(shape, wcs)
         
-        assert wcsutils.equal(kstamp.wcs, cmb.wcs)
-        assert wcsutils.equal(kstamp.wcs, cmb_tsz.wcs)
+        assert wcsutils.equal(kstamp.wcs, hres.wcs)
+        assert wcsutils.equal(kstamp.wcs, grad.wcs)
 
         # get an edge taper map and apodize
         taper = maps.get_taper(
@@ -379,14 +336,14 @@ for task in my_tasks:
         tcltt2d[~np.isfinite(tcltt2d)] = 0
 
     # same filter as the post-reconstuction for true kappa
-    k_stamp = maps.filter_map(kstamp, kmask)   
-    s.add_to_stack("kstamp", k_stamp)
+    k_stamp = maps.filter_map(kstamp, kmask)
+    kstamps.append(k_stamp.copy())
     binned_true = bin(k_stamp, modrmap * (180 * 60 / np.pi), bin_edges)   
-    s.add_to_stats("tk1d", binned_true)     
+    tk1ds.append(binned_true.copy())
 
     # choose the map for each leg 
-    hres = globals()[args.hres_choice]
-    grad = globals()[args.grad_choice]
+    # hres = globals()[args.hres_choice]
+    # grad = globals()[args.grad_choice]
 
     # taper stamp
     tapered_hres = hres * taper
@@ -421,43 +378,67 @@ for task in my_tasks:
     kappa = enmap.ifft(rkmap, normalize="phys").real    
 
     # stack reconstructed kappa     
-    s.add_to_stack("lstamp", kappa)    
+    lstamps.append(kappa.copy())
     binned_kappa = bin(kappa, modrmap * (180 * 60 / np.pi), bin_edges)   
-    s.add_to_stats("k1d", binned_kappa) 
+    k1ds.append(binned_kappa.copy()) 
 
     # stack stamps pre-reconstruction as well (same filter as hres leg)
     hres_stamp = maps.filter_map(hres, ymask) 
     grad_stamp = maps.filter_map(grad, ymask)  
-    s.add_to_stack("hres_stamp_st", hres_stamp)
-    s.add_to_stack("grad_stamp_st", grad_stamp) 
+    hstamps.append(hres_stamp.copy())
+    gstamps.append(grad_stamp.copy()) 
 
     # save the list of masses and redshifts for matched stack mass fitting
     if not args.is_meanfield:     
-        s.add_to_stats("redshift", (zs[i],))
-        # s.add_to_stats("masses", (masses[i],))
+        zs.append(zs[i].copy(),)
+        # Ms.append(masses[i].copy(),)
 
     j = j + 1
+    task_end = t.time()
+    if args.is_test and (rank == 0):
+        print(f"Task {task} took {task_end-task_start} s")
 
 
             
 # COLLECT FROM ALL MPI CORES AND CALCULATE STACKS ------------------------------
 
-s.get_stacks()
-s.get_stats()
 
-if args.is_meanfield:
-    save_name = save_name + "_mf" 
+kstamps = np.asarray(kstamps)
+_kstamps = kstamps.sum(axis=0)
+kmap = utils.reduce(_kstamps, comm, root=0, op=mpi.MPI.SUM)
 
-stats_dir = f"{save_dir}/{save_name}_mstats"
-io.mkdir(stats_dir)
+lstamps = np.asarray(lstamps)
+_lstamps = lstamps.sum(axis=0)
+lmap = utils.reduce(_lstamps, comm, root=0, op=mpi.MPI.SUM)
 
-if rank==0:
-    s.dump(stats_dir)
+hstamps = np.asarray(hstamps)
+_hstamps = hstamps.sum(axis=0)
+hres_st = utils.reduce(_hstamps, comm, root=0, op=mpi.MPI.SUM)
+
+gstamps = np.asarray(gstamps)
+_gstamps = gstamps.sum(axis=0)
+grad_st = utils.reduce(_gstamps, comm, root=0, op=mpi.MPI.SUM)
+
+tk1ds = utils.allgatherv(tk1ds, comm)
+k1ds = utils.allgatherv(k1ds, comm)
+zs = utils.allgatherv(zs, comm)
+# Ms = utils.allgatherv(Ms, comm)
+
+if rank==0: #TODO: make stamps enmaps again
+
+    if args.is_meanfield:
+        save_name = save_name + "_mf" 
+    # s.dump(stats_dir)
 
     # stacks before lensing reconstruction   
-    hres_st = s.stacks["hres_stamp_st"]
-    grad_st = s.stacks["grad_stamp_st"]     
- 
+
+    Nobj = k1ds.shape[0]
+    assert tk1ds.shape[0] == Nobj
+    hres_st = enmap.enmap(hres_st, wcs)
+    grad_st = enmap.enmap(grad_st, wcs)
+    
+    hres_st /= Nobj
+    grad_st /= Nobj
     hres_zoom = hres_st[100:140,100:140]  
     grad_zoom = grad_st[100:140,100:140] 
          
@@ -477,9 +458,11 @@ if rank==0:
     io.save_cols(f"{save_dir}/{save_name}_0binned_grad.txt", (centers, gbinned))      
 
     # reconstructed lensing field     
-    kmap = s.stacks["kstamp"]
-    lmap = s.stacks["lstamp"]
-    
+    kmap = enmap.enmap(kmap, wcs)
+    lmap = enmap.enmap(lmap, wcs)
+    kmap /= Nobj
+    lmap /= Nobj
+
     kmap_zoom = kmap[100:140,100:140] 
     lmap_zoom = lmap[100:140,100:140] 
             
@@ -498,15 +481,14 @@ if rank==0:
     io.save_cols(f"{save_dir}/{save_name}_1binned_tkappa_from2D.txt", (centers, kbinned))
     io.save_cols(f"{save_dir}/{save_name}_1binned_rkappa_from2D.txt", (centers, lbinned))
 
-    tbinned = s.stats["tk1d"]["mean"]
-    tcovm = s.stats["tk1d"]["covmean"]
-    tcorr = stats.cov2corr(s.stats["tk1d"]["covmean"])
-    terrs = s.stats["tk1d"]["errmean"]
+    tbinned = tk1ds.mean(axis=0)
+    print("true:", tk1ds.shape, tbinned.shape)
+    terrs, tcovm = profiles.errors(tk1ds)
+    tcorr = profiles.correlation_matrix(tcovm)
     
-    binned = s.stats["k1d"]["mean"]
-    covm = s.stats["k1d"]["covmean"]
-    corr = stats.cov2corr(s.stats["k1d"]["covmean"])
-    errs = s.stats["k1d"]["errmean"]
+    binned = k1ds.mean(axis=0)
+    errs, covm = profiles.errors(k1ds)
+    corr = profiles.correlation_matrix(covm)
 
     np.savetxt(f"{save_dir}/{save_name}_1tkappa_errs.txt", terrs)               
     np.savetxt(f"{save_dir}/{save_name}_1rkappa_errs.txt", errs)    
@@ -515,7 +497,9 @@ if rank==0:
     np.save(f"{save_dir}/{save_name}_1tkappa_corr.npy", tcorr)  
     np.save(f"{save_dir}/{save_name}_1rkappa_corr.npy", corr) 
     io.save_cols(f"{save_dir}/{save_name}_1binned_tkappa.txt", (centers, tbinned))
-    io.save_cols(f"{save_dir}/{save_name}_1binned_rkappa.txt", (centers, binned)) 
+    io.save_cols(f"{save_dir}/{save_name}_1binned_rkappa.txt", (centers, binned))
+    np.savetxt(f"{save_dir}/{save_name}_1binned_tkappa_vectors.txt", tk1ds)
+    np.savetxt(f"{save_dir}/{save_name}_1binned_rkappa_vectors.txt", k1ds)
 
     enmap.write_map(f"{save_dir}/{save_name}_kmask.fits", kmask)   
     np.savetxt(f"{save_dir}/{save_name}_bin_edges.txt", bin_edges)

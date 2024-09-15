@@ -27,7 +27,7 @@ meanfield = False
 
 shape,wcs = enmap.fullsky_geometry(res=1 * utils.degree)
 if cat_type == "websky_cmass":
-    cat = "/home3/nehajo/projects/cmbhalolensing/data/sim_cats/websky_cmasslike_deccut.txt"
+    cat = "/home3/nehajo/projects/cmbhalolensing/data/sim_cats/websky_cmasslike_deccut.npy"
     data = np.load(cat, allow_pickle=True).item()
     ras = data['ra']
     decs = data['dec']

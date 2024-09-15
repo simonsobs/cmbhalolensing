@@ -160,6 +160,7 @@ elif args.which_cat == "cmass":
         ras = data['ra']
         decs = data['dec']
         zs = data['z']
+        masses = None
 
         mf_cat = paths.websky_cmass_randoms
 
@@ -173,7 +174,7 @@ elif args.which_cat == "cmass":
 
         mf_cat = paths.agora_cmass_randoms
         
-        print(" ::: min and max M200 = %.2f and %.2f" %(masses.min(), masses.max()), "(mean = %.2f)" %masses.mean())
+if masses is not None: print(" ::: min and max M200 = %.2f and %.2f" %(masses.min(), masses.max()), "(mean = %.2f)" %masses.mean())
 
 print(" ::: min and max redshift = %.2f and %.2f" %(zs.min(), zs.max()), "(mean = %.2f)" %zs.mean()) 
 
@@ -246,14 +247,10 @@ else: nsims = len(ras)
 comm, rank, my_tasks = mpi.distribute(nsims)
 s = stats.Stats(comm)
 
-kstamps = []
-lstamps = []
-hstamps = []
-gstamps = []
 tk1ds = []
 k1ds = []
-zs = []
-# Ms = []
+zvals = []
+if masses is not None: Ms = []
 
 j = 0  # local counter for this MPI task
 for task in my_tasks:
@@ -337,7 +334,6 @@ for task in my_tasks:
 
     # same filter as the post-reconstuction for true kappa
     k_stamp = maps.filter_map(kstamp, kmask)
-    kstamps.append(k_stamp.copy())
     binned_true = bin(k_stamp, modrmap * (180 * 60 / np.pi), bin_edges)   
     tk1ds.append(binned_true.copy())
 
@@ -378,20 +374,29 @@ for task in my_tasks:
     kappa = enmap.ifft(rkmap, normalize="phys").real    
 
     # stack reconstructed kappa     
-    lstamps.append(kappa.copy())
     binned_kappa = bin(kappa, modrmap * (180 * 60 / np.pi), bin_edges)   
     k1ds.append(binned_kappa.copy()) 
 
     # stack stamps pre-reconstruction as well (same filter as hres leg)
     hres_stamp = maps.filter_map(hres, ymask) 
     grad_stamp = maps.filter_map(grad, ymask)  
-    hstamps.append(hres_stamp.copy())
-    gstamps.append(grad_stamp.copy()) 
 
     # save the list of masses and redshifts for matched stack mass fitting
-    if not args.is_meanfield:     
-        zs.append(zs[i].copy(),)
-        # Ms.append(masses[i].copy(),)
+    if not args.is_meanfield:
+        zvals.append(zs[i].copy(),)
+        if masses is not None: Ms.append(masses[i].copy(),)
+    
+    if j == 0:
+        kstamps = k_stamp.copy()
+        lstamps = kappa.copy()
+        hstamps = hres_stamp.copy()
+        gstamps = grad_stamp.copy()
+
+    else:
+        kstamps = kstamps + k_stamp
+        lstamps = lstamps + kappa
+        hstamps = hstamps + hres_stamp
+        gstamps = gstamps + grad_stamp
 
     j = j + 1
     task_end = t.time()
@@ -404,24 +409,20 @@ for task in my_tasks:
 
 
 kstamps = np.asarray(kstamps)
-_kstamps = kstamps.sum(axis=0)
-kmap = utils.reduce(_kstamps, comm, root=0, op=mpi.MPI.SUM)
+kmap = utils.reduce(kstamps, comm, root=0, op=mpi.MPI.SUM)
 
 lstamps = np.asarray(lstamps)
-_lstamps = lstamps.sum(axis=0)
-lmap = utils.reduce(_lstamps, comm, root=0, op=mpi.MPI.SUM)
+lmap = utils.reduce(lstamps, comm, root=0, op=mpi.MPI.SUM)
 
 hstamps = np.asarray(hstamps)
-_hstamps = hstamps.sum(axis=0)
-hres_st = utils.reduce(_hstamps, comm, root=0, op=mpi.MPI.SUM)
+hres_st = utils.reduce(hstamps, comm, root=0, op=mpi.MPI.SUM)
 
 gstamps = np.asarray(gstamps)
-_gstamps = gstamps.sum(axis=0)
-grad_st = utils.reduce(_gstamps, comm, root=0, op=mpi.MPI.SUM)
+grad_st = utils.reduce(gstamps, comm, root=0, op=mpi.MPI.SUM)
 
 tk1ds = utils.allgatherv(tk1ds, comm)
 k1ds = utils.allgatherv(k1ds, comm)
-zs = utils.allgatherv(zs, comm)
+zvals = utils.allgatherv(zvals, comm)
 # Ms = utils.allgatherv(Ms, comm)
 
 if rank==0: #TODO: make stamps enmaps again

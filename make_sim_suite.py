@@ -27,6 +27,8 @@ parser.add_argument(
 parser.add_argument(
     "which_sim", type=str, help="Choose the sim e.g. websky or sehgal or agora."
 )
+parser.add_argument("freq", type=int, help="Frequency for tSZ and CIB")
+
 parser.add_argument(
     "--high-accuracy", action="store_true", help="If using a high accuracy websky map, choose this option."
 )
@@ -58,7 +60,7 @@ print(" ::: saving to", save_dir)
 
 # SIM SETTING ------------------------------------------------------------------
 
-freq_sz = 150
+freq_sz = args.freq
 print(" ::: map frequency at %d GHz" %freq_sz)
 
 px = 0.5
@@ -91,7 +93,8 @@ if args.which_sim == "websky":
     if args.high_accuracy: 
         r_lmap = sim_path + paths.websky_dlensed_reproj
         r_kmap = sim_path + paths.websky_kappa4p5_reproj
-        r_tszmap = sim_path + paths.websky_dtsz_reproj
+        r_tsz090map = sim_path + paths.websky_dtsz090_reproj
+        r_tsz150map = sim_path + paths.websky_dtsz150_reproj
         r_kszmap = sim_path + paths.websky_dksz_reproj
         r_cib093map = sim_path + paths.websky_dcib093_reproj
         r_cib145map = sim_path + paths.websky_dcib145_reproj
@@ -106,7 +109,12 @@ elif args.which_sim == "sehgal":
 elif args.which_sim == "agora":
     r_lmap = sim_path + paths.agora_cmb_reproj
     r_kmap = sim_path + paths.agora_kappa_reproj
-    r_tszmap = sim_path + paths.agora_tsz_reproj  
+    r_tsz090map = sim_path + paths.agora_tsz090_reproj
+    r_tsz150map = sim_path + paths.agora_tsz150_reproj
+    r_cib093map = sim_path + paths.agora_cib090_reproj
+    r_cib145map = sim_path + paths.agora_cib150_reproj
+    r_cib220map = sim_path + paths.agora_cib220_reproj
+    r_kszmap = sim_path + paths.agora_ksz_reproj
 
 
 # reading lensed cmb map
@@ -177,6 +185,10 @@ print("kmap", kmap.shape)
 
 # reading tsz map
 try:
+    if (args.which_sim == "websky") or (args.which_sim == "agora"):
+        if freq_sz == 90: r_tszmap = r_tsz090map
+        elif freq_sz == 150: r_tszmap = r_tsz150map
+
     tszmap = enmap.read_map(r_tszmap, delayed=False)
     print(" ::: reading reprojected tsz map:", r_tszmap) 
 
@@ -192,7 +204,7 @@ except:
         ymap = reproject.healpix2map(hmap, shape, wcs)
 
     elif args.which_sim == "agora":
-        ifile = f"{sim_path}tsz/len/agora_ltszNG_bahamas78_bnd_unb_1.0e+12_1.0e+18_lensed.fits"
+        ifile = f"{sim_path}tsz/len/mdpl2_ltszNG_bahamas80_rot_sum_4_176_bnd_unb_1.0e+12_1.0e+18_v103021_lmax24000_nside8192_interp1.0_method1_1_lensed_map.fits"
         hmap = hp.read_map(ifile).astype(np.float64)
         ymap = reproject.healpix2map(hmap, shape, wcs)
 
@@ -231,6 +243,11 @@ except:
         hmap = np.atleast_2d(hp.read_map(ifile, field=tuple(range(0,1)))).astype(np.float64)
         kszmap = reproject.healpix2map(hmap, shape, wcs)[0,:,:]
 
+    if args.which_sim == "agora":
+        ifile = f"{sim_path}/ksz/mdpl2_lkszNG_bahamas80_rot_sum_4_176_bnd_unb_1.0e+12_1.0e+18_v103021_lmax24000_nside8192_interp1.0_method1_1_lensed_map.fits"
+        hmap = hp.read_map(ifile).astype(np.float64)
+        kszmap = reproject.healpix2map(hmap, shape, wcs)
+
     enmap.write_map(r_kszmap, kszmap)
     print(" ::: reading and reprojecting ksz map:", ifile) 
 print("kszmap", kszmap.shape) 
@@ -238,11 +255,12 @@ print("kszmap", kszmap.shape)
 
 # reading cib map
 try:
-    if freq_sz == 90: r_cibmap = r_cib093map
-    elif freq_sz == 150: r_cibmap = r_cib145map
+    if (args.which_sim == "websky") or (args.which_sim == "agora"):
+        if freq_sz == 90: r_cibmap = r_cib093map
+        elif freq_sz == 150: r_cibmap = r_cib145map
 
     cibmap = enmap.read_map(r_cibmap, delayed=False)
-    print(" ::: reading reprojected cib map:", r_cibmap) 
+    print(" ::: reading reprojected cib map:", r_cibmap)
 
 except:
     if args.which_sim == "websky": 
@@ -254,29 +272,43 @@ except:
         hmap = np.atleast_2d(hp.read_map(ifile, field=tuple(range(0,1)))).astype(np.float64)
         cibmap_i = reproject.healpix2map(hmap, shape, wcs)[0,:,:]
 
-    print(" ::: reading cib map:", ifile)
-    print("cibmap", np.shape(cibmap_i))
+        print(" ::: reading cib map:", ifile)
+        print("cibmap", np.shape(cibmap_i))
 
-    kboltz = 1.3806503e-23 #MKS
-    hplanck = 6.626068e-34 #MKS
-    clight = 299792458.0 #MKS
+        
+        tcmb = 2.726
+        tcmb_uK = tcmb * 1e6 #micro-Kelvin
+        kboltz = 1.3806503e-23 #MKS
+        hplanck = 6.626068e-34 #MKS
+        clight = 299792458.0 #MKS
 
-    def ItoDeltaT(nu):
-        # conversion from specific intensity to Delta T units (i.e., 1/dBdT|T_CMB)
-        #   i.e., from W/m^2/Hz/sr (1e-26 Jy/sr) --> uK_CMB
-        #   i.e., you would multiply a map in 1e-26 Jy/sr by this factor to get an output map in uK_CMB
-        nu *= 1e9
-        X = hplanck*nu/(kboltz*tcmb)
-        dBnudT = (2.*hplanck*nu**3.)/clight**2. * (np.exp(X))/(np.exp(X)-1.)**2. * X/tcmb_uK * 1e26
-        return 1./dBnudT
+        def ItoDeltaT(nu):
+            # conversion from specific intensity to Delta T units (i.e., 1/dBdT|T_CMB)
+            #   i.e., from W/m^2/Hz/sr (1e-26 Jy/sr) --> uK_CMB
+            #   i.e., you would multiply a map in 1e-26 Jy/sr by this factor to get an output map in uK_CMB
+            nu *= 1e9
+            X = hplanck*nu/(kboltz*tcmb)
+            dBnudT = (2.*hplanck*nu**3.)/clight**2. * (np.exp(X))/(np.exp(X)-1.)**2. * X/tcmb_uK * 1e26
+            return 1./dBnudT
 
-    # frequency for CIB 
-    if freq_sz == 150: freq_cib = 145
-    elif freq_sz == 90: freq_cib = 93
+        # frequency for CIB 
+        if freq_sz == 150: freq_cib = 145
+        elif freq_sz == 90: freq_cib = 93
 
-    cibmap = ItoDeltaT(freq_cib) * cibmap_i 
+        cibmap = ItoDeltaT(freq_cib) * cibmap_i * 1.e6 # MJy/sr -> Jy/sr -> Tcmb
 
-    print(" ::: converting cib map at %d GHz" %freq_cib)
+        print(" ::: converting cib map at %d GHz" %freq_cib)
+
+    if args.which_sim == "agora":
+
+        # frequency for CIB (already in cmb units)
+        if freq_sz == 90: ifile = f"{sim_path}/cib/act/len/uk/mdpl2_len_mag_cibmap_act_90_uk.fit"       
+        elif freq_sz == 150: ifile = f"{sim_path}cib/act/len/uk/mdpl2_len_mag_cibmap_act_150_uk.fits"
+        
+        hmap = hp.read_map(ifile).astype(np.float64)
+        cibmap = reproject.healpix2map(hmap, shape, wcs)
+
+        print(" ::: reading and reprojecting cib map:", ifile)
     enmap.write_map(r_cibmap, cibmap)
 print("cibmap", cibmap.shape)
 
@@ -359,19 +391,3 @@ enmap.write_map(save_bcmb_ksz_cib, bcmb_ksz_cib)
 
 elapsed = t.time() - start
 print("\r ::: entire run took %.1f seconds" %elapsed)
-
-
-
-
-    
-
-
-
-
-
-
-
-
-
-
-

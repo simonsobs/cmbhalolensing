@@ -55,6 +55,9 @@ parser.add_argument(
 parser.add_argument(
     "--high-accuracy", action="store_true", help="If using a high accuracy websky map, choose this option."
 )
+parser.add_argument(
+    "--debug", action="store_true", help="No kappa reconstruction, only save plots of hres and grad before and after filtering."
+)
 args = parser.parse_args() 
 
 if args.which_sim == "websky": output_path = paths.websky_output_path
@@ -174,6 +177,15 @@ elif args.which_cat == "cmass":
 
         mf_cat = paths.agora_cmass_randoms
         
+elif args.which_cat == "highmass":
+    if args.which_sim == "agora":
+        cat = paths.agora_highmass_cat
+        data = np.load(cat, allow_pickle=True).item()
+        ras = data['ra']
+        decs = data['dec']
+        zs = data['z']
+        masses = data['M200c']
+        
 if masses is not None: print(" ::: min and max M200 = %.2f and %.2f" %(masses.min(), masses.max()), "(mean = %.2f)" %masses.mean())
 
 print(" ::: min and max redshift = %.2f and %.2f" %(zs.min(), zs.max()), "(mean = %.2f)" %zs.mean()) 
@@ -251,6 +263,7 @@ tk1ds = []
 k1ds = []
 zvals = []
 if masses is not None: Ms = []
+Nobj = 0
 
 j = 0  # local counter for this MPI task
 for task in my_tasks:
@@ -387,32 +400,35 @@ for task in my_tasks:
         if masses is not None: Ms.append(masses[i].copy(),)
     
     if j == 0:
-        kstamps = k_stamp.copy()
-        lstamps = kappa.copy()
+
         hstamps = hres_stamp.copy()
         gstamps = grad_stamp.copy()
+        if args.debug:
+            hres_pre = hres.copy()
+            grad_pre = grad.copy()
+        else:
+            kstamps = k_stamp.copy()
+            lstamps = kappa.copy()
 
     else:
-        kstamps = kstamps + k_stamp
-        lstamps = lstamps + kappa
         hstamps = hstamps + hres_stamp
         gstamps = gstamps + grad_stamp
-
+        if args.debug:
+            hres_pre = hres_pre + hres
+            grad_pre = grad_pre + grad
+        else:
+            kstamps = kstamps + k_stamp
+            lstamps = lstamps + kappa
+    Nobj +=1
     j = j + 1
     task_end = t.time()
     if args.is_test and (rank == 0):
         print(f"Task {task} took {task_end-task_start} s")
 
+print(f"Rank {rank} has {Nobj} total")
 
             
 # COLLECT FROM ALL MPI CORES AND CALCULATE STACKS ------------------------------
-
-
-kstamps = np.asarray(kstamps)
-kmap = utils.reduce(kstamps, comm, root=0, op=mpi.MPI.SUM)
-
-lstamps = np.asarray(lstamps)
-lmap = utils.reduce(lstamps, comm, root=0, op=mpi.MPI.SUM)
 
 hstamps = np.asarray(hstamps)
 hres_st = utils.reduce(hstamps, comm, root=0, op=mpi.MPI.SUM)
@@ -420,9 +436,27 @@ hres_st = utils.reduce(hstamps, comm, root=0, op=mpi.MPI.SUM)
 gstamps = np.asarray(gstamps)
 grad_st = utils.reduce(gstamps, comm, root=0, op=mpi.MPI.SUM)
 
-tk1ds = utils.allgatherv(tk1ds, comm)
-k1ds = utils.allgatherv(k1ds, comm)
-zvals = utils.allgatherv(zvals, comm)
+Nobj = utils.reduce(np.asarray([Nobj]), comm, root=0, op=mpi.MPI.SUM)
+
+
+if not args.debug:
+    kstamps = np.asarray(kstamps)
+    kmap = utils.reduce(kstamps, comm, root=0, op=mpi.MPI.SUM)
+
+    lstamps = np.asarray(lstamps)
+    lmap = utils.reduce(lstamps, comm, root=0, op=mpi.MPI.SUM)
+    
+    tk1ds = utils.allgatherv(tk1ds, comm)
+    k1ds = utils.allgatherv(k1ds, comm)
+    zvals = utils.allgatherv(zvals, comm)
+
+else:
+    hres_pre = np.asarray(hres_pre)
+    hres_pre_st = utils.reduce(hres_pre, comm, root=0, op=mpi.MPI.SUM)
+
+    grad_pre = np.asarray(grad_pre)
+    grad_pre_st = utils.reduce(grad_pre, comm, root=0, op=mpi.MPI.SUM)
+
 # Ms = utils.allgatherv(Ms, comm)
 
 if rank==0: #TODO: make stamps enmaps again
@@ -433,8 +467,13 @@ if rank==0: #TODO: make stamps enmaps again
 
     # stacks before lensing reconstruction   
 
-    Nobj = k1ds.shape[0]
-    assert tk1ds.shape[0] == Nobj
+    if not args.debug:
+        print(Nobj)
+        print(k1ds.shape[0])
+        print(tk1ds.shape[0])
+        assert k1ds.shape[0] == Nobj[0]
+        assert tk1ds.shape[0] == Nobj[0]
+
     hres_st = enmap.enmap(hres_st, wcs)
     grad_st = enmap.enmap(grad_st, wcs)
     
@@ -458,52 +497,77 @@ if rank==0: #TODO: make stamps enmaps again
     io.save_cols(f"{save_dir}/{save_name}_0binned_hres.txt", (centers, hbinned))   
     io.save_cols(f"{save_dir}/{save_name}_0binned_grad.txt", (centers, gbinned))      
 
-    # reconstructed lensing field     
-    kmap = enmap.enmap(kmap, wcs)
-    lmap = enmap.enmap(lmap, wcs)
-    kmap /= Nobj
-    lmap /= Nobj
+    if not args.debug:
+        # reconstructed lensing field     
+        kmap = enmap.enmap(kmap, wcs)
+        lmap = enmap.enmap(lmap, wcs)
+        kmap /= Nobj
+        lmap /= Nobj
 
-    kmap_zoom = kmap[100:140,100:140] 
-    lmap_zoom = lmap[100:140,100:140] 
+        kmap_zoom = kmap[100:140,100:140] 
+        lmap_zoom = lmap[100:140,100:140] 
+                
+        modrmap = kmap_zoom.modrmap()
+        modrmap = np.rad2deg(modrmap)*60. 
+
+        kbinned = bin(kmap_zoom, modrmap, bin_edges)
+        lbinned = bin(lmap_zoom, modrmap, bin_edges)
+
+        io.plot_img(kmap, f"{save_dir}/{save_name}_1tkappa.png")   
+        io.plot_img(lmap, f"{save_dir}/{save_name}_1rkappa.png")                 
+        io.plot_img(kmap[100:140,100:140], f"{save_dir}/{save_name}_1tkappa_zoom.png")   
+        io.plot_img(lmap[100:140,100:140], f"{save_dir}/{save_name}_1rkappa_zoom.png")  
+        np.save(f"{save_dir}/{save_name}_1tkappa.npy", kmap)     
+        np.save(f"{save_dir}/{save_name}_1rkappa.npy", lmap)                 
+        io.save_cols(f"{save_dir}/{save_name}_1binned_tkappa_from2D.txt", (centers, kbinned))
+        io.save_cols(f"{save_dir}/{save_name}_1binned_rkappa_from2D.txt", (centers, lbinned))
+
+        tbinned = tk1ds.mean(axis=0)
+        print("true:", tk1ds.shape, tbinned.shape)
+        terrs, tcovm = profiles.errors(tk1ds)
+        tcorr = profiles.correlation_matrix(tcovm)
+        
+        binned = k1ds.mean(axis=0)
+        errs, covm = profiles.errors(k1ds)
+        corr = profiles.correlation_matrix(covm)
+
+        np.savetxt(f"{save_dir}/{save_name}_1tkappa_errs.txt", terrs)               
+        np.savetxt(f"{save_dir}/{save_name}_1rkappa_errs.txt", errs)    
+        np.savetxt(f"{save_dir}/{save_name}_1tkappa_covm.txt", tcovm)
+        np.savetxt(f"{save_dir}/{save_name}_1rkappa_covm.txt", covm)
+        np.save(f"{save_dir}/{save_name}_1tkappa_corr.npy", tcorr)  
+        np.save(f"{save_dir}/{save_name}_1rkappa_corr.npy", corr) 
+        io.save_cols(f"{save_dir}/{save_name}_1binned_tkappa.txt", (centers, tbinned))
+        io.save_cols(f"{save_dir}/{save_name}_1binned_rkappa.txt", (centers, binned))
+        np.savetxt(f"{save_dir}/{save_name}_1binned_tkappa_vectors.txt", tk1ds)
+        np.savetxt(f"{save_dir}/{save_name}_1binned_rkappa_vectors.txt", k1ds)
+
+        enmap.write_map(f"{save_dir}/{save_name}_kmask.fits", kmask)   
+        np.savetxt(f"{save_dir}/{save_name}_bin_edges.txt", bin_edges)
+
+    else:
+        hres_pre_st = enmap.enmap(hres_pre_st, wcs)
+        grad_pre_st = enmap.enmap(grad_pre_st, wcs)
+        
+        hres_pre_st /= Nobj
+        grad_pre_st /= Nobj
+        hres_pre_zoom = hres_pre_st[100:140,100:140]  
+        grad_pre_zoom = grad_pre_st[100:140,100:140] 
             
-    modrmap = kmap_zoom.modrmap()
-    modrmap = np.rad2deg(modrmap)*60. 
+        modrmap = hres_pre_zoom.modrmap()
+        modrmap = np.rad2deg(modrmap)*60. 
+        
+        hbinned_pre = bin(hres_pre_zoom, modrmap, bin_edges)
+        gbinned_pre = bin(grad_pre_zoom, modrmap, bin_edges)
 
-    kbinned = bin(kmap_zoom, modrmap, bin_edges)
-    lbinned = bin(lmap_zoom, modrmap, bin_edges)
-
-    io.plot_img(kmap, f"{save_dir}/{save_name}_1tkappa.png")   
-    io.plot_img(lmap, f"{save_dir}/{save_name}_1rkappa.png")                 
-    io.plot_img(kmap[100:140,100:140], f"{save_dir}/{save_name}_1tkappa_zoom.png")   
-    io.plot_img(lmap[100:140,100:140], f"{save_dir}/{save_name}_1rkappa_zoom.png")  
-    np.save(f"{save_dir}/{save_name}_1tkappa.npy", kmap)     
-    np.save(f"{save_dir}/{save_name}_1rkappa.npy", lmap)                 
-    io.save_cols(f"{save_dir}/{save_name}_1binned_tkappa_from2D.txt", (centers, kbinned))
-    io.save_cols(f"{save_dir}/{save_name}_1binned_rkappa_from2D.txt", (centers, lbinned))
-
-    tbinned = tk1ds.mean(axis=0)
-    print("true:", tk1ds.shape, tbinned.shape)
-    terrs, tcovm = profiles.errors(tk1ds)
-    tcorr = profiles.correlation_matrix(tcovm)
-    
-    binned = k1ds.mean(axis=0)
-    errs, covm = profiles.errors(k1ds)
-    corr = profiles.correlation_matrix(covm)
-
-    np.savetxt(f"{save_dir}/{save_name}_1tkappa_errs.txt", terrs)               
-    np.savetxt(f"{save_dir}/{save_name}_1rkappa_errs.txt", errs)    
-    np.savetxt(f"{save_dir}/{save_name}_1tkappa_covm.txt", tcovm)
-    np.savetxt(f"{save_dir}/{save_name}_1rkappa_covm.txt", covm)
-    np.save(f"{save_dir}/{save_name}_1tkappa_corr.npy", tcorr)  
-    np.save(f"{save_dir}/{save_name}_1rkappa_corr.npy", corr) 
-    io.save_cols(f"{save_dir}/{save_name}_1binned_tkappa.txt", (centers, tbinned))
-    io.save_cols(f"{save_dir}/{save_name}_1binned_rkappa.txt", (centers, binned))
-    np.savetxt(f"{save_dir}/{save_name}_1binned_tkappa_vectors.txt", tk1ds)
-    np.savetxt(f"{save_dir}/{save_name}_1binned_rkappa_vectors.txt", k1ds)
-
-    enmap.write_map(f"{save_dir}/{save_name}_kmask.fits", kmask)   
-    np.savetxt(f"{save_dir}/{save_name}_bin_edges.txt", bin_edges)
+        io.plot_img(hres_pre_st, f"{save_dir}/{save_name}_0hres_unfiltered.png")  
+        io.plot_img(grad_pre_st, f"{save_dir}/{save_name}_0grad_unfiltered.png")             
+        io.plot_img(hres_pre_zoom, f"{save_dir}/{save_name}_0hres_unfiltered_zoom.png")   
+        io.plot_img(grad_pre_zoom, f"{save_dir}/{save_name}_0grad_unfiltered_zoom.png")  
+        np.save(f"{save_dir}/{save_name}_0hres_unfiltered.npy", hres_pre_st) 
+        np.save(f"{save_dir}/{save_name}_0grad_unfiltered.npy", grad_pre_st)  
+        io.save_cols(f"{save_dir}/{save_name}_0binned_hres_unfiltered.txt", (centers, hbinned_pre))   
+        io.save_cols(f"{save_dir}/{save_name}_0binned_grad_unfiltered.txt", (centers, gbinned_pre)) 
 
     # if not args.is_meanfield:
     #     np.savetxt(f"{save_dir}/{save_name}_z_mass1e14.txt", np.c_[s.vectors["redshift"], s.vectors["masses"]])

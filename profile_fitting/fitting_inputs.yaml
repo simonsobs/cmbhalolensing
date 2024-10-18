@@ -1,0 +1,77 @@
+likelihood:
+  profile_likelihood.MyLikelihood:
+    python_path: /home3/nehajo/projects/cmbhalolensing/profile_fitting/
+    data_path: /home3/nehajo/projects/cmbhalolensing/results/post/cmass_dr6simple/cmass_dr6simple_opt_profile.txt
+    covmat_path: /home3/nehajo/projects/cmbhalolensing/results/post/cmass_dr6simple/cmass_dr6simple_opt_covm.txt
+    c: 5
+    logM: 13.3 #Msun
+    zmean: 0.547
+
+    min_R: 0.01 #Mpc
+    max_R: 15
+    num_R: 1000
+
+
+params:
+
+  amp1:
+    prior:
+      min: 0.1
+      max: 5
+    ref: 0.5
+  
+  amp2:
+    prior:
+      min: 0.1
+      max: 2
+    ref: 1
+
+  amp3:
+    prior:
+      min: 0.1
+      max: 5
+    ref: 1
+
+  amp4:
+    prior:
+      min: 0.1
+      max: 5
+    ref: 1
+
+  amp5:
+    prior:
+      min: 0.1
+      max: 5
+    ref: 1
+
+  amp6:
+    prior:
+      min: 0.1
+      max: 5
+    ref: 1
+
+  amp7:
+    prior:
+      min: 0.1
+      max: 5
+
+  amp8:
+    prior:
+      min: 0.1
+      max: 5
+    ref: 1
+
+  amp9:
+    prior:
+      min: 0.1
+      max: 5
+    ref: 1
+
+sampler:
+  mcmc:
+    max_tries: 100000
+    covmat: auto
+
+packages_path: /home3/nehajo/cobaya/
+stop_at_error: True
+output: /home3/nehajo/projects/cmbhalolensing/profile_fitting/chains/

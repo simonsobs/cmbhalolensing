@@ -1,13 +1,10 @@
 import camb
-import halo_funcs as hf
+from halo_funcs import TunableNFW as NFW
+from getdist import loadMCSamples
 import matplotlib.pyplot as plt
 import numpy as np
 from orphics import io, lensing
 from pixell import utils as u
-from profiley.nfw import TNFW
-from halo_funcs import TunableNFW as NFW
-
-
 
 H0 = 67.5
 h=H0/100
@@ -28,11 +25,21 @@ print("Rs min max", Rs.min(), Rs.max())
 print("theta min max", thetas.min(), thetas.max())
 print("comL:",comL)
 
-bins = np.asarray([Rs.min(), Rs.max()])
-amps = np.asarray([[1.]])
-
 data_theta, data = np.loadtxt("/home3/nehajo/projects/cmbhalolensing/results/post/cmass_dr6maps/cmass_dr6maps_opt_profile.txt", unpack = True)
 _, err = np.loadtxt("/home3/nehajo/projects/cmbhalolensing/results/post/cmass_dr6maps/cmass_dr6maps_opt_profile_errs.txt", unpack = True)
+
+data_bins = (data_theta[1:] + data_theta[:-1])/2 # bins in Mpc
+bins = np.zeros(len(data_bins)+2)
+bins[0] = Rs.min()
+bins[-1] = Rs.max()
+bins[1:-1] = data_bins
+
+amp_bins = bins
+samples = loadMCSamples('/home3/nehajo/projects/cmbhalolensing/profile_fitting/chains/', settings={'ignore_rows':0.3})
+means = samples.getMeans()[:-2]
+amps = np.expand_dims(means, axis=0)
+print("amps",amps)
+print(amps.shape, amp_bins.shape)
 
 
 
@@ -51,13 +58,13 @@ for amp in amps:
     kappa = nfw.convergence(Rs, z_cmb)
 
 
-    rho_pl.add(Rs, rho, label=str(amp))
-    sigma_pl.add(Rs, Rs*dsigma.flatten()/1.e12, label=str(amp)) #same units as weak lensing gg
-    k_pl.add(thetas, kappa, label="model")
+    rho_pl.add(Rs, rho, label="fit")
+    sigma_pl.add(Rs, Rs*dsigma.flatten()/1.e12, label="fit") #same units as weak lensing gg
+    k_pl.add(thetas, kappa, label="fit")
 
 k_pl._ax.set_ylim(-0.001,0.02)
 k_pl.hline(y=0)
-# rho_pl.done("/home3/nehajo/projects/cmbhalolensing/tests/rho_test.png")
-# sigma_pl.done("/home3/nehajo/projects/cmbhalolensing/tests/sigma_test.png")
-k_pl.done("/home3/nehajo/projects/cmbhalolensing/tests/kappa_data_comp.png")
+rho_pl.done("/home3/nehajo/projects/cmbhalolensing/profile_fitting/rho_fit.png")
+sigma_pl.done("/home3/nehajo/projects/cmbhalolensing/profile_fitting/sigma_fit.png")
+k_pl.done("/home3/nehajo/projects/cmbhalolensing/profile_fitting/kappa_fit_data_comp.png")
 print("plots done")

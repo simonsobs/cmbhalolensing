@@ -32,5 +32,5 @@ class TunableNFW(BaseNFW):
         exp = (self.beta - self.gamma) / self.alpha
         rho = self.delta_c * self.rho_bg / ((r / self.rs) ** self.gamma * (1 + (r / self.rs) ** self.alpha) ** exp)
         for i in range(len(self.bins)-1):
-            rho = np.where(np.logical_and(r > self.bins[i], r < self.bins[i+1]), rho*self.amps[i], rho)
+            rho = np.where(np.logical_and(r >= self.bins[i], r <= self.bins[i+1]), rho*self.amps[i], rho)
         return rho

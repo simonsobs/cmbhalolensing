@@ -3,69 +3,56 @@ likelihood:
     python_path: /home3/nehajo/projects/cmbhalolensing/profile_fitting/
     data_path: /home3/nehajo/projects/cmbhalolensing/results/post/cmass_dr6simple/cmass_dr6simple_opt_profile.txt
     covmat_path: /home3/nehajo/projects/cmbhalolensing/results/post/cmass_dr6simple/cmass_dr6simple_opt_covm.txt
+    map_geom: /home3/nehajo/projects/cmbhalolensing/results/post/cmass_dr6simple/map_geometry.fits
+    bin_edges: /home3/nehajo/projects/cmbhalolensing/results/post/cmass_dr6simple/cmass_dr6simple_bin_edges.txt
     c: 5
     logM: 13.3 #Msun
     zmean: 0.547
+    log2h: 0.
 
     min_R: 0.01 #Mpc
     max_R: 15
     num_R: 1000
+    inner_edges: [0.05, 2.5] #Mpc
 
 
 params:
 
   amp1:
     prior:
-      min: 0.1
-      max: 5
-    ref: 0.5
+      min: 0.0001
+      max: 1000
+    ref:
+      dist: norm
+      loc: 1
+      scale: 0.5
   
   amp2:
     prior:
-      min: 0.1
-      max: 2
-    ref: 1
+      min: 0.01
+      max: 5
+    ref:
+      dist: norm
+      loc: 1
+      scale: 0.5
 
   amp3:
     prior:
-      min: 0.1
+      min: 0.01
       max: 5
-    ref: 1
+    ref:
+      dist: norm
+      loc: 1
+      scale: 0.5
 
-  amp4:
-    prior:
-      min: 0.1
-      max: 5
-    ref: 1
-
-  amp5:
-    prior:
-      min: 0.1
-      max: 5
-    ref: 1
-
-  amp6:
-    prior:
-      min: 0.1
-      max: 5
-    ref: 1
-
-  amp7:
-    prior:
-      min: 0.1
-      max: 5
-
-  amp8:
-    prior:
-      min: 0.1
-      max: 5
-    ref: 1
-
-  amp9:
-    prior:
-      min: 0.1
-      max: 5
-    ref: 1
+  # log_two_halo:
+  #   prior:
+  #     min: 10
+  #     max: 16
+  #   ref:
+  #     dist: norm
+  #     loc: 13
+  #     scale: 2
 
 sampler:
   mcmc:
@@ -74,4 +61,4 @@ sampler:
 
 packages_path: /home3/nehajo/cobaya/
 stop_at_error: True
-output: /home3/nehajo/projects/cmbhalolensing/profile_fitting/chains/
+output: /home3/nehajo/projects/cmbhalolensing/profile_fitting/chains/3bins2/3bins2

@@ -11,10 +11,10 @@ names = sys.argv[1:]
 
 plot_mf=True
 
-root = "results/post"
+root = "/home3/nehajo/projects/cmbhalolensing/results/post"
 
 if len(names) == 1:
-    name = names
+    name = names[0]
     thetas, profile = np.loadtxt(f"{root}/{name}/{name}_opt_profile.txt", unpack=True)
     _, errs = np.loadtxt(f"{root}/{name}/{name}_opt_profile_errs.txt", unpack=True)
     _, mf = np.loadtxt(f"{root}/{name}/{name}_mf.txt", unpack=True)
@@ -30,7 +30,7 @@ if len(names) == 1:
         plmf = Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
         plmf.add_err(thetas, profile, errs, ls="-", label = "Filtered kappa, meanfield subtracted (optimal)")
         plmf.add_err(thetas, mf, mf_errs, ls="-", label = "Mean-field (optimal)")
-        pl.hline(y=0)
+        plmf.hline(y=0)
         plmf.done(f"{root}/{name}/{name}_opt_profile_clean.png")
 
 else:

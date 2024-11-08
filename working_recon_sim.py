@@ -58,6 +58,10 @@ parser.add_argument(
 parser.add_argument(
     "--debug", action="store_true", help="No kappa reconstruction, only save plots of hres and grad before and after filtering."
 )
+parser.add_argument(
+    "--inpaint", action="store_true", help="Perform gradient inpainting."
+)
+
 args = parser.parse_args() 
 
 if args.which_sim == "websky": output_path = paths.websky_output_path
@@ -358,6 +362,40 @@ for task in my_tasks:
     tapered_hres = hres * taper
     tapered_grad = grad * taper  
 
+    if args.inpaint:
+        """ 
+        If inpainting, we 
+        (1) resample the stamp to 64x64 (2 arcmin pixels)
+        (2) Inpaint a hole of radius 7 arcmin 
+        """
+
+        rmin = 7*utils.arcmin
+        crop_pix = int(16./px)
+        cutout = maps.crop_center(tapered_grad, cropy=crop_pix, cropx=crop_pix, sel=False)
+        cutout_sel = maps.crop_center(tapered_grad, cropy=crop_pix, cropx=crop_pix, sel=True)
+        Ndown, Ndown2 = cutout.shape[-2:]
+        if Ndown != Ndown2: raise Exception
+        hres_fiducial_rms=20
+
+        if j==0:
+            from orphics import pixcov
+            pshape = cutout.shape
+            pwcs = cutout.wcs
+            ipsizemap = enmap.pixsizemap(pshape, pwcs)
+            pivar = maps.ivar(pshape, pwcs, hres_fiducial_rms, ipsizemap=ipsizemap)
+            beam = lambda x: maps.gauss_beam(x, fwhm)
+            pcov = pixcov.tpcov_from_ivar(Ndown, pivar, theory.lCl, beam)
+            geo = pixcov.make_geometry(pshape, pwcs, rmin, n=Ndown, deproject=True, iau=False, res=None, pcov=pcov)
+
+        cutout = pixcov.inpaint_stamp(cutout,geo)
+        tapered_grad[cutout_sel] = cutout.copy()
+        inp_stamp = tapered_grad / taper
+
+        if j==0:
+            inpaint_st = inp_stamp.copy()
+        else:
+            inpaint_st = inpaint_st + inp_stamp
+
     if not args.is_observed:
         # get a Fourier transformed stamp 
         k_hres = enmap.fft(tapered_hres, normalize="phys") 
@@ -438,6 +476,10 @@ grad_st = utils.reduce(gstamps, comm, root=0, op=mpi.MPI.SUM)
 
 Nobj = utils.reduce(np.asarray([Nobj]), comm, root=0, op=mpi.MPI.SUM)
 
+if args.inpaint:
+    istamps = np.asarray(inpaint_st)
+    inpaint_st = utils.reduce(inpaint_st, comm, root=0, op=mpi.MPI.SUM)
+
 
 if not args.debug:
     kstamps = np.asarray(kstamps)
@@ -496,6 +538,15 @@ if rank==0: #TODO: make stamps enmaps again
     np.save(f"{save_dir}/{save_name}_0grad.npy", grad_st)  
     io.save_cols(f"{save_dir}/{save_name}_0binned_hres.txt", (centers, hbinned))   
     io.save_cols(f"{save_dir}/{save_name}_0binned_grad.txt", (centers, gbinned))      
+
+    if args.inpaint:
+        inp_st = enmap.enmap(inpaint_st, wcs)/Nobj
+        inp_zoom = inp_st[100:140,100:140]
+        ibinned = bin(inp_zoom, modrmap, bin_edges)
+        io.plot_img(inp_st, f'{save_dir}/{save_name}_02inp.png')              
+        io.plot_img(inp_zoom, f'{save_dir}/{save_name}_02inp_zoom.png')  
+        np.save(f'{save_dir}/{save_name}_02inp.npy', inp_st)    
+        io.save_cols(f'{save_dir}/{save_name}_02binned_inp.txt', (centers, ibinned))
 
     if not args.debug:
         # reconstructed lensing field     

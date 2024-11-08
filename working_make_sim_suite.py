@@ -198,6 +198,10 @@ except:
         elif freq_sz == 150: ifile = sim_path + sim_info['cib_nu145']
 
         cibmap_i = file_to_map(ifile, shape, wcs)
+    
+    if sim_name == "websky":
+        cibmap_i*=1e6 # MJy/sr -> Jy/sr
+
 
     print(" ::: reading cib map:", ifile)
     print("cibmap", np.shape(cibmap_i))

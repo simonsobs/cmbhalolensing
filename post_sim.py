@@ -89,7 +89,8 @@ def labeling(prefix):
         label += " + CIB"
     if 'ksz' in prefix:
         label += " + kSZ"
-        
+    if 'inpaint' in prefix:
+        label += " inpainted"
     return label
 
 # overplotting
@@ -153,7 +154,7 @@ if plot_tk1d:
 baseline = None
 foregrounds = []
 for prefix in prefixes:
-    if ('cib' not in prefix) and ('ksz' not in prefix) and ('tsz' not in prefix):
+    if ('cib' not in prefix) and ('ksz' not in prefix) and ('tsz' not in prefix) and ('inpaint' not in prefix):
         baseline = prefix
     else:
         foregrounds.append(prefix)

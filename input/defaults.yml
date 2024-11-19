@@ -36,6 +36,7 @@ pad_percent: 3.0
 lensed_sim_version: lensed_maps_2e14_m180m0_c3.2_z0.7_v1_swidth_128.00_pwidth_0.50_bfact_2_pfact_5_lorder_5
 
 planck_smica_beam_fwhm: 5.0
+ilc_dr6v3_beam_fwhm: 1.6
 
 kappa_noise_mean_Lmin : 3000
 kappa_noise_mean_Lmax : 5000

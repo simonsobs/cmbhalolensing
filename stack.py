@@ -146,7 +146,7 @@ if not (args.inject_sim):
             # SZ cluster model image subtraction for 90 GHz    
             if args.hres_grad:            
                 if not (args.grad_noszsub): 
-                    gamap_090 = famap_90 - enmap.read_map(paths.act_data + data_choice.hres_model_090)
+                    gamap_90 = famap_90 - enmap.read_map(paths.act_data + data_choice.hres_model_090)
                 else: 
                     gamap_90 = famap_90
 
@@ -161,13 +161,11 @@ if not (args.inject_sim):
             assert not(args.no_90)
             assert not(args.no_150)
             assert not(args.rand_rot)
-            act_map = (
-                paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f150_night_srcfree_map.fits"
-            )
+            act_map = (paths.act_data + data_choice.night_150)
+            #     paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f150_night_srcfree_map.fits")
             namap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
-            act_map = (
-                paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f090_night_srcfree_map.fits"
-            )
+            act_map = (paths.act_data + data_choice.night_090)
+                # paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f090_night_srcfree_map.fits")
             namap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
 
             null_map_150 = famap_150 - namap_150
@@ -659,9 +657,9 @@ for task in my_tasks:
         """
         If inpainting, we 
         (1) resample the stamp to 64x64 (2 arcmin pixels)
-        (2) Inpaint a hole of radius 4 arcmin 
+        (2) Inpaint a hole of radius 7 arcmin 
         """
-        rmin = 4 * utils.arcmin
+        rmin = 7 * utils.arcmin
         crop_pixels = int(16.  / args.pwidth) # 16 arcminutes wide
         act150 = maps.crop_center(gact_stamp_150,cropy=crop_pixels,cropx=crop_pixels,sel=False)
         act90 = maps.crop_center(gact_stamp_90,cropy=crop_pixels,cropx=crop_pixels,sel=False)

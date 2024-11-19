@@ -2,6 +2,7 @@ from __future__ import print_function
 from orphics import maps,io,cosmology,stats,catalogs,lensing
 from orphics.mpi import MPI
 from pixell import enmap,wcsutils,utils as putils,bunch
+from scipy.stats import chi2
 import numpy as np
 import os,sys,re
 import warnings
@@ -589,19 +590,20 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
         if is_meanfield:
             broot = paths.boss_dr12_rand
             # One random has 50x, more than enough for mean-fields.
-            # boss_files = [broot+x for x in  [f'random0_{fstr}_CMASS_North.fits.gz',f'random0_{fstr}_CMASS_South.fits.gz',
-            #                                  f'random1_{fstr}_CMASS_North.fits.gz',f'random1_{fstr}_CMASS_South.fits.gz']]
-            ras, decs, ws, zs = np.loadtxt(broot + f'CMASS_{fstr}_10x_randoms.txt')
+            boss_files = [broot+x for x in  [f'random0_{fstr}_CMASS_North.fits.gz',f'random0_{fstr}_CMASS_South.fits.gz',
+                                             f'random1_{fstr}_CMASS_North.fits.gz',f'random1_{fstr}_CMASS_South.fits.gz']]
+            # ras, decs, ws, zs = np.loadtxt(broot + f'CMASS_{fstr}_10x_randoms.txt')
         else:
             boss_files = [broot+x for x in  [f'galaxy_{fstr}_CMASS_North.fits.gz',f'galaxy_{fstr}_CMASS_South.fits.gz']]
-            if zmin is None: zmin = 0.43
-            if zmax is None: zmax = 0.70
-            ras,decs,ws,zs = catalogs.load_boss(boss_files,zmin=zmin,zmax=zmax,do_weights=not(is_meanfield),sys_weights=False)
-            if ws is None: ws = ras*0 + 1
-            ws = ws[decs<25]
-            ras = ras[decs<25]
-            zs = zs[decs<25]
-            decs = decs[decs<25]
+        
+        if zmin is None: zmin = 0.43
+        if zmax is None: zmax = 0.70
+        ras,decs,ws,zs = catalogs.load_boss(boss_files,zmin=zmin,zmax=zmax,do_weights=not(is_meanfield),sys_weights=False)
+        if ws is None: ws = ras*0 + 1
+        ws = ws[decs<25]
+        ras = ras[decs<25]
+        zs = zs[decs<25]
+        decs = decs[decs<25]
         if nmax is not None:
             """
             We have to be a bit more careful when a max number of random galaxies is requested for BOSS, because
@@ -796,7 +798,7 @@ def analyze(s,wcs):
     
 
 
-def plot(fname,stamp,tap_per,pad_per,crop=None,lim=None,cmap='coolwarm',quiver=None,label='$\\kappa$ (dimensionless)'):
+def plot(fname,stamp,tap_per,pad_per,crop=None,geom=False,lim=None,cmap='coolwarm',quiver=None,label='$\\kappa$ (dimensionless)'):
     kmap = stamp
     trimy = int((tap_per+pad_per)/100. * kmap.shape[0])
     trimx = int((tap_per+pad_per)/100. * kmap.shape[1])
@@ -808,6 +810,12 @@ def plot(fname,stamp,tap_per,pad_per,crop=None,lim=None,cmap='coolwarm',quiver=N
         tmap = maps.crop_center(tmap,crop)
     zfact = tmap.shape[0]*1./kmap.shape[0]
     twidth = tmap.extent()[0]/putils.arcmin
+    if geom:
+        if crop is not None:
+            enmap.write_map_geometry(fname.rsplit('/',1)[0]+"/map_geometry_zoom.fits", tmap.shape, tmap.wcs)
+        else:
+            enmap.write_map_geometry(fname.rsplit('/',1)[0]+"/map_geometry.fits", tmap.shape, tmap.wcs)
+    
     io.plot_img(tmap,fname, flip=False, ftsize=12, ticksize=10,arc_width=twidth,xlabel='$\\theta_x$ (arcmin)',ylabel='$\\theta_y$ (arcmin)',cmap=cmap,lim=lim,quiver=quiver,label=label)
 
 
@@ -1052,8 +1060,8 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
     # sys.exit()
 
     if not(save_name is None):
-        plot(f"{save_dir}/{save_name}_unweighted_nomfsub.png",unweighted_stack,tap_per,pad_per,crop=None,lim=args.plim)
-        plot(f"{save_dir}/{save_name}_unweighted_nomfsub_zoom.png",unweighted_stack,tap_per,pad_per,crop=crop,lim=args.plim)
+        plot(f"{save_dir}/{save_name}_unweighted_nomfsub.png",unweighted_stack,tap_per,pad_per,crop=None,geom=True,lim=args.plim)
+        plot(f"{save_dir}/{save_name}_unweighted_nomfsub_zoom.png",unweighted_stack,tap_per,pad_per,crop=crop,geom=True,lim=args.plim)
 
         if mf_path is not "":
             # Opt weighted
@@ -1144,6 +1152,14 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         #pl.legend(loc='center left', bbox_to_anchor=(1, 0.5))
         pl._ax.set_ylim(args.ymin,args.ymax)
         pl.done(f'{save_dir}/{save_name}_profile_clean.png')
+
+        if mf_path is not "":
+            pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
+            pl.add_err(cents, opt_binned - mf_opt_binned, yerr=opt_errs,ls="-",label="Filtered kappa, mean-field subtracted (optimal)")
+            pl.hline(y=0)
+            #pl.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+            pl._ax.set_ylim(args.ymin,args.ymax)
+            pl.done(f'{save_dir}/{save_name}_profile_clean_nomf.png')
 
         arcmax = 5.
         nbins = bin_edges[bin_edges<arcmax].size - 1

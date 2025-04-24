@@ -1,14 +1,14 @@
 # choose coadd maps to use for hres leg
 
-hres_090: 20240323_simple/act_planck_s08_s22_f090_daynight_map_srcfree.fits
-hres_150: 20240323_simple/act_planck_s08_s22_f150_daynight_map_srcfree.fits
-hres_ivar: 20240323_simple/act_planck_s08_s22_f150_daynight_ivar.fits
-hres_model_090: ../hiltonm/cluster_candidates/20230721/modelImages/DR6_candidates_SNR5_model_f090.fits.gz
-hres_model_150: ../hiltonm/cluster_candidates/20230721/modelImages/DR6_candidates_SNR5_model_f150.fits.gz
+hres_090: coadds/20240323_simple/act_planck_s08_s22_f090_daynight_map_srcfree.fits
+hres_150: coadds/20240323_simple/act_planck_s08_s22_f150_daynight_map_srcfree.fits
+hres_ivar: coadds/20240323_simple/act_planck_s08_s22_f150_daynight_ivar.fits
+hres_model_090: hiltonm/cluster_candidates/20230721/modelImages/DR6_candidates_SNR5_model_f090.fits
+hres_model_150: hiltonm/cluster_candidates/20230721/modelImages/DR6_candidates_SNR5_model_f150.fits
 
-night_090: 20240323_simple/act_planck_s08_s22_f090_night_map_srcfree.fits
-night_150: 20240323_simple/act_planck_s08_s22_f150_night_map_srcfree.fits
-night_ivar: 20240323_simple/act_planck_s08_s22_f150_night_ivar.fits
+night_090: coadds/20240323_simple/act_planck_s08_s22_f090_night_map_srcfree.fits
+night_150: coadds/20240323_simple/act_planck_s08_s22_f150_night_map_srcfree.fits
+night_ivar: coadds/20240323_simple/act_planck_s08_s22_f150_night_ivar.fits
 # grad: data/ilc_fullRes_deproj_sz_cib_TT_lmax2000.fits
 # grad: ilc_fullRes_deproj_sz_TT.fits
 

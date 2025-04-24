@@ -1,17 +1,17 @@
 # mat_path: /home1/mathm/repos/cmbhalolensing
-simsuite_path: /home3/nehajo/projects/CMASS-cmbhalolensing/data/simsuite/
+simsuite_path: /data7/nehajo/CMASS/simsuite/
 # simsuite_version: high_acc_150
 websky_sim_path: /data5/sims/websky/data/
 agora_sim_path: /data5/sims/agora_sims/
-scratch: /home3/nehajo/projects/CMASS-cmbhalolensing/data/
-websky_output_path: /home3/nehajo/projects/CMASS-cmbhalolensing/sim_results/websky/
-agora_output_path: /home3/nehajo/projects/CMASS-cmbhalolensing/sim_results/agora
+scratch: /data7/nehajo/CMASS/sim_results/data/
+websky_output_path: /data7/nehajo/CMASS/sim_results/websky/
+agora_output_path: /data7/nehajo/CMASS/sim_results/agora/
 
-websky_cmass_cat: /home3/nehajo/projects/CMASS-cmbhalolensing/data/sim_cats/websky_cmasslike_deccut.npy
-websky_cmass_randoms: /home3/nehajo/projects/CMASS-cmbhalolensing/data/sim_cats/websky_cmass_10x_randoms.txt
-agora_cmass_cat: /home3/nehajo/projects/CMASS-cmbhalolensing/data/sim_cats/agora_cmasslike_deccut.npy
-agora_cmass_randoms: /home3/nehajo/projects/CMASS-cmbhalolensing/data/sim_cats/agora_cmass_10x_randoms.txt
-agora_highmass_cat: /home3/nehajo/projects/CMASS-cmbhalolensing/data/sim_cats/agora_highmass.npy
+websky_cmass_cat: /data7/nehajo/CMASS/sim_cats/websky_cmasslike_deccut.npy
+websky_cmass_randoms: /data7/nehajo/CMASS/sim_cats/websky_cmass_10x_randoms.txt
+agora_cmass_cat: /data7/nehajo/CMASS/sim_cats/agora_cmasslike_deccut.npy
+agora_cmass_randoms: /data7/nehajo/CMASS/sim_cats/agora_cmass_10x_randoms.txt
+agora_highmass_cat: /data7/nehajo/CMASS/sim_cats/agora_highmass.npy
 
 # reprojected maps
 

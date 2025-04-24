@@ -92,11 +92,11 @@ xlmin = 200
 xlmax = 2000
 
 ylmin = 200
-ylmax = 3500  # low lmax cut (high lmax cut is 6000)
+ylmax = 6000 #3500  # low lmax cut (high lmax cut is 6000)
 ylcut = 2
 
 klmin = 200
-klmax = 3000  # low lmax cut (high lmax cut is 5000)
+klmax = 5000 #3000  # low lmax cut (high lmax cut is 5000)
 print(" ::: hlmax =", ylmax, "and klmax =", klmax)
 
 tap_per = 12.0
@@ -575,11 +575,11 @@ if rank==0: #TODO: make stamps enmaps again
 
         tbinned = tk1ds.mean(axis=0)
         print("true:", tk1ds.shape, tbinned.shape)
-        terrs, tcovm = profiles.errors(tk1ds)
+        terrs, tcovm = profiles.errors(tk1ds, Nobj=tk1ds.shape[0])
         tcorr = profiles.correlation_matrix(tcovm)
         
         binned = k1ds.mean(axis=0)
-        errs, covm = profiles.errors(k1ds)
+        errs, covm = profiles.errors(k1ds, Nobj=k1ds.shape[0])
         corr = profiles.correlation_matrix(covm)
 
         np.savetxt(f"{save_dir}/{save_name}_1tkappa_errs.txt", terrs)               
@@ -595,6 +595,7 @@ if rank==0: #TODO: make stamps enmaps again
 
         enmap.write_map(f"{save_dir}/{save_name}_kmask.fits", kmask)   
         np.savetxt(f"{save_dir}/{save_name}_bin_edges.txt", bin_edges)
+        enmap.write_map_geometry(f"{save_dir}/{save_name}_map_geometry.fits", shape, wcs)
 
     else:
         hres_pre_st = enmap.enmap(hres_pre_st, wcs)

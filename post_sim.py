@@ -5,13 +5,14 @@ import pixell.utils as u
 import sys
 import os
 sys.path.append(os.path.abspath("/home3/nehajo/scripts/"))
-from profiles import errors
+from profiles import errors, chi_square_pte
 
 savename = sys.argv[1]
 stack_path = sys.argv[2]
 sim = sys.argv[3]
 freq = sys.argv[4]
-prefixes = sys.argv[5:]
+title_text = sys.argv[5]
+prefixes = sys.argv[6:]
 
 plot_mf = True
 plot_tk1d = True
@@ -38,7 +39,7 @@ all_k1d = {}
 
 
 for prefix in prefixes:
-
+    print(prefix)
     pathname = f"{stack_path}/{sim}_{prefix}_{freq}/{sim}_{prefix}_{freq}"
 
     stack[prefix] = np.load(f"{pathname}_1rkappa.npy")
@@ -58,12 +59,13 @@ for prefix in prefixes:
         all_tk1d[prefix] = np.loadtxt(f"{pathname}_1binned_tkappa_vectors.txt")
         tk1d_err[prefix] = np.loadtxt(f"{pathname}_1tkappa_errs.txt")
 
+    k1d[prefix] = stack1d[prefix] - mf1d[prefix]
+    np.savetxt(f"{pathname}_post_1binned_rkappa.txt", np.asarray([r[prefix], k1d[prefix]]).T)
 
     kmap = stack[prefix] - mf[prefix]
-    k1d[prefix] = stack1d[prefix] - mf1d[prefix]
     kmap_zoom = kmap[100:140,100:140]
-
     np.save(f"{pathname}_post_1rkappa.npy", kmap)
+    
     plot_img(kmap,f"{pathname}_post_1rkappa.png", flip=False, ftsize=12, ticksize=10,cmap='coolwarm',
             label=r'$\kappa$',arc_width=120,xlabel=r"$\theta_x$ (arcmin)",ylabel=r"$\theta_y$ (arcmin)")
     plot_img(kmap_zoom,f"{pathname}_post_1rkappa_zoom.png", flip=False, ftsize=12, ticksize=10,
@@ -125,18 +127,20 @@ if plot_tk1d:
 pl.hline(y=0)
 pl._ax.set_ylim(ymin,ymax)
 pl.legend(loc='outside')
+pl._ax.set_title(title_text)
 pl.done(f"{stack_path}/{savename}_1rkappa_profile.png")
 if plot_mf:
     plmf.add([],[],ls="--", label="mf",color = "black")
     plmf.hline(y=0)
     plmf._ax.set_ylim(ymin,ymax)
     plmf.legend(loc='outside')
+    plmf._ax.set_title(title_text)
     plmf.done(f"{stack_path}/{savename}_1rkappa_profile_mf.png")
 
 def difference(mean1, mean2, all1, all2):
     diff = (mean1 - mean2)
-    err, covmat = errors(all1-all2)
-    return diff, err
+    err, covmat = errors(all1-all2, Nobj=len(all1))
+    return diff, err, covmat
 
 # relative difference
 colors = list(mcolors.TABLEAU_COLORS.values())
@@ -164,11 +168,17 @@ o=0     #offset
 da = 0.8
 do = 0.1
 
+print("profile diff \t \t n-sigma \t \t pte")
+
 if plot_tk1d:
-    tk1d_diff, tk_err_diff = difference(k1d[baseline], tk1d[baseline], all_stack1d[baseline], all_tk1d[baseline])
+    tk1d_diff, tk_err_diff, tk_cov_diff = difference(k1d[baseline], tk1d[baseline], all_stack1d[baseline], all_tk1d[baseline])
+    tk_chi2_diff, tk_pte_diff = chi_square_pte(tk1d_diff, tk_cov_diff)
+    tk_nsigma_diff = np.sqrt(tk_chi2_diff)
+    print(f"{baseline}-true \t \t {tk_nsigma_diff} \t \t {tk_pte_diff}")
     pl_tk1d.add_err(r[baseline]+o, tk1d_diff, yerr=tk_err_diff, ls="-", label = labeling(baseline))
     a*=da
     o+=do
+
 
 for i,fg in enumerate(foregrounds):
     label = labeling(fg)
@@ -176,17 +186,24 @@ for i,fg in enumerate(foregrounds):
     color = colors[i+1]
     r_diff = r[fg]-r[baseline]
     assert np.sum(r_diff) == 0.
-    k1d_diff, err_diff = difference(k1d[fg], k1d[baseline], all_stack1d[fg], all_stack1d[baseline])
+    k1d_diff, err_diff, cov_diff = difference(k1d[fg], k1d[baseline], all_stack1d[fg], all_stack1d[baseline])
+    chi2_diff, pte_diff = chi_square_pte(k1d_diff, cov_diff)
+    nsigma_diff = np.sqrt(chi2_diff)
+    print(f"{fg}-{baseline} \t \t {nsigma_diff} \t \t {pte_diff}")
     pl_data.add_err(r[baseline]+o, k1d_diff, yerr=err_diff, ls="-", label=label, alpha=a, color=color)
     # if plot_mf:
     #     mf1d_diff, mf_err_diff = difference(all_mf1d[fg], all_mf1d[baseline])
     #     pl_mf.add_err(r[baseline]+o, mf1d_diff, yerr=err_diff, ls="--", label=f"{label} relative mf", alpha=a, color=color)
     if plot_tk1d:
-        tk1d_diff, tk_err_diff = difference(k1d[fg], tk1d[baseline], all_stack1d[fg], all_tk1d[baseline])
+        tk1d_diff, tk_err_diff, tk_cov_diff = difference(k1d[fg], tk1d[baseline], all_stack1d[fg], all_tk1d[baseline])
+        tk_chi2_diff, tk_pte_diff = chi_square_pte(tk1d_diff, tk_cov_diff)
+        tk_nsigma_diff = np.sqrt(tk_chi2_diff)
+        print(f"{fg}-true \t \t {tk_nsigma_diff} \t \t {tk_pte_diff}")
         pl_tk1d.add_err(r[baseline]+o, tk1d_diff, yerr=tk_err_diff, ls="-", label=label, alpha=a, color=color)
     a*=da
     o+=do
 pl_data.hline(y=0)
+pl_data._ax.set_title(title_text)
 pl_data.done(f"{stack_path}/{savename}_rel_1rkappa_profile.png")
 
 # if plot_mf:
@@ -195,6 +212,7 @@ pl_data.done(f"{stack_path}/{savename}_rel_1rkappa_profile.png")
 
 if plot_tk1d:
     pl_tk1d.hline(y=0)
+    pl_tk1d._ax.set_title(title_text)
     pl_tk1d.done(f"{stack_path}/{savename}_rel_1rkappa_1tkappa_profile.png")
 
 print("all plots made and saved!")

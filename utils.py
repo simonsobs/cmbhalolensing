@@ -1161,6 +1161,23 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
             pl._ax.set_ylim(args.ymin,args.ymax)
             pl.done(f'{save_dir}/{save_name}_profile_clean_nomf.png')
 
+        pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
+        if mf_path is not "":
+            pl.add_err(cents, opt_binned - mf_opt_binned, yerr=opt_errs,ls="-",label="Filtered kappa, mean-field subtracted")
+            pl.add_err(cents, mf_opt_binned, yerr=mf_opt_errs,label="Mean-field",ls="-",alpha=0.5)
+        else:
+            pl.add_err(cents, opt_binned, yerr=opt_errs,ls="-",label="Filtered kappa")
+        pl.hline(y=0)
+        #pl.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        pl.done(f'{save_dir}/{save_name}_opt_profile_clean.png')
+
+        if mf_path is not "":
+            pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
+            pl.add_err(cents, opt_binned - mf_opt_binned, yerr=opt_errs,ls="-",label="Filtered kappa, mean-field subtracted")
+            pl.hline(y=0)
+            #pl.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+            pl.done(f'{save_dir}/{save_name}_opt_profile_clean_nomf.png')
+
         arcmax = 5.
         nbins = bin_edges[bin_edges<arcmax].size - 1
         if mf_path is "":
@@ -1178,7 +1195,6 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
     ret_cov = covm
 
     if not(save_name is None):
-
         io.save_cols(f'{save_dir}/{save_name}_opt_profile.txt', (cents, ret_opt_data))
         io.save_cols(f'{save_dir}/{save_name}_opt_profile_errs.txt', (cents, opt_errs))
         io.save_cols(f'{save_dir}/{save_name}_profile.txt', (cents, ret_data))
@@ -1189,6 +1205,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         np.savetxt(f'{save_dir}/{save_name}_opt_covm.txt', ret_opt_cov)
         np.savetxt(f'{save_dir}/{save_name}_covm.txt', ret_cov)
         np.savetxt(f'{save_dir}/{save_name}_bin_edges.txt', bin_edges)
+        np.savetxt(f'{save_dir}/{save_name}_profiles_ind.txt', profs)
         enmap.write_map(f'{save_dir}/{save_name}_kmask.fits', kmask)
 
         diff = (binned - mf_binned)[:nbins]

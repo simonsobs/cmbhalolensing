@@ -1,6 +1,5 @@
 # mat_path: /home1/mathm/repos/cmbhalolensing
 simsuite_path: /data7/nehajo/CMASS/simsuite/
-# simsuite_version: high_acc_150
 websky_sim_path: /data5/sims/websky/data/
 agora_sim_path: /data5/sims/agora_sims/
 scratch: /data7/nehajo/CMASS/sim_results/data/

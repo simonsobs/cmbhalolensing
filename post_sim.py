@@ -3,6 +3,7 @@ import numpy as np
 from orphics.io import plot_img, Plotter
 import pixell.utils as u
 import sys
+from sklearn.covariance import LedoitWolf
 import os
 sys.path.append(os.path.abspath("/home3/nehajo/scripts/"))
 from profiles import errors, chi_square_pte
@@ -36,6 +37,7 @@ mf_err = {}
 r = {}
 k1d = {}    # recon stack - mf
 all_k1d = {}
+shrunk_cov = {}
 
 
 for prefix in prefixes:
@@ -139,7 +141,13 @@ if plot_mf:
 
 def difference(mean1, mean2, all1, all2):
     diff = (mean1 - mean2)
-    err, covmat = errors(all1-all2, Nobj=len(all1))
+    all_diff = (all1 - all2)
+    # err, covmat = errors(all_diff, Nobj=len(all1))
+    ### getting shrunk covmat
+    lw = LedoitWolf()
+    lw.fit(all_diff)
+    covmat = lw.covariance_ / all_diff.shape[0]
+    err = np.sqrt(np.diag(covmat))
     return diff, err, covmat
 
 # relative difference

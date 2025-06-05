@@ -8,12 +8,12 @@ import os
 sys.path.append(os.path.abspath("/home3/nehajo/scripts/"))
 from profiles import errors, chi_square_pte
 
-savename = sys.argv[1]
-stack_path = sys.argv[2]
-sim = sys.argv[3]
-freq = sys.argv[4]
+savename = sys.argv[1] # prefix for files (e.g. agora_90)
+stack_path = sys.argv[2] # where profiles and stacks are saved
+sim = sys.argv[3] # agora, websky
+freq = sys.argv[4] # 90, 150
 title_text = sys.argv[5]
-prefixes = sys.argv[6:]
+prefixes = sys.argv[6:] # cmb, cmb_cib, cmb_ksz_cib, cmb_tsz, cmb_tsz_cib, cmb_tsz_ksz_cib
 
 plot_mf = True
 plot_tk1d = True

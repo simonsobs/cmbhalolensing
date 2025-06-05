@@ -46,3 +46,5 @@ highres_fit_ellmax : 8000
 
 gradient_fit_ellmin : 200
 gradient_fit_ellmax : 3000
+
+template_mass: 2. #e13

@@ -45,13 +45,13 @@ try:
 except:
     if cat_type == "cmass":
         if sim_type == "agora":
-            cat = "/home3/nehajo/projects/cmbhalolensing/data/sim_cats/agora_cmasslike_deccut.npy"
+            cat = "/data7/nehajo/CMASS/sim_cats/agora_lensed_cmasslike_deccut.npy"
             data = np.load(cat, allow_pickle=True).item()
             ras = data['ra']
             decs = data['dec']
             zs = data['z']
         elif sim_type == "websky":
-            cat = "/home3/nehajo/projects/cmbhalolensing/data/sim_cats/websky_cmasslike_deccut.npy"
+            cat = "/data7/nehajo/CMASS/sim_cats/websky_cmasslike_deccut.npy"
             data = np.load(cat, allow_pickle=True).item()
             ras = data['ra']
             decs = data['dec']

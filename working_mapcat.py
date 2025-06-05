@@ -34,7 +34,7 @@ if cat_type == "websky_cmass":
     zs = data['z']
     
 elif cat_type == "agora_cmass":
-    cat = "/home3/nehajo/projects/cmbhalolensing/data/sim_cats/agora_cmasslike_deccut.npy"
+    cat = "/data7/nehajo/CMASS/sim_cats/agora_lensed_cmasslike_deccut.npy"
     data = np.load(cat, allow_pickle=True).item()
     ras = data['ra']
     decs = data['dec']
@@ -45,7 +45,7 @@ cmapper = catalogs.CatMapper(ras,decs,shape=shape,wcs=wcs)
 cmap = maps.binary_mask(enmap.smooth_gauss(cmapper.counts,2 * utils.degree),1e-3)
 io.hplot(cmap,f'{paths.scratch}{cat_type}_counts')
 
-shape,wcs = enmap.read_map_geometry(paths.act_data + f"../maps/dr5/act_planck_dr5.01_s08s18_AA_f090_night_map_srcfree.fits")
+shape,wcs = enmap.read_map_geometry(paths.act_data + f"/maps/dr5/act_planck_dr5.01_s08s18_AA_f090_night_map_srcfree.fits")
 omap = enmap.project(cmap,shape,wcs,order=0)
 io.plot_img(omap,f'{paths.scratch}{cat_type}_pcounts')
 enmap.write_map(f'{paths.scratch}{cat_type}_mask.fits',omap)

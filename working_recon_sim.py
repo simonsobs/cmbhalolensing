@@ -95,7 +95,7 @@ ylmin = 200
 ylmax = 6000 #3500  # low lmax cut (high lmax cut is 6000)
 ylcut = 2
 
-klmin = 200
+klmin = 600
 klmax = 5000 #3000  # low lmax cut (high lmax cut is 5000)
 print(" ::: hlmax =", ylmax, "and klmax =", klmax)
 

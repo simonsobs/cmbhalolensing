@@ -4,8 +4,10 @@ import healpy as hp
 from orphics import maps,io,interfaces as ints,lensing,stats
 from pixell import utils,bench,enmap,reproject
 
-rstamp = 30.0 * utils.arcmin
+rstamp = 30.1 * utils.arcmin
 res = 0.1 * utils.arcmin
+Nmax = None
+#Nmax = 3
 
 with bench.show("load kappa"):
     kappa = hp.read_map("/data5/sims/agora_sims/cmbkappa/raytrace16384_ip20_cmbkappa.zs1.kg1g2_highzadded_lowLcorrected.fits")
@@ -24,6 +26,9 @@ mmax = 2.2e14
 oras,odecs,ozs,oms = ints.get_agora_halos(z_min = z_min, z_max = z_max,
                     mass_min = mmin, mass_max = mmax,
                     massdef='m500') # Get agora halos
+
+oras = oras[:Nmax]
+odecs = odecs[:Nmax]
 
 print(f"Starting stack on {len(oras)}")
 out = 0.
@@ -61,7 +66,8 @@ m500c = oms.mean()
 em500c = oms.std()
 
 thetas,kappa_1h,kappa_2h,tot_kappa,cents_t,b1d1h,b1d2h,b1d_t = lensing.kappa_nfw_profiley(mass=m500c,conc=None,
-                                                                                          z=z,z_s=1100.,background='critical',delta=500,apply_filter=True,
+                                                                                          z=z,z_s=1100.,background='critical',delta=500, R_off_Mpc = 0.05,
+                                                                                          apply_filter=True,
                                                                                           lmin=lmin,lmax=lmax,res=res,fls=hp.pixwin(nside), # note the healpix pixwin here
                                                                                           rstamp=rstamp,rmin=rmin,rmax=rmax,rwidth=rwidth)
 title =  f"$M_{{500}}$={m500c/1e14:.2f} $\\pm$ {em500c/1e14:.2f} $10^{{14}} M_{{\\odot}}$  ;  z={z:.2f} $\\pm$ {ez:.2f} ; N = {N}"

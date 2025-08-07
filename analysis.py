@@ -7,8 +7,11 @@ import sys
 class Analysis(object):
     def __init__(self,
                  choices_yaml,
-                 atype,
+                 atype, comm=None,
                  debug=False):
+
+        self.s = stats.Stats(comm)
+        self.rank = comm.Get_rank()
 
         cdict = io.config_from_yaml(choices_yaml)
         self.hash = io.hash_dict(cdict)
@@ -80,7 +83,7 @@ class Analysis(object):
         self.ktemplate = enmap.fft(self.template * self.ctaper,normalize='phys')
         cents,p1d,p2d = self.power(self.ktemplate,self.ktemplate)
         self.template_auto_p1d = p1d
-        if debug:
+        if debug and self.rank==0:
             io.plot_img(self.ctaper,'ctaper.png')
             io.plot_img((np.fft.fftshift(self.modlmap**2 * p2d)),'template_auto_p2d.png')
             pl = io.Plotter(xyscale='linlin',xlabel='L',ylabel='L^2 C_L')
@@ -100,7 +103,7 @@ class Analysis(object):
         out['fourier'] = {}
         
         # Get reconstruction
-        krecon = self.reconstructor.recon(imapx, imapy, p2d_plot = 'recon_auto_p2d.png' if debug else None)
+        krecon = self.reconstructor.recon(imapx, imapy, p2d_plot = 'recon_auto_p2d.png' if (debug and self.rank==0) else None)
 
         if do_real:
             out['real'] = {}
@@ -111,6 +114,9 @@ class Analysis(object):
             _,r1d = self.rbinner.bin(okreal)
             out['real']['map'] = okreal.copy()
             out['real']['profile'] = r1d.copy()
+            self.s.add_to_stats('r1d',out['real']['profile'])
+            self.s.add_to_stack('stack',out['real']['map'])
+
 
         # Mask with circular taper
         kreal = enmap.ifft(krecon,normalize='phys').real
@@ -119,11 +125,14 @@ class Analysis(object):
         # Cross-correlate with template
         cents,cp1d,cp2d = self.power(self.ktemplate,kmap)
         if not(np.all(np.isfinite(cp1d))): raise ValueError
-        if debug:
+        if debug and self.rank==0:
             io.plot_img((np.fft.fftshift(self.modlmap**2 * cp2d)),'recon_template_cross_p2d.png')
 
         out['fourier']['p2d'] = cp2d.copy()
         out['fourier']['profile'] = cp1d.copy()
+
+        self.s.add_to_stats('cp1d',out['fourier']['profile'])
+        
         return out
 
     def get_stamp(self,imap=None,ra_deg=None,dec_deg=None,
@@ -187,6 +196,70 @@ class Analysis(object):
         p2d = (kmap1*kmap2.conj()).real
         cents, p1d = self.lbinner.bin(p2d)
         return cents, p1d, p2d
+
+
+    def finish(self,):
+        self.s.get_stats()
+        self.s.get_stacks()
+
+
+        if self.rank==0:
+            rcents = self.rcents
+            lcents = self.lcents
+            Lmin = self.Lmin
+            Lmax = self.Lmax
+            p1d = self.template_auto_p1d
+            cmean = self.s.stats['cp1d']['mean']
+            cerr = self.s.stats['cp1d']['errmean']
+            ccov = self.s.stats['cp1d']['covmean']
+
+            rsel = rcents<self.c.theta_max_real_arc*u.arcmin
+            rmean = self.s.stats['r1d']['mean'][rsel]
+            rcov = self.s.stats['r1d']['covmean'][rsel,:][:,rsel]
+            rerr = np.sqrt(np.diagonal(rcov))
+
+
+            stack = self.s.stacks['stack']
+            io.plot_img(stack,'stack.png')
+
+            sel = np.logical_and(lcents>Lmin,lcents<Lmax)
+            signal = p1d[sel]
+            cov = ccov[sel,:][:,sel]
+            err = cerr[sel]
+
+            io.plot_img(stats.cov2corr(ccov),'ccov.png')
+            cinv = np.linalg.inv(cov)
+            nobj = sum(self.s.numobj['cp1d'] )
+            snr1 = np.sqrt(np.dot(np.dot(signal,cinv),signal)  * (1000/nobj))
+            snr2 = np.sqrt(np.sum(signal**2./err**2.)  * (1000/nobj))
+            snr3 = np.sqrt(np.dot(np.dot(rmean,np.linalg.inv(rcov)),rmean)  * (1000/nobj))
+
+            print(
+                f"Rough SNR estimates (scaled {nobj} objects to 1000 objects): "
+                f"\n  Method 1: Fourier w/ covmat :     {snr1:.2f}"
+                f"\n  Method 2: Fourier diagonal:       {snr2:.2f}"
+                f"\n  Method 3: Real w/covmat:       {snr3:.2f}"
+                f"\n The second is quickest to converge. All three should agree in the limit of infinite sims."
+            )
+
+
+            pl = io.Plotter(xyscale='linlin',xlabel='L',ylabel='L^2 C_L')
+            pl.add(lcents,lcents**2 * p1d,marker='o',label='full template')
+            pl.add_err(lcents,lcents**2 * cmean,yerr=cerr * lcents**2.,marker='o')
+            pl.add(lcents[sel],lcents[sel]**2 * p1d[sel],marker='d',color='r',label='selected template')
+            pl.vline(x=500)
+            pl.hline(y=0)
+            pl._ax.set_ylim(-3e-5,5.1e-5)
+            pl.done('recon_template_cross_p1d.png')
+
+            pl = io.Plotter()
+            pl.add_err(rcents[rsel]/u.arcmin,rmean,yerr=rerr,marker='o')
+            pl.add(self.thetas/u.arcmin, self.template_kappa_1d)
+            pl._ax.set_xlim(0,10)
+            pl._ax.set_ylim(-0.01,rmean.max()*1.2)
+            pl.hline(y=0)
+            pl.done('recon_profile.png')
+    
     
 class Recon(object):
     def __init__(self,shape,wcs,

@@ -49,5 +49,6 @@ Lmax: 5000
 # You don't need to know how it was made as long as the data and fits are always done with the same one
 # This particular one is a 1h+2h NFW mass=2e14 at z=1 with some power law extrapolations
 template_file: kappa_profile.txt
-
+# For real-space fits, maximum radius to which to go out to (which determines the size of the covmat)
+theta_max_real_arc: 10.0
 

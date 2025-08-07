@@ -1226,3 +1226,246 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         
 
     return cents,ret_opt_data,ret_opt_cov
+
+
+class Analysis(object):
+    def __init__(self,
+                 choices_yaml,
+                 atype):
+        
+        self.c = io.config_from_yaml(choices_yaml)
+        self.Lmax = self.c['Lmax']
+
+
+        width_deg = self.c['width_deg']
+        self.res = self.c['px_res_arcmin'] * u.arcmin
+        self.proj = self.c['proj']
+        
+
+        # Load template
+        thetas,kappa_1h,kappa_2h = np.loadtxt(self.c['template_file'],unpack=True)
+        kappa = kappa_1h + kappa_2h
+
+        self.atype = atype
+        periodic = self.c['periodic']
+        if atype=='flatsky_sim':
+            # If we are doing a padded high-res flat sim
+            # (e.g. for multiplicative bias correction)
+            # we will initialize a FixedLens simulator
+            # and get the shape and wcs from it, which
+            # will be slightly different from that constructed
+            # directly
+
+            self.csim = olensing.FixedLens(thetas, kappa, width_deg=width_deg, pad_fact=1 if periodic else self.c['pad_fact'])
+            _,_,dummy = self.csim.generate_sim(0) # FIXME: is this necessary
+            self.shape, self.wcs = dummy.shape, dummy.wcs
+        else:
+            if periodic: raise ValueError
+            self.thumbnail_r = width_deg * u.deg / 2.
+            self.shape, self.wcs = enmap.thumbnail_geometry(r=self.thumbnail_r, res=self.res, proj=self.proj)
+
+        self.modlmap = enmap.modlmap(self.shape,self.wcs)
+        self.minell = maps.minimum_ell(self.shape,self.wcs)
+        self.lbin_edges = np.arange(self.minell,self.r.klmax,self.minell*3)
+        self.lbinner = stats.bin2D(self.modlmap,self.bin_edges)
+            
+
+        self.r = Recon(self.shape,self.wcs,
+                       xlmin=None,xlmax=2000,
+                       ylmin=None,ylmax=3500,
+                       klmin=None,klmax=6000,
+                       apodize=True if not(periodic) else False,
+                       xbeam_fwhm_arcmin = 7.0,
+                       ybeam_fwhm_arcmin = 1.5,
+                       xbeam_noise_uk_arcmin = 30.0,
+                       ybeam_noise_uk_arcmin = 10.0,
+                       est = 'hdv',
+                       taper_percent=12.0,
+                       pad_percent=3.0,
+                       klmax=self.Lmax)
+
+    def get_stamp(self,imap=None,ra_deg=None,dec_deg=None,
+                  ivar=False,
+                  seed=None):
+        
+        coords = np.asarray((dec_deg,ra_deg)) * u.degree
+        r = self.thumbnail_r
+        res = self.res
+        proj = self.proj
+        
+        if self.atype=='data':
+            if ivar:
+                out = reproject.thumbnails_ivar(
+                    imap,
+                    coords,
+                    r=r,
+                    res=res,
+                    extensive=True,
+                    proj=proj
+                )
+            else:
+                out = reproject.thumbnails(
+                    imap,
+                    coords,
+                    r=r,
+                    res=res,
+                    proj=proj,
+                    oversample=2,
+                    pixwin=True
+                )       
+
+
+        elif self.atype=='healpix_sim':
+            out = maps.thumbnail_healpix(imap,coords,r=r,res=res,proj=proj)
+            # TODO: healpix pixel window needs to be accounted for in beam
+        elif self.atype=='car_sim':
+            out = reproject.thumbnails(
+                imap,
+                coords,
+                r=r,
+                res=res,
+                proj=proj,
+                oversample=2,
+                pixwin=False # only this is different
+            )       
+
+        elif self.atype=='flatsky_sim':
+            _, _, out = csim.generate_sim(seed)
+
+        if not(wcsutils.equal(out.wcs,self.wcs)): raise ValueError
+        if out.shape[0]!=self.shape[0]: raise ValueError
+        if out.shape[1]!=self.shape[1]: raise ValueError
+        return out
+        
+        
+    
+    def power(self,kmap1,kmap2):
+        p2d = (kmap1*kmap2.conj()).real
+        cents, p1d = self.lbinner.bin(p2d)
+        return cents, p1d, p2d
+    
+class Recon(object):
+    def __init__(self,shape,wcs,
+                 xlmin=None,xlmax=2000,
+                 ylmin=None,ylmax=3500,
+                 klmin=None,klmax=6000,
+                 apodize=True,
+                 xbeam_fwhm_arcmin = 7.0,
+                 ybeam_fwhm_arcmin = 1.5,
+                 xbeam_noise_uk_arcmin = 30.0,
+                 ybeam_noise_uk_arcmin = 10.0,
+                 est = 'hdv',
+                 taper_percent=12.0,
+                 pad_percent=3.0,
+                 ):
+
+        if apodize:
+            self.taper,_ = maps.get_taper(shape,wcs,taper_percent=12.0,pad_percent=3.0)
+        else:
+            self.taper = 1
+        modlmap = enmap.modlmap(shape,wcs)
+        self.modlmap = modlmap
+        self.shape = shape
+        self.wcs = wcs
+        theory = cosmology.default_theory()
+        ltt2d = theory.lCl('TT',modlmap)
+        theory = cosmology.default_theory()
+        self.minell = maps.minimum_ell(shape,wcs)
+        if klmin is None: klmin = self.minell
+        if xlmin is None: xlmin = self.minell
+        if ylmin is None: ylmin = self.minell
+        self.xmask = maps.mask_kspace(shape, wcs, lmin=xlmin, lmax=xlmax)
+        self.ymask = maps.mask_kspace(shape, wcs, lmin=ylmin, lmax=ylmax)
+        self.kmask = maps.mask_kspace(shape, wcs, lmin=klmin, lmax=klmax)
+
+        ibeamy = modlmap*0
+        beamy = maps.gauss_beam(ybeam_fwhm_arcmin,modlmap)
+        ibeamy[modlmap>0] = 1./beamy[modlmap>0]
+        
+        ibeamx = modlmap*0
+        beamx = maps.gauss_beam(xbeam_fwhm_arcmin,modlmap)
+        ibeamx[modlmap>0] = 1./beamx[modlmap>0]
+        
+        tclxy2d = ltt2d
+        tclyy2d = ltt2d + (ybeam_noise_uk_arcmin*np.pi/180./60. * ibeamy)**2
+        tclxx2d = ltt2d + (xbeam_noise_uk_arcmin*np.pi/180./60. * ibeamx)**2
+
+        if est=='hdv':
+            self.feed_dict = {
+                "uC_T_T": ltt2d,
+                "tC_A_T_A_T": tclyy2d,
+                "tC_P_T_P_T": tclxx2d,
+                "tC_A_T_P_T": tclxy2d,
+                "tC_P_T_A_T": tclxy2d,
+            }
+
+            self.cqe = symlens.QE(
+                self.shape,
+                self.wcs,
+                self.feed_dict,
+                estimator="hdv",
+                XY="TT",
+                xmask=self.xmask,
+                ymask=self.ymask,
+                field_names=["P", "A"],
+                groups=None,
+                kmask=self.kmask,
+            )
+            
+        elif est=='hu_ok':
+            self.feed_dict = {
+                "uC_T_T": ltt2d,
+                "tC_T_T": tclyy2d,
+            }
+
+            self.cqe = symlens.QE(
+                self.shape,
+                self.wcs,
+                self.feed_dict,
+                estimator="hu_ok",
+                XY="TT",
+                xmask=self.ymask,
+                ymask=self.ymask,
+                kmask=self.kmask,
+            )
+
+        elif est=='hardened':
+            self.feed_dict = {
+                "uC_T_T": ltt2d,
+                "tC_T_T": tclyy2d,
+                "pc_T_T": tclyy2d*0 + 1,
+            }
+
+            self.cqe = symlens.HardenedTT(
+                self.shape,
+                self.wcs,
+                self.feed_dict,
+                estimator="hu_ok",
+                xmask=self.xmask,
+                ymask=self.ymask,
+                kmask=self.kmask,
+            )
+        
+        
+    def recon(self,imapx,imapy=None,p2d_plot=None):
+
+        kmapx = enmap.fft(imapx * self.taper,normalize='phys')
+        if p2d_plot is not None:
+            p2d = (kmapx*kmapx.conj()).real
+            io.plot_img(np.log(maps.get_central(np.fft.fftshift(p2d),0.3)),p2d_plot)
+        if imapy is None:
+            kmapy = kmapx.copy()
+        else:
+            kmapy = enmap.fft(imapy*self.taper,normalize='phys')
+        
+        self.feed_dict["X"] = kmapx
+        self.feed_dict["Y"] = kmapy
+
+        # Sanity check
+        for key in self.feed_dict.keys():
+            assert np.all(np.isfinite(self.feed_dict[key]))
+
+        
+        # Fourier space lens reconstruction
+        krecon = self.cqe.reconstruct(self.feed_dict, xname="X_l1", yname="Y_l2", physical_units=True)
+        return krecon

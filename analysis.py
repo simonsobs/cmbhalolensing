@@ -2,19 +2,34 @@ from pixell import enmap,utils as u,lensing as plensing,bench,bunch,wcsutils
 from orphics import io, lensing as olensing, maps, cosmology,stats, mpi
 import numpy as np
 import symlens
-import sys
+import sys, shutil, os, warnings
 
 class Analysis(object):
     def __init__(self,
                  choices_yaml,
                  atype, comm=None,
-                 debug=False):
+                 debug=False, outname=''):
 
         self.s = stats.Stats(comm)
         self.rank = comm.Get_rank()
 
         cdict = io.config_from_yaml(choices_yaml)
-        self.hash = io.hash_dict(cdict)
+
+        # Start bookkeeping
+        outroot = f'{outname}cmbh_out'
+        with mpi.mpi_abort_on_exception(comm):
+            if self.rank==0:
+                if os.path.isdir(outroot):
+                    raise FileExistsError("Output directory already exists. Choose a different outname.")
+        comm.Barrier()
+        self._out = lambda x: f'{outroot}/{x}'
+        io.mkdir(outroot,comm=comm)
+        if self.rank==0:
+            shutil.copy(choices_yaml,self._out('choices.yaml'))
+            hashtxt = io.hash_dict(cdict)
+            with open(self._out('hash.txt'),'w') as f:
+                f.write(hashtxt)
+        
         self.c = bunch.Bunch(cdict)
         c = self.c
         self.Lmax = c.Lmax
@@ -52,11 +67,13 @@ class Analysis(object):
         self.rcents = self.rbinner.cents
         self.modlmap = enmap.modlmap(self.shape,self.wcs)
         self.template = enmap.enmap(maps.interp(thetas,kappa)(self.modrmap),self.wcs)
-            
+
 
         self.reconstructor = Recon(self.shape,self.wcs,
                                    xlmin=c.xlmin,xlmax=c.xlmax,
                                    ylmin=c.ylmin,ylmax=c.ylmax,
+                                   xlxcut=c.xlxcut,xlycut=c.xlycut,
+                                   ylxcut=c.ylxcut,ylycut=c.ylycut,
                                    klmin=c.klmin,klmax=c.klmax,
                                    apodize=True if not(c.periodic) else False,
                                    xbeam_fwhm_arcmin = c.xbeam_fwhm_arcmin,
@@ -84,17 +101,26 @@ class Analysis(object):
         cents,p1d,p2d = self.power(self.ktemplate,self.ktemplate)
         self.template_auto_p1d = p1d
         if debug and self.rank==0:
-            io.plot_img(self.ctaper,'ctaper.png')
-            io.plot_img((np.fft.fftshift(self.modlmap**2 * p2d)),'template_auto_p2d.png')
+            io.plot_img(self.ctaper,self._out('ctaper.png'),arc_width=c.width_deg*60.,
+                        xlabel='$\\Theta$ (arcmin)',ylabel='$\\Theta$ (arcmin)')
+            io.plot_img((np.fft.fftshift(self.modlmap**2 * p2d)),self._out('template_auto_p2d.png'))
             pl = io.Plotter(xyscale='linlin',xlabel='L',ylabel='L^2 C_L')
             pl.add(cents,cents**2 * p1d,marker='o')
             pl.vline(x=500)
             pl.hline(y=0)
-            pl.done('template_auto_p1d.png')
+            pl.done(self._out('template_auto_p1d.png'))
 
         
         self.fit_Kmask = maps.mask_kspace(self.shape, self.wcs, lmin=c.Lmin, lmax=c.Lmax)
 
+        if self.rank==0:
+            enmap.write_map(self._out('ctaper.fits'),self.ctaper)
+            enmap.write_map(self._out('ktemplate_real.fits'),self.ktemplate.real)
+            enmap.write_map(self._out('ktemplate_imag.fits'),self.ktemplate.imag)
+            enmap.write_map_geometry(self._out('geometry.fits'),self.shape,self.wcs)
+            io.save_cols(self._out('rbin_edges.txt'),(self.rbin_edges))
+            io.save_cols(self._out('lbin_edges.txt'),(self.lbin_edges))
+        comm.Barrier()
         
         
 
@@ -103,7 +129,7 @@ class Analysis(object):
         out['fourier'] = {}
         
         # Get reconstruction
-        krecon = self.reconstructor.recon(imapx, imapy, p2d_plot = 'recon_auto_p2d.png' if (debug and self.rank==0) else None)
+        krecon = self.reconstructor.recon(imapx, imapy, p2d_plot = self._out('recon_auto_p2d.png') if (debug and self.rank==0) else None)
 
         if do_real:
             out['real'] = {}
@@ -126,7 +152,7 @@ class Analysis(object):
         cents,cp1d,cp2d = self.power(self.ktemplate,kmap)
         if not(np.all(np.isfinite(cp1d))): raise ValueError
         if debug and self.rank==0:
-            io.plot_img((np.fft.fftshift(self.modlmap**2 * cp2d)),'recon_template_cross_p2d.png')
+            io.plot_img((np.fft.fftshift(self.modlmap**2 * cp2d)),self._out('recon_template_cross_p2d.png'))
 
         out['fourier']['p2d'] = cp2d.copy()
         out['fourier']['profile'] = cp1d.copy()
@@ -198,12 +224,16 @@ class Analysis(object):
         return cents, p1d, p2d
 
 
-    def finish(self,):
+    def finish(self, save_transfer=False):
         self.s.get_stats()
         self.s.get_stacks()
 
+        
+
 
         if self.rank==0:
+
+            
             rcents = self.rcents
             lcents = self.lcents
             Lmin = self.Lmin
@@ -213,36 +243,58 @@ class Analysis(object):
             cerr = self.s.stats['cp1d']['errmean']
             ccov = self.s.stats['cp1d']['covmean']
 
+            io.save_cols(self._out('fourier_profile_template_auto.txt'),(lcents,p1d))
+            io.save_cols(self._out('fourier_profile_cross_mean.txt'),(lcents,cmean))
+            np.savetxt(self._out('fourier_cov.txt'),ccov)
+
             rsel = rcents<self.c.theta_max_real_arc*u.arcmin
             rmean = self.s.stats['r1d']['mean'][rsel]
             rcov = self.s.stats['r1d']['covmean'][rsel,:][:,rsel]
             rerr = np.sqrt(np.diagonal(rcov))
-
+            
+            io.save_cols(self._out('real_profile'),(rcents,self.s.stats['r1d']['mean']))
+            np.savetxt(self._out('real_cov.txt'),self.s.stats['r1d']['covmean'])
 
             stack = self.s.stacks['stack']
-            io.plot_img(stack,'stack.png')
+            io.plot_img(stack,self._out('stack.png'),arc_width=self.c.width_deg*60.,
+                        xlabel='$\\Theta$ (arcmin)',ylabel='$\\Theta$ (arcmin)')
 
             sel = np.logical_and(lcents>Lmin,lcents<Lmax)
             signal = p1d[sel]
             cov = ccov[sel,:][:,sel]
             err = cerr[sel]
 
-            io.plot_img(stats.cov2corr(ccov),'ccov.png')
+
+
+            io.plot_img(stats.cov2corr(ccov),self._out('ccov.png'))
             cinv = np.linalg.inv(cov)
             nobj = sum(self.s.numobj['cp1d'] )
             snr1 = np.sqrt(np.dot(np.dot(signal,cinv),signal)  * (1000/nobj))
             snr2 = np.sqrt(np.sum(signal**2./err**2.)  * (1000/nobj))
             snr3 = np.sqrt(np.dot(np.dot(rmean,np.linalg.inv(rcov)),rmean)  * (1000/nobj))
 
-            print(
-                f"Rough SNR estimates (scaled {nobj} objects to 1000 objects): "
-                f"\n  Method 1: Fourier w/ covmat :     {snr1:.2f}"
-                f"\n  Method 2: Fourier diagonal:       {snr2:.2f}"
-                f"\n  Method 3: Real w/covmat:       {snr3:.2f}"
+            outstr =  f"Rough SNR estimates (scaled {nobj} objects to 1000 objects): " + \
+                f"\n  Method 1: Fourier w/ covmat :     {snr1:.2f}" + \
+                f"\n  Method 2: Fourier diagonal:       {snr2:.2f}" + \
+                f"\n  Method 3: Real w/covmat:       {snr3:.2f}" + \
                 f"\n The second is quickest to converge. All three should agree in the limit of infinite sims."
-            )
+            print(outstr)
 
+            if save_transfer:
+                if self.atype!='flatsky_sim':
+                    warnings.warn("Why are you saving the transfer function if this is not a flatsky sim?")
+                
+                transfer_fn = cmean / p1d
+                transfer_fn_err = cerr / p1d
+                io.save_cols(self._out('transfer_fn.txt'),(lcents,transfer_fn,transfer_fn_err))
+            
+                pl = io.Plotter('rCl',ylabel='$C_L^{\\rm sim} / C_L^{\\rm template}$')
+                pl.add_err(lcents,transfer_fn,yerr=transfer_fn_err,marker='o')
+                pl.vline(x=500)
+                pl.hline(y=1)
+                pl.done(self._out('transfer_fn.png'))
 
+            
             pl = io.Plotter(xyscale='linlin',xlabel='L',ylabel='L^2 C_L')
             pl.add(lcents,lcents**2 * p1d,marker='o',label='full template')
             pl.add_err(lcents,lcents**2 * cmean,yerr=cerr * lcents**2.,marker='o')
@@ -250,7 +302,7 @@ class Analysis(object):
             pl.vline(x=500)
             pl.hline(y=0)
             pl._ax.set_ylim(-3e-5,5.1e-5)
-            pl.done('recon_template_cross_p1d.png')
+            pl.done(self._out('recon_template_cross_p1d.png'))
 
             pl = io.Plotter()
             pl.add_err(rcents[rsel]/u.arcmin,rmean,yerr=rerr,marker='o')
@@ -258,13 +310,15 @@ class Analysis(object):
             pl._ax.set_xlim(0,10)
             pl._ax.set_ylim(-0.01,rmean.max()*1.2)
             pl.hline(y=0)
-            pl.done('recon_profile.png')
+            pl.done(self._out('recon_profile.png'))
     
     
 class Recon(object):
     def __init__(self,shape,wcs,
                  xlmin=None,xlmax=2000,
                  ylmin=None,ylmax=3500,
+                 xlxcut=None,xlycut=None,
+                 ylxcut=None,ylycut=None,
                  klmin=None,klmax=6000,
                  apodize=True,
                  xbeam_fwhm_arcmin = 7.0,
@@ -291,8 +345,8 @@ class Recon(object):
         if klmin is None: klmin = self.minell
         if xlmin is None: xlmin = self.minell
         if ylmin is None: ylmin = self.minell
-        self.xmask = maps.mask_kspace(shape, wcs, lmin=xlmin, lmax=xlmax)
-        self.ymask = maps.mask_kspace(shape, wcs, lmin=ylmin, lmax=ylmax)
+        self.xmask = maps.mask_kspace(shape, wcs, lmin=xlmin, lmax=xlmax, lxcut = xlxcut, lycut = xlycut)
+        self.ymask = maps.mask_kspace(shape, wcs, lmin=ylmin, lmax=ylmax, lxcut = ylxcut, lycut = ylycut)
         self.kmask = maps.mask_kspace(shape, wcs, lmin=klmin, lmax=klmax)
 
         ibeamy = modlmap*0

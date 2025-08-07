@@ -6,15 +6,24 @@ import symlens
 import sys
 import analysis as chutils
 
+import argparse
+# Parse command line
+parser = argparse.ArgumentParser(description='Run flatsky sims to estimate a multiplicative correction. Alternatively, use this to explore choices and their effect on SNR.')
+parser.add_argument("nsims", type=int,help='Number of sims.')
+parser.add_argument("outname", type=str,help='Output name root. A directory will be made containing this root name and cannot already exist.')
+parser.add_argument("--choices",     type=str,  default='choices.yaml',help="File containing analysis choices.")
+args = parser.parse_args()
 
-nsims = int(sys.argv[1])
+
+
+nsims = args.nsims
 comm,rank,my_tasks = mpi.distribute(nsims)
 nlen = len(my_tasks)
 
 # Initialize flatsky simulator
 # This will self-generate lensed CMB maps
 # See choices.yaml
-analyzer = chutils.Analysis('choices.yaml','flatsky_sim', comm=comm, debug=True)
+analyzer = chutils.Analysis(args.choices,'flatsky_sim', comm=comm, debug=True,outname=args.outname)
 
 for i,task in enumerate(my_tasks):
 
@@ -26,4 +35,4 @@ for i,task in enumerate(my_tasks):
 
     if rank==0 and (i+1)%10==0: print(f"Rank {rank} done with {i+1} / {nlen}..." )
 
-analyzer.finish()
+analyzer.finish(save_transfer=True)

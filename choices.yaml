@@ -13,12 +13,20 @@ pad_fact: 2 # Factor to pad stamp by to cut out a non-periodic stamp
 # How the reconstruction is done
 # ================================================
 # Remember that null=None will default to the lowest ell (fundamental mode) available in the stamp
+
 xlmin: null
 xlmax: 2000
+xlxcut: null
+xlycut: null
+
 ylmin: null
 ylmax: 3500
+ylxcut: null
+ylycut: null
+
 klmin: null
 klmax: 5000
+
 estimator: 'hdv' # alternatives include hu_ok and hardened
 # Rect. cosine taper for the reconstruction
 taper_percent: 12.0

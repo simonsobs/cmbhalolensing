@@ -5,7 +5,7 @@ agora_sim_path: /data5/sims/agora_sims/
 scratch: /home3/nehajo/projects/CMASS-cmbhalolensing/sims/
 # scratch: /data7/nehajo/CMASS/sim_cats/
 websky_output_path: /home3/nehajo/projects/CMASS-cmbhalolensing/sims/
-agora_output_path: /home3/nehajo/projects/CMASS-cmbhalolensing/sims/agora/
+agora_output_path: /home3/nehajo/projects/CMASS-cmbhalolensing/sims/agora_Lmin200_Lmax5000/
 
 websky_cmass_cat: /data7/nehajo/CMASS/sim_cats/websky_cmasslike_deccut.npy
 websky_cmass_randoms: /data7/nehajo/CMASS/sim_cats/websky_cmass_10x_randoms.txt

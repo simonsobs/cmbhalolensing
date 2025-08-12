@@ -62,18 +62,18 @@ for prefix in prefixes:
         tk1d_err[prefix] = np.loadtxt(f"{pathname}_1tkappa_errs.txt")
 
     k1d[prefix] = stack1d[prefix] - mf1d[prefix]
-    np.savetxt(f"{pathname}_post_1binned_rkappa.txt", np.asarray([r[prefix], k1d[prefix]]).T)
+    np.savetxt(f"{pathname}_1binned_rkappa_mfsub.txt", np.asarray([r[prefix], k1d[prefix]]).T)
 
     kmap = stack[prefix] - mf[prefix]
     kmap_zoom = kmap[100:140,100:140]
-    np.save(f"{pathname}_post_1rkappa.npy", kmap)
+    np.save(f"{pathname}_1rkappa_mfsub.npy", kmap)
     
-    plot_img(kmap,f"{pathname}_post_1rkappa.png", flip=False, ftsize=12, ticksize=10,cmap='coolwarm',
+    plot_img(kmap,f"{pathname}_1rkappa_mfsub.png", flip=False, ftsize=12, ticksize=10,cmap='coolwarm',
             label=r'$\kappa$',arc_width=120,xlabel=r"$\theta_x$ (arcmin)",ylabel=r"$\theta_y$ (arcmin)")
-    plot_img(kmap_zoom,f"{pathname}_post_1rkappa_zoom.png", flip=False, ftsize=12, ticksize=10,
+    plot_img(kmap_zoom,f"{pathname}_1rkappa_mfsub_zoom.png", flip=False, ftsize=12, ticksize=10,
             cmap='coolwarm',label=r'$\kappa$',arc_width=20,xlabel=r"$\theta_x$ (arcmin)",ylabel=r"$\theta_y$ (arcmin)")
 
-    plot_img(corr[prefix],f'{pathname}_corr.png')
+    plot_img(corr[prefix],f'{pathname}_1rkappa_corr.png')
 
     pl = Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
     pl.add_err(r[prefix], k1d[prefix], yerr=err[prefix], ls="-",label="Filtered kappa, mean-field subtracted")
@@ -81,7 +81,7 @@ for prefix in prefixes:
         pl.add_err(r[prefix], mf1d[prefix], yerr=mf_err[prefix],label="Mean-field",ls="-",alpha=0.5)
     pl.hline(y=0)
     pl._ax.set_ylim(ymin,ymax)
-    pl.done(f"{pathname}_post_1rkappa_profile.png")
+    pl.done(f"{pathname}_1binned_rkappa_mfsub.png")
 
 print(list(tk1d.keys()))
 
@@ -212,7 +212,7 @@ for i,fg in enumerate(foregrounds):
     o+=do
 pl_data.hline(y=0)
 pl_data._ax.set_title(title_text)
-pl_data.done(f"{stack_path}/{savename}_rel_1rkappa_profile.png")
+pl_data.done(f"{stack_path}/{savename}_1bias_fg_rkappa_mfsub.png")
 
 # if plot_mf:
 #     pl_mf.hline(y=0)
@@ -221,6 +221,6 @@ pl_data.done(f"{stack_path}/{savename}_rel_1rkappa_profile.png")
 if plot_tk1d:
     pl_tk1d.hline(y=0)
     pl_tk1d._ax.set_title(title_text)
-    pl_tk1d.done(f"{stack_path}/{savename}_rel_1rkappa_1tkappa_profile.png")
+    pl_tk1d.done(f"{stack_path}/{savename}_1bias_recon_tkappa_rkappa_mfsub.png")
 
 print("all plots made and saved!")

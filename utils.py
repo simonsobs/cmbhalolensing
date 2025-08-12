@@ -10,7 +10,10 @@ from enlib import bench
 import argparse
 import time
 
-from HMFunc.cosmology import Cosmology
+try:
+    from HMFunc.cosmology import Cosmology
+except:
+    pass
 
 try:
     paths = bunch.Bunch(io.config_from_yaml("input/paths_local.yml"))
@@ -956,14 +959,14 @@ def load_vrec_catalog_boss(pathOutCatalog):
 
 def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,ignore_last=None):
 
-    if mf_path is not "":
+    if mf_path!="":
         smf_path = mf_path if (ignore_last is None) else mf_path[:-ignore_last]
         mf_paramstr = re.search(rf'plmin_(.*?)_meanfield', smf_path).group(1)
     sstack_path = stack_path if (ignore_last is None) else stack_path[:-ignore_last]
     st_paramstr = re.search(rf'plmin_(.*)', sstack_path).group(1)
 
     if not(ignore_param):
-        if mf_path is not "":
+        if mf_path!="":
             try:
                 assert mf_paramstr==st_paramstr
             except:
@@ -986,10 +989,10 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         if data is not None: 
             io.save_cols(f'{save_dir}/{save_name}_catalog_data.txt',[data[key] for key in sorted(data.keys())],header=' '.join([key for key in sorted(data.keys())]))
 
-    if mf_path is not "":
+    if mf_path!="":
         s_mf, shape_mf, wcs_mf = load_dumped_stats(mf_path)
 
-    if mf_path is not "":
+    if mf_path!="":
         assert np.all(shape_stack==shape_mf)
         assert wcsutils.equal(wcs_stack,wcs_mf)
     assert np.all(shape_stack==kmask.shape)
@@ -1001,7 +1004,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         crop = int(args.cwidth / defaults.pix_width_arcmin)
 
     unweighted_stack,nmean_weighted_kappa_stack,opt_weighted_kappa_stack,opt_binned,opt_covm,opt_corr,opt_errs,binned,covm,corr,errs = analyze(s_stack,wcs)
-    if mf_path is not "":
+    if mf_path!="":
         mf_unweighted_stack,mf_nmean_weighted_kappa_stack,mf_opt_weighted_kappa_stack,mf_opt_binned,mf_opt_covm,mf_opt_corr,mf_opt_errs,mf_binned,mf_covm,mf_corr,mf_errs = analyze(s_mf,wcs)
 
     # if profs is not None:
@@ -1028,7 +1031,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         plot(f"{save_dir}/{save_name}_unweighted_nomfsub.png",unweighted_stack,tap_per,pad_per,crop=None,lim=args.plim)
         plot(f"{save_dir}/{save_name}_unweighted_nomfsub_zoom.png",unweighted_stack,tap_per,pad_per,crop=crop,lim=args.plim)
 
-        if mf_path is not "":
+        if mf_path!="":
             # Opt weighted
             stamp = opt_weighted_kappa_stack - mf_opt_weighted_kappa_stack
             plot(f"{save_dir}/{save_name}_opt_weighted_mfsub.png",stamp,tap_per,pad_per,crop=None,lim=args.plim)
@@ -1093,7 +1096,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         io.plot_img(corr,f'{save_dir}/{save_name}_corr.png')
 
         pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
-        if mf_path is not "":
+        if mf_path!="":
             pl.add_err(cents, opt_binned - mf_opt_binned, yerr=opt_errs,ls="-",label="Filtered kappa, mean-field subtracted (optimal)")
             pl.add_err(cents+0.2, binned - mf_binned, yerr=errs,ls="-",label="Filtered kappa, mean-field subtracted")
             pl.add_err(cents, mf_opt_binned, yerr=mf_opt_errs,label="Mean-field (optimal)",ls="-",alpha=0.5)
@@ -1108,7 +1111,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         pl.done(f'{save_dir}/{save_name}_profile.png')
 
         pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
-        if mf_path is not "":
+        if mf_path!="":
             pl.add_err(cents, opt_binned - mf_opt_binned, yerr=opt_errs,ls="-",label="Filtered kappa, mean-field subtracted (optimal)")
             pl.add_err(cents, mf_opt_binned, yerr=mf_opt_errs,label="Mean-field (optimal)",ls="-",alpha=0.5)
         else:
@@ -1141,7 +1144,7 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         io.save_cols(f'{save_dir}/{save_name}_profile.txt', (cents, ret_data))
         io.save_cols(f'{save_dir}/{save_name}_profile_errs.txt', (cents, errs))
         io.save_cols(f'{save_dir}/{save_name}_mf.txt', (cents, mf_binned))
-        if mf_path is not "":
+        if mf_path!="":
             io.save_cols(f'{save_dir}/{save_name}_mf_errs.txt', (cents, mf_opt_errs))
         np.savetxt(f'{save_dir}/{save_name}_opt_covm.txt', ret_opt_cov)
         np.savetxt(f'{save_dir}/{save_name}_covm.txt', ret_cov)
@@ -1226,3 +1229,5 @@ def postprocess(stack_path,mf_path,save_name=None,ignore_param=False,args=None,i
         
 
     return cents,ret_opt_data,ret_opt_cov
+
+

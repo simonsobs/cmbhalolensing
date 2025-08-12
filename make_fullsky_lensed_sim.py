@@ -1,17 +1,17 @@
-#%%
 from pixell import enmap,lensing as plensing, curvedsky as cs, utils as u
 import healpy as hp
 import numpy as np
 from enlib import bench
 from orphics import io,cosmology,maps
 import os,sys
-#%%
 
 
+# opath = "/home3/eunseong/cmbhalolensing/data/lensed_sim_map/websky/"
+opath = "/home3/eunseong/cmbhalolensing/data/lensed_sim_map/sehgal/"
 
-
-wpath = "/data5/sims/websky/data/kap_lt4.5.fits"
-kfile = "phi_alm.fits"
+# wpath = "/data5/sims/websky/data/kap_lt4.5.fits"                                 # websky kappa
+wpath = "/data5/sims/sehgal/data/healpix_4096_KappaeffLSStoCMBfullsky.fits"    # sehgal kappa
+kfile = opath+"phi_alm.fits"
 try:
     phi_alm = hp.read_alm(kfile)
     print("Read saved phi alm file...")
@@ -29,8 +29,12 @@ except:
 
 
 
-#for res in [0.25,None]:
-for res in [0.25]:
+# 0.25 gives a fullsky map
+# None gives ACT footprint
+
+for res in [0.25, None]:
+# for res in [0.25]:
+# for res in [None]:    
     # if not(res is None): continue #!!!
 
     if res is None:
@@ -39,21 +43,21 @@ for res in [0.25]:
         footstr = "_actfoot"
     else:
         footstr = ""
+        shape,wcs = enmap.band_geometry(np.asarray((-89,89))*u.degree,res=res*u.arcmin,proj='car') # res can't be None here
 
-    shape,wcs = enmap.band_geometry(np.asarray((-89,89))*u.degree,res=res*u.arcmin,proj='car')
     if not(res is None):
         pass
     else:
         oshape,owcs = enmap.read_map_geometry(temp)
-        #shape,wcs = enmap.scale_geometry(oshape,owcs,sfact)
-        #print("Scaling geometry...")
-        #print(oshape)
-        #print(shape)
+        shape,wcs = enmap.scale_geometry(oshape,owcs,sfact)
+        print("Scaling geometry...")
+        print(oshape,owcs)
+        print(shape,wcs)
 
 
     theory = cosmology.default_theory()
 
-    seed = 1
+    # seed = 1
     #shape = (3,)+shape
     lmax = 10000
     #ps = np.zeros((3,3,lmax))
@@ -70,22 +74,25 @@ for res in [0.25]:
     #     cmb_alm = cs.rand_alm(ps)
     cmb_alm = hp.read_alm("/data5/sims/websky/data/unlensed_alm.fits")
 
+
+    print("res :", res)
+    print(np.shape(phi_alm))
+    print(np.shape(cmb_alm))
+    print(shape)
+
     
     with bench.show("lens"):
         omaps = plensing.lens_map_curved(shape, wcs, phi_alm, cmb_alm, output="lu", verbose=True, delta_theta=None)
 
-    enmap.write_map(f"lensed{footstr}.fits",omaps[0])
-    enmap.write_map(f"unlensed{footstr}.fits",omaps[1])
+    enmap.write_map(f"{opath}lensed{footstr}.fits",omaps[0])
+    enmap.write_map(f"{opath}unlensed{footstr}.fits",omaps[1])
+
     lmap = omaps[0]
     umap = omaps[1]
 
-
-
-    # %%
     odlmap = enmap.downgrade(lmap,2)
-    # %%
     odumap = enmap.downgrade(umap,2)
-    # %%
+
     if res is None:
         dlmap = enmap.extract(odlmap,oshape,owcs)
         dumap = enmap.extract(odumap,oshape,owcs)
@@ -93,7 +100,5 @@ for res in [0.25]:
         dlmap = odlmap
         dumap = odumap
         
-    enmap.write_map(f"dlensed{footstr}.fits",dlmap)
-    enmap.write_map(f"dunlensed{footstr}.fits",dumap)
-    # %%
-    # %%
+    enmap.write_map(f"{opath}dlensed{footstr}.fits",dlmap)
+    enmap.write_map(f"{opath}dunlensed{footstr}.fits",dumap)

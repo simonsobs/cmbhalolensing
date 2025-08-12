@@ -1,0 +1,62 @@
+# ================================================
+# How the stamp is cut out and/or simulated
+# ================================================
+width_deg: 2.0 # width of the stamp around the object
+px_res_arcmin: 0.5 # resolution of stamp
+proj: 'tan'
+
+# These are relevant for flat-sky multiplicative bias simulations
+periodic: False # Switch to True for quick simulations that don't have a meanfield
+pad_fact: 2 # Factor to pad stamp by to cut out a non-periodic stamp
+
+# ================================================
+# How the reconstruction is done
+# ================================================
+# Remember that null=None will default to the lowest ell (fundamental mode) available in the stamp
+
+xlmin: null
+xlmax: 2000
+xlxcut: null
+xlycut: null
+
+ylmin: null
+ylmax: 3500
+ylxcut: null
+ylycut: null
+
+klmin: null
+klmax: 5000
+
+estimator: 'hdv' # alternatives include hu_ok and hardened
+# Rect. cosine taper for the reconstruction
+taper_percent: 12.0
+pad_percent: 3.0
+
+# Lensing filters; this implements constant filters
+xbeam_fwhm_arcmin: 7.0
+ybeam_fwhm_arcmin: 1.5
+xbeam_noise_uk_arcmin: 30.0
+ybeam_noise_uk_arcmin: 10.0
+
+
+# ================================================
+# How the template and reconstruction are treated
+# ================================================
+
+theta_max_arc: 20.0 # All templates and reconstructions are masked beyond this radius so that we are not sensitive to the modeling there
+roll_arc: 20.0 # with a cosine taper that rolls of to zero in this distance
+# The above two decide what ctaper looks like (saved to ctaper.png)
+rbin_width_arc: 2.0 # Bin width for radial averages in the real-space approach
+
+# ================================================
+# How fits and SNR are done
+# ================================================
+Lmin: 500
+Lmax: 5000
+# This is the template used in all cross-correlations
+# You don't need to know how it was made as long as the data and fits are always done with the same one
+# This particular one is a 1h+2h NFW mass=2e14 at z=1 with some power law extrapolations
+template_file: data/kappa_profile.txt
+# For real-space fits, maximum radius to which to go out to (which determines the size of the covmat)
+theta_max_real_arc: 10.0
+

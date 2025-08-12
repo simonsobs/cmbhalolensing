@@ -7,9 +7,9 @@ from enlib import bench
 from scipy.special import erfinv,erf
 
 name = sys.argv[1]
-root = "/home3/nehajo/projects/cmbhalolensing/results/post"
+root = "/home3/nehajo/projects/CMASS-cmbhalolensing/post"
 
-arcmax = 8.
+arcmax = None #arcmin
 
 # pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
 

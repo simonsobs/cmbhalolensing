@@ -1,17 +1,26 @@
-import time as t
+import argparse
 from astropy.io import fits
+import camb
+from colossus.cosmology import cosmology as colcosmo
+from colossus.halo import concentration as conc
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from pixell import enmap, reproject, utils, wcsutils, bunch
 from orphics import mpi, maps, stats, io, cosmology, lensing
+from pixell import enmap, reproject, utils, wcsutils, bunch
+from profiley.helpers.lss import power2xi
+import pyccl as ccl
+from scipy.interpolate import interp1d
 from symlens import qe
-import argparse
 import sys
+import time as t
 import os
+sys.path.append(os.path.abspath("/home3/nehajo/projects/CMASS-cmbhalolensing/"))
+from halo_funcs import TunableNFW as TNFW, filter_profile
 sys.path.append(os.path.abspath("/home3/nehajo/scripts/"))
 import profiles
+
 
 start = t.time()
 
@@ -98,7 +107,7 @@ ylmin = 200
 ylmax = 6000 #3500  # low lmax cut (high lmax cut is 6000)
 ylcut = 2
 
-klmin = 600
+klmin = 200
 klmax = 5000 #3000  # low lmax cut (high lmax cut is 5000)
 print(" ::: hlmax =", ylmax, "and klmax =", klmax)
 
@@ -360,22 +369,50 @@ for task in my_tasks:
 
         # make 2d template kappa and filter with the same mask as tkappa
         temp_mass = args.template_mass*1.e13
-        temp_rad, temp_1h, temp_2h, temp_profile, temp_cents, temp_b1d1h,temp_b1d2h,temp_b1dt = lensing.kappa_nfw_profiley(
-            mass=temp_mass, z=zs.mean(), delta=200, lmin=klmin, lmax=klmax, apply_filter=False)
-        temp_stamp = enmap.enmap(maps.interp(temp_rad, temp_profile)(modrmap), wcs)
-        print("template:", temp_stamp.shape)
+        H0 = 67.7 # agora fiducial
+        Om = 0.307
+        Ob = 0.048
+        h = H0/100
 
-        temp_ellstamp = enmap.fft(temp_stamp, normalize="phys")*kmask
+        ombh2 = Ob*h**2
+        omch2 = (Om - Ob)*h**2
+        pars = camb.set_params(H0=H0, ombh2=ombh2, omch2=omch2, mnu=0.06, omk=0, tau=0.06,  
+                       As=2e-9, ns=0.965, halofit_version='mead', lmax=3000)
+        camb_results = camb.get_results(pars)
+        d = camb_results.angular_diameter_distance(zs.mean())
+        
+        cosmo = ccl.Cosmology(Omega_c=Om-Ob, Omega_b=Ob, h=h, A_s=2e-9, n_s=0.96)
+        k = np.logspace(-15, 15, 10000)
+        Pk = ccl.linear_matter_power(cosmo, k, 1/(1+zs.mean()))
+        mdef = ccl.halos.MassDef(200, 'critical')
+        bias = ccl.halos.HaloBiasTinker10(mass_def=mdef)
+        rho_m = ccl.background.rho_x(cosmo, 1, 'matter')
+        r_xi = np.logspace(-10, 7, 1000)
 
+        temp_thetas = np.linspace(0.01, 50, 1000)
+        temp_rad = temp_thetas*utils.arcmin*d*(1+zs.mean())
+        colcosmo.setCosmology('planck15')
+        c = conc.concentration(temp_mass, '200c', zs.mean(), model = "diemer15")
+        bh = bias(cosmo, temp_mass, 1/(1+zs.mean()))
+        Pgm = bh * Pk
+        lnPgm_lnk = interp1d(np.log(k), np.log(Pgm))
+        xi = power2xi(lnPgm_lnk, r_xi)
+        xi_smooth = interp1d(r_xi, xi)
+        nfw = TNFW(temp_mass, c, zs.mean(), f_2h=xi_smooth, frame="comoving")
+        
+        temp_profile = nfw.convergence(temp_rad, 1100).flatten()
+        temp_stamp = enmap.enmap(maps.interp(temp_thetas*utils.arcmin, temp_profile)(modrmap), wcs)
+        temp = temp_stamp * taper
+        print("template:", temp.shape)
 
-
+        temp_ellstamp = enmap.fft(temp, normalize="phys")*kmask
 
     # get l-space true kappa and binned true kappa
     k_ellstamp = enmap.fft(kstamp, normalize="phys")*kmask
 
     Ckt_stamp= (k_ellstamp*np.conjugate(temp_ellstamp)).real
 
-    Ckt1d = bin(Ckt_stamp, modlmap, bin_edges)
+    Ckt1d = bin(Ckt_stamp, modlmap, ell_bin_edges)
     Ckt1ds.append(Ckt1d.copy())
 
     # same filter as the post-reconstuction for true kappa
@@ -537,7 +574,7 @@ if not args.debug:
     tk1ds = utils.allgatherv(tk1ds, comm)
     k1ds = utils.allgatherv(k1ds, comm)
     Clt1ds = utils.allgatherv(Clt1ds, comm)
-    Ckt1ds = utils.allgatherv(Clt1ds, comm)
+    Ckt1ds = utils.allgatherv(Ckt1ds, comm)
     zvals = utils.allgatherv(zvals, comm)
 
 else:
@@ -547,7 +584,7 @@ else:
     grad_pre = np.asarray(grad_pre)
     grad_pre_st = utils.reduce(grad_pre, comm, root=0, op=mpi.MPI.SUM)
 
-# Ms = utils.allgatherv(Ms, comm)
+Ms = utils.allgatherv(Ms, comm)
 
 if rank==0:
 
@@ -682,7 +719,9 @@ if rank==0:
         np.savetxt(f"{save_dir}/{save_name}_1binned_rlkappa_vectors.txt", Clt1ds)
         np.savetxt(f"{save_dir}/{save_name}_1binned_tlkappa_vectors.txt", Ckt1ds)
 
-        enmap.write_map(f"{save_dir}/{save_name}_template.fits", temp_stamp)
+        io.plot_img(temp, f"{save_dir}/{save_name}_template.png")
+        enmap.write_map(f"{save_dir}/{save_name}_template.fits", temp)
+        enmap.write_map(f"{save_dir}/{save_name}_taper.fits", taper)
         enmap.write_map(f"{save_dir}/{save_name}_kmask.fits", kmask)   
         np.savetxt(f"{save_dir}/{save_name}_bin_edges.txt", bin_edges)
         np.savetxt(f"{save_dir}/{save_name}_ellbin_edges.txt", ell_bin_edges)
@@ -713,8 +752,8 @@ if rank==0:
         io.save_cols(f"{save_dir}/{save_name}_0binned_hres_unfiltered.txt", (centers, hbinned_pre))   
         io.save_cols(f"{save_dir}/{save_name}_0binned_grad_unfiltered.txt", (centers, gbinned_pre)) 
 
-    # if not args.is_meanfield:
-    #     np.savetxt(f"{save_dir}/{save_name}_z_mass1e14.txt", np.c_[s.vectors["redshift"], s.vectors["masses"]])
+    if not args.is_meanfield:
+        np.savetxt(f"{save_dir}/{save_name}_z_mass1e14.txt", np.c_[s.vectors["redshift"], s.vectors["masses"]])
 
 elapsed = t.time() - start
 print("\r ::: entire run took %.1f seconds" %elapsed)

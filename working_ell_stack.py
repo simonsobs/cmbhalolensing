@@ -1123,8 +1123,6 @@ for task in my_tasks:
     krecon = cqe.reconstruct(feed_dict, xname="X_l1", yname="Y_l2", physical_units=True)
     # not the pixel unit 
 
-    ###TODO: correlate with template, skip IFFT
-
     # transform to real space for unweighted stack
     kappa = enmap.ifft(krecon, normalize="phys").real
 

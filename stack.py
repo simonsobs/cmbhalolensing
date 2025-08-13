@@ -7,8 +7,8 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import utils as cutils
-from pixell import enmap, reproject, enplot, utils, wcsutils
-from orphics import maps, mpi, io, stats, cosmology
+from pixell import enmap, reproject, utils, wcsutils, curvedsky
+from orphics import maps, mpi, io, stats, cosmology, lensing
 from scipy.optimize import curve_fit
 from numpy import save
 import time
@@ -90,11 +90,6 @@ if not (args.inject_sim):
                 # reproject the Planck map (healpix -> CAR)
                 fshape, fwcs = enmap.fullsky_geometry(res=2.0 * utils.arcmin, proj="car")
 
-                # this doesn't work with the latest pixell version (v0.20.3)
-                # pmap = reproject.enmap_from_healpix(
-                #     plc_map, fshape, fwcs, ncomp=1, unit=1, lmax=6000, rot="gal,equ"
-                # )
-
                 # reading the input map
                 p_map = np.atleast_2d(hp.read_map(plc_map, field=tuple(range(0,1)))).astype(np.float64)
 
@@ -115,7 +110,6 @@ if not (args.inject_sim):
             else:
                 act_map = (paths.act_data + data_choice.hres)
                 famap_150 = enmap.read_map(act_map, delayed=False)
-                print(np.shape(famap_150))
 
             # SZ cluster model image subtraction for 150 GHz
             if args.hres_grad:            
@@ -128,7 +122,6 @@ if not (args.inject_sim):
                 amap_150 = famap_150 - enmap.read_map(paths.act_data + data_choice.hres_model_150)   
             else:
                 amap_150 = famap_150
-
         
         # ACT 90 GHz coadd map
         if not(args.full_sim_index is None):
@@ -140,7 +133,7 @@ if not (args.inject_sim):
             # SZ cluster model image subtraction for 90 GHz    
             if args.hres_grad:            
                 if not (args.grad_noszsub): 
-                    gamap_090 = famap_90 - enmap.read_map(paths.act_data + data_choice.hres_model_090)
+                    gamap_90 = famap_90 - enmap.read_map(paths.act_data + data_choice.hres_model_090)
                 else: 
                     gamap_90 = famap_90
 
@@ -156,11 +149,11 @@ if not (args.inject_sim):
             assert not(args.no_150)
             assert not(args.rand_rot)
             act_map = (
-                paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f150_night_srcfree_map.fits"
+                paths.act_data + data_choice.hres_150_night
             )
             namap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
             act_map = (
-                paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f090_night_srcfree_map.fits"
+                paths.act_data + data_choice.hres_090_night
             )
             namap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
 
@@ -170,17 +163,24 @@ if not (args.inject_sim):
         # Inv var map for 90 GHz
         ivar_map = (paths.act_data + data_choice.hres_ivar)
 
-        # if data_choice.hres_map == 'dr6': imap_90 = enmap.read_map(ivar_map, delayed=False)
-        # else: imap_90 = enmap.read_map(ivar_map, delayed=False, sel=np.s_[0, ...]) ##### fix here 
-
         try:
             imap_90 = enmap.read_map(ivar_map, delayed=False, sel=np.s_[0, ...]) 
         except:
             imap_90 = enmap.read_map(ivar_map, delayed=False)
 
+
         rms_map = maps.rms_from_ivar(
             imap_90, cylindrical=True
         ) # convert to RMS noise map
+
+
+        if args.dr6_lensing:
+            kappa_map = paths.act_data + "release/dr6_lensing_v1/maps/baseline/kappa_alm_data_act_dr6_lensing_v1_baseline.fits"
+            kmap = np.nan_to_num(hp.read_alm(kappa_map).astype(np.complex128))
+            # reading mask for geometry, mask is NOT applied to the map 
+            mask = enmap.read_map(paths.act_data + "DR6_lensing/masks/act_mask_20220316_GAL060_rms_70.00_d2sk.fits") 
+            k_map = curvedsky.alm2map(kmap, enmap.empty(mask.shape, mask.wcs, dtype=np.float64))
+
 
 # stamp size and resolution
 stamp_width_deg = args.swidth / 60.0        # stamp_width_arcmin: 128.0
@@ -377,6 +377,13 @@ klmin = args.klmin ; klmax = args.klmax             # 200, 5000 -> 3000
 bin_edges = np.arange(0, args.arcmax, args.arcstep) # 15 arcmin, 1.5 arcmin
 centers = (bin_edges[1:] + bin_edges[:-1]) / 2.0
 
+# for kappa L 
+ell_edges = np.arange(klmin, klmax, 200)
+ell_cents = (ell_edges[1:] + ell_edges[:-1]) / 2.0
+
+
+
+
 """ 
 !! BINNING
 """
@@ -413,6 +420,25 @@ def ilc(modlmap, m1, m2, p11, p22, p12, b1, b2):
     tret = p11 * 0
     tret[sel] = tcov
     return ret, tret
+
+
+
+
+#-------------------------------------------------------------------------------
+
+# agora sample mean 
+M200c = 6.37e14
+z = 0.6
+
+rstamp = 128.8 * utils.arcmin # args.swidth = 128
+res = pixel * utils.arcmin
+rmin = 0.
+rmax = 10 * utils.arcmin
+rwidth = 1.0 * utils.arcmin
+
+_,_,_,_,_,_,_,_,k2dmap,_ = lensing.kappa_nfw_profiley(mass=M200c,conc=None,z=z,z_s=1100.,background='critical',delta=200,apply_filter=True,lmin=klmin,lmax=klmax,res=res,rstamp=rstamp,rmin=rmin,rmax=rmax,rwidth=rwidth)
+
+#-------------------------------------------------------------------------------
 
 
 """ 
@@ -619,6 +645,20 @@ for task in my_tasks:
     else:
         pstamp, astamp_150, astamp_90 = csim.get_obs(task)
 
+    if args.dr6_lensing:
+        # cut out a stamp from the ACT DR6 reconstructed lensing map 
+        kstamp = reproject.thumbnails(
+            k_map,
+            coords,
+            r=maxr,
+            res=pixel * utils.arcmin,
+            proj="tan",
+            oversample=2,
+            pixwin=False
+        )     
+
+
+
     """ 
     !! COSINE TAPER
     """
@@ -636,9 +676,6 @@ for task in my_tasks:
     # applying this to the stamp makes it have a nice zeroed edge!
     act_stamp_150 = astamp_150 * taper
     act_stamp_90 = astamp_90 * taper
-
-    if args.freq_null:
-        act_stamp_fnull = (astamp_150 - astamp_90) * taper
 
     if not (args.hres_grad):
         plc_stamp = pstamp * taper
@@ -700,6 +737,8 @@ for task in my_tasks:
         if args.no_filter:
             s.add_to_stack('a150_cmb', astamp_150*sweight)
             s.add_to_stack('a90_cmb', astamp_90*sweight)
+            # s.add_to_stack('a150_cmb', astamp_150)
+            # s.add_to_stack('a90_cmb', astamp_90)
             sz150 = bin(astamp_150, modrmap * (180 * 60 / np.pi), bin_edges)
             sz150w = bin(astamp_150*sweight, modrmap * (180 * 60 / np.pi), bin_edges)
             sz90 = bin(astamp_90, modrmap * (180 * 60 / np.pi), bin_edges)
@@ -777,6 +816,7 @@ for task in my_tasks:
         # j = j + 1                        
         # continue # commented for now 
 
+
     """ 
     !! STAMP FFTs
     """
@@ -787,9 +827,6 @@ for task in my_tasks:
     if args.day_null:
         nk150 = enmap.fft(nact_stamp_150, normalize="phys")
         nk90 = enmap.fft(nact_stamp_90, normalize="phys")
-
-    if args.freq_null:
-        fnk = enmap.fft(act_stamp_fnull, normalize="phys")
  
     if not (args.hres_grad):
         kp = enmap.fft(plc_stamp, normalize="phys")
@@ -863,9 +900,6 @@ for task in my_tasks:
         act_cents, act_p1d_90 = lbinner.bin(pow(k90, k90) / w2)
         act_cents, act_p1d_150_90 = lbinner.bin(pow(k150, k90) / w2)
 
-    if args.freq_null:
-        act_cents, act_p1d = lbinner.bin(pow(fnk, fnk) / w2)
-
     if not (args.hres_grad):
         plc_cents, plc_p1d = lbinner.bin(pow(kp, kp) / w2)
     else:
@@ -912,21 +946,7 @@ for task in my_tasks:
             rms=0,
             lmin=defaults.highres_fit_ellmin,
             lmax=defaults.highres_fit_ellmax,
-        )
-
-    if args.freq_null:
-       tclaa_fn = fit_p1d(
-            l_edges,
-            act_cents,
-            act_p1d,
-            "act",
-            modlmap,
-            bfunc150,
-            bfunc150,
-            rms=defaults.highres_fiducial_rms,
-            lmin=defaults.highres_fit_ellmin,
-            lmax=defaults.highres_fit_ellmax,
-        )            
+        )          
 
     if not (args.hres_grad): 
        tclpp = fit_p1d(
@@ -1024,7 +1044,6 @@ for task in my_tasks:
             act_kmap150 = k150 / act_150_kbeam2d 
             act_kmap90 = k90 / act_90_kbeam2d 
             act_kmap = act_kmap150 - act_kmap90
-            tclaa = tclaa_fn / (act_150_kbeam2d ** 2.0)
             
         if args.no_150:
             act_kmap = k90 / act_90_kbeam2d 
@@ -1115,6 +1134,49 @@ for task in my_tasks:
 
     # transform to real space for unweighted stack
     kappa = enmap.ifft(krecon, normalize="phys").real
+
+
+
+
+    #---------------------------------------------------------------------------
+    ktemp = k2dmap # this is tapered and filtered template (in real space)
+
+    template = enmap.fft(ktemp, normalize="phys") 
+    assert np.all(np.isfinite(template))
+
+    p2d_cross_r = (krecon * template.conj()).real 
+    p2d_auto_template = (template * template.conj()).real
+
+    p1d_cross_r = bin(p2d_cross_r, modlmap, ell_edges)
+    p1d_auto_template = bin(p2d_auto_template, modlmap, ell_edges)
+
+    s.add_to_stats("p1d_cross_r", p1d_cross_r)
+    s.add_to_stats("p1d_auto_template", p1d_auto_template)
+
+    s.add_to_stack("temp", k2dmap)    
+    binned_temp = bin(k2dmap, modrmap * (180 * 60 / np.pi), bin_edges)   
+    s.add_to_stats("temp1d", binned_temp) 
+    #---------------------------------------------------------------------------
+
+
+    #---------------------------------------------------------------------------
+    # for DR6 lensing stack
+    if args.dr6_lensing:
+
+        k_stamp = maps.filter_map(kstamp * taper, kmask)  # this is tapered and filtered DR6 kappa (real space)
+
+        ikmap = enmap.fft(k_stamp, normalize="phys") 
+        assert np.all(np.isfinite(ikmap))
+
+        p2d_cross_k = (ikmap * template.conj()).real # cross with template 
+        p1d_cross_k = bin(p2d_cross_k, modlmap, ell_edges)
+        s.add_to_stats("p1d_cross_k", p1d_cross_k)
+
+        s.add_to_stack("kstamp", k_stamp)
+        binned_kappa = bin(k_stamp, modrmap * (180 * 60 / np.pi), bin_edges)   
+        s.add_to_stats("tk1d", binned_kappa)  
+    #---------------------------------------------------------------------------
+
 
     """ 
     !! REJECT WEIRD KAPPA
@@ -1228,9 +1290,10 @@ for task in my_tasks:
     if not(args.is_meanfield) and not(args.inject_sim):
         s.add_to_stats("data", (z,weight,*[cdata[key][i] for key in sorted(cdata.keys())]))                
         s.add_to_stats("redshift", (z,))
-        #s.add_to_stats("mass", (cdata['mass'][i],))
-        #s.add_to_stats("y0s", (cdata['y0s'][i],))
-        #s.add_to_stats("wmass", (cdata['mass'][i] * weight,))  
+        try:
+            s.add_to_stats("mass", (cdata['mass'][i],))
+        except:
+            pass 
       
     j = j + 1
 
@@ -1356,7 +1419,11 @@ if rank == 0:
         np.savetxt(f"{paths.savedir}/bin_edges.txt", bin_edges)
         if not(args.is_meanfield) and not (args.debug_stack):
             np.savetxt(f"{paths.savedir}/profiles.txt",s.vectors['k1d'])
-            #np.savetxt(f"{paths.savedir}/z_mass_y.txt", np.c_[s.vectors['redshift'], s.vectors['mass'], s.vectors['y0s']])
+            try:
+                np.savetxt(f"{paths.savedir}/z_mass.txt", np.c_[s.vectors['redshift'], s.vectors['mass']])
+                # np.savetxt(f"{paths.savedir}/z_mass_y.txt", np.c_[s.vectors['redshift'], s.vectors['mass'], s.vectors['y0s']])
+            except:
+                pass 
 
     for ctkey in [
         "selected"
@@ -1373,10 +1440,17 @@ if rank == 0:
         assert N_stamp == s.stack_count["kmap"]
         assert N_stamp == s.vectors["kw"].shape[0]
 
-        # if not (args.is_meanfield):
-        #     kappa_w = s.vectors['kw'].sum()
-        #     w_mass = s.vectors['wmass'].sum(axis=0)/kappa_w
-        #     print("weighted SZ mean mass : ", w_mass, "1e14 Msun")   
+    if not (args.is_meanfield) and not (args.debug_stack):
+        print("mean redshift:",  s.vectors['redshift'].sum() / N_stamp)
+        try:
+            print("mean SZ mass [M500c]:", s.vectors['mass'].sum() / N_stamp)
+        except:
+            pass 
+
+    # if not (args.is_meanfield):
+    #     kappa_w = s.vectors['kw'].sum()
+    #     w_mass = s.vectors['wmass'].sum(axis=0)/kappa_w
+    #     print("weighted SZ mean mass : ", w_mass, "1e14 Msun")   
 
     # Some debug plots if requested
     if args.debug_powers:

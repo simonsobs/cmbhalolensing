@@ -135,7 +135,7 @@ class Analysis(object):
             out['real'] = {}
             # Real space stack of reconstruction
             okmap = krecon.copy()
-            okmap[~self.fit_Kmask] = 0
+            okmap[self.fit_Kmask==0] = 0
             okreal = enmap.ifft(okmap,normalize='phys').real
             _,r1d = self.rbinner.bin(okreal)
             out['real']['map'] = okreal.copy()

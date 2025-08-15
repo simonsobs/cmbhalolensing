@@ -39,11 +39,11 @@ class Analysis(object):
         self.debug = debug
         
 
-        # Load template
-        thetas,kappa_1h,kappa_2h = np.loadtxt(c.template_file,unpack=True)
-        kappa = kappa_1h + kappa_2h
-        self.thetas = thetas
-        self.template_kappa_1d = kappa
+        # Load template for cross_correlations
+        thetas_cross,kappa_1h_cross,kappa_2h_cross = np.loadtxt(c.template_file,unpack=True)
+        kappa_cross = kappa_1h_cross + kappa_2h_cross
+        self.thetas_cross = thetas_cross
+        self.template_kappa_1d_cross = kappa_cross
 
         if atype=='flatsky_sim':
             # If we are doing a padded high-res flat sim
@@ -53,7 +53,20 @@ class Analysis(object):
             # will be slightly different from that constructed
             # directly
 
-            self.csim = olensing.FixedLens(thetas, kappa, width_deg=c.width_deg, pad_fact=1 if c.periodic else c.pad_fact)
+            # Make template profile for lensing
+            mass = c.mass
+            z=c.z
+            delta = c.delta
+
+            thetas,kappa_1h,kappa_2h,_,_,_,_,_ = olensing.kappa_nfw_profiley(mass=mass,conc=None,
+                                                                            z=z,z_s=1100.,background='critical',delta=delta, R_off_Mpc = None,
+                                                                            apply_filter=False)
+            
+            kappa = kappa_1h + kappa_2h
+            self.thetas = thetas
+            self.template_kappa_1d = kappa
+
+            self.csim = olensing.FixedLens(self.thetas, self.kappa, width_deg=c.width_deg, pad_fact=1 if c.periodic else c.pad_fact)
             _,_,dummy = self.csim.generate_sim(0) # FIXME: is this necessary
             self.shape, self.wcs = dummy.shape, dummy.wcs
         else:
@@ -66,7 +79,7 @@ class Analysis(object):
         self.rbinner = stats.bin2D(self.modrmap,self.rbin_edges)
         self.rcents = self.rbinner.cents
         self.modlmap = enmap.modlmap(self.shape,self.wcs)
-        self.template = enmap.enmap(maps.interp(thetas,kappa)(self.modrmap),self.wcs)
+        self.template = enmap.enmap(maps.interp(self.thetas_cross,self.kappa_cross)(self.modrmap),self.wcs)
 
 
         self.reconstructor = Recon(self.shape,self.wcs,

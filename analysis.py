@@ -43,7 +43,7 @@ class Analysis(object):
         thetas_cross,kappa_1h_cross,kappa_2h_cross = np.loadtxt(c.template_file,unpack=True)
         kappa_cross = kappa_1h_cross + kappa_2h_cross
         self.thetas_cross = thetas_cross
-        self.template_kappa_1d_cross = kappa_cross
+        self.kappa_cross = kappa_cross
 
         if atype=='flatsky_sim':
             # If we are doing a padded high-res flat sim
@@ -64,7 +64,7 @@ class Analysis(object):
             
             kappa = kappa_1h + kappa_2h
             self.thetas = thetas
-            self.template_kappa_1d = kappa
+            self.kappa = kappa
 
             self.csim = olensing.FixedLens(self.thetas, self.kappa, width_deg=c.width_deg, pad_fact=1 if c.periodic else c.pad_fact)
             _,_,dummy = self.csim.generate_sim(0) # FIXME: is this necessary
@@ -163,6 +163,7 @@ class Analysis(object):
 
         # Cross-correlate with template
         cents,cp1d,cp2d = self.power(self.ktemplate,kmap)
+        self.template_cross_p1d = cp1d
         if not(np.all(np.isfinite(cp1d))): raise ValueError
         if debug and self.rank==0:
             io.plot_img((np.fft.fftshift(self.modlmap**2 * cp2d)),self._out('recon_template_cross_p2d.png'))
@@ -251,7 +252,7 @@ class Analysis(object):
             lcents = self.lcents
             Lmin = self.Lmin
             Lmax = self.Lmax
-            p1d = self.template_auto_p1d
+            p1d = self.template_cross_p1d
             cmean = self.s.stats['cp1d']['mean']
             cerr = self.s.stats['cp1d']['errmean']
             ccov = self.s.stats['cp1d']['covmean']
@@ -317,13 +318,14 @@ class Analysis(object):
             pl._ax.set_ylim(-3e-5,5.1e-5)
             pl.done(self._out('recon_template_cross_p1d.png'))
 
-            pl = io.Plotter()
-            pl.add_err(rcents[rsel]/u.arcmin,rmean,yerr=rerr,marker='o')
-            pl.add(self.thetas/u.arcmin, self.template_kappa_1d)
-            pl._ax.set_xlim(0,10)
-            pl._ax.set_ylim(-0.01,rmean.max()*1.2)
-            pl.hline(y=0)
-            pl.done(self._out('recon_profile.png'))
+            if self.atype == 'flatsky_sim':
+                pl = io.Plotter()
+                pl.add_err(rcents[rsel]/u.arcmin,rmean,yerr=rerr,marker='o')
+                pl.add(self.thetas/u.arcmin, self.kappa)
+                pl._ax.set_xlim(0,10)
+                pl._ax.set_ylim(-0.01,rmean.max()*1.2)
+                pl.hline(y=0)
+                pl.done(self._out('recon_profile.png'))
     
     
 class Recon(object):

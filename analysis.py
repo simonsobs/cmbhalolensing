@@ -111,9 +111,11 @@ class Analysis(object):
         self.Lmin = c.Lmin
         self.Lmax = c.Lmax
 
+        # Auto-correlation for template
         self.ktemplate = enmap.fft(self.template * self.ctaper,normalize='phys')
         cents,p1d,p2d = self.power(self.ktemplate,self.ktemplate)
         self.template_auto_p1d = p1d
+
         if debug and self.rank==0:
             io.plot_img(self.ctaper,self._out('ctaper.png'),arc_width=c.width_deg*60.,
                         xlabel='$\\Theta$ (arcmin)',ylabel='$\\Theta$ (arcmin)')
@@ -124,7 +126,12 @@ class Analysis(object):
             pl.hline(y=0)
             pl.done(self._out('template_auto_p1d.png'))
 
-        
+        # Cross-correlation of template and lensing template
+        self.lensing_template = enmap.enmap(maps.interp(self.thetas,self.kappa)(self.modrmap),self.wcs)
+        self.klensing = enmap.fft(self.lensing_template * self.ctaper,normalize='phys')
+        cents, p1d_cross, p2d_cross = self.power(self.ktemplate, self.klensing)
+        self.template_cross_p1d = p1d_cross
+
         self.fit_Kmask = maps.mask_kspace(self.shape, self.wcs, lmin=c.Lmin, lmax=c.Lmax)
 
         if self.rank==0:
@@ -252,7 +259,9 @@ class Analysis(object):
             lcents = self.lcents
             Lmin = self.Lmin
             Lmax = self.Lmax
-            p1d = self.template_auto_p1d
+            if self.atype=='flatsky_sim':
+                p1d = self.template_cross_p1d
+            else: p1d = self.template_auto_p1d
             cmean = self.s.stats['cp1d']['mean']
             cerr = self.s.stats['cp1d']['errmean']
             ccov = self.s.stats['cp1d']['covmean']
@@ -274,7 +283,7 @@ class Analysis(object):
                         xlabel='$\\Theta$ (arcmin)',ylabel='$\\Theta$ (arcmin)')
 
             sel = np.logical_and(lcents>Lmin,lcents<Lmax)
-            signal = cmean[sel]
+            signal = p1d[sel]
             cov = ccov[sel,:][:,sel]
             err = cerr[sel]
 

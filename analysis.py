@@ -66,7 +66,8 @@ class Analysis(object):
             self.thetas = thetas
             self.kappa = kappa
 
-            self.csim = olensing.FixedLens(self.thetas, self.kappa, width_deg=c.width_deg, pad_fact=1 if c.periodic else c.pad_fact)
+            self.csim = olensing.FixedLens(self.thetas, self.kappa, width_deg=c.width_deg, pad_fact=1 if c.periodic else c.pad_fact,
+                                           skip_lensing=c.skip_lensing)
             _,_,dummy = self.csim.generate_sim(0) # FIXME: is this necessary
             self.shape, self.wcs = dummy.shape, dummy.wcs
 

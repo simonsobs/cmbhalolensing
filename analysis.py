@@ -39,11 +39,11 @@ class Analysis(object):
         self.debug = debug
         
 
-        # Load template
-        thetas,kappa_1h,kappa_2h = np.loadtxt(c.template_file,unpack=True)
-        kappa = kappa_1h + kappa_2h
-        self.thetas = thetas
-        self.template_kappa_1d = kappa
+        # Load template for cross_correlations
+        thetas_cross,kappa_1h_cross,kappa_2h_cross = np.loadtxt(c.template_file,unpack=True)
+        kappa_cross = kappa_1h_cross + kappa_2h_cross
+        self.thetas_cross = thetas_cross
+        self.kappa_cross = kappa_cross
 
         if atype=='flatsky_sim':
             # If we are doing a padded high-res flat sim
@@ -53,9 +53,24 @@ class Analysis(object):
             # will be slightly different from that constructed
             # directly
 
-            self.csim = olensing.FixedLens(thetas, kappa, width_deg=c.width_deg, pad_fact=1 if c.periodic else c.pad_fact)
+            # Make template profile for lensing
+            mass = c.mass
+            z=c.z
+            delta = c.delta
+
+            thetas,kappa_1h,kappa_2h,_,_,_,_,_ = olensing.kappa_nfw_profiley(mass=mass,conc=None,
+                                                                            z=z,z_s=1100.,background='critical',delta=delta, R_off_Mpc = None,
+                                                                            apply_filter=False)
+            
+            kappa = kappa_1h + kappa_2h
+            self.thetas = thetas
+            self.kappa = kappa
+
+            self.csim = olensing.FixedLens(self.thetas, self.kappa, width_deg=c.width_deg, pad_fact=1 if c.periodic else c.pad_fact,
+                                           skip_lensing=c.skip_lensing)
             _,_,dummy = self.csim.generate_sim(0) # FIXME: is this necessary
             self.shape, self.wcs = dummy.shape, dummy.wcs
+
         else:
             if c.periodic: raise ValueError
             self.thumbnail_r = c.width_deg * u.deg / 2.
@@ -66,7 +81,7 @@ class Analysis(object):
         self.rbinner = stats.bin2D(self.modrmap,self.rbin_edges)
         self.rcents = self.rbinner.cents
         self.modlmap = enmap.modlmap(self.shape,self.wcs)
-        self.template = enmap.enmap(maps.interp(thetas,kappa)(self.modrmap),self.wcs)
+        self.template = enmap.enmap(maps.interp(self.thetas_cross,self.kappa_cross)(self.modrmap),self.wcs)
 
 
         self.reconstructor = Recon(self.shape,self.wcs,
@@ -97,9 +112,11 @@ class Analysis(object):
         self.Lmin = c.Lmin
         self.Lmax = c.Lmax
 
+        # Auto-correlation for template
         self.ktemplate = enmap.fft(self.template * self.ctaper,normalize='phys')
         cents,p1d,p2d = self.power(self.ktemplate,self.ktemplate)
         self.template_auto_p1d = p1d
+
         if debug and self.rank==0:
             io.plot_img(self.ctaper,self._out('ctaper.png'),arc_width=c.width_deg*60.,
                         xlabel='$\\Theta$ (arcmin)',ylabel='$\\Theta$ (arcmin)')
@@ -110,7 +127,24 @@ class Analysis(object):
             pl.hline(y=0)
             pl.done(self._out('template_auto_p1d.png'))
 
-        
+        # Cross-correlation of template and lensing template
+        self.lensing_template = enmap.enmap(maps.interp(self.thetas,self.kappa)(self.modrmap),self.wcs)
+        self.klensing = enmap.fft(self.lensing_template * self.ctaper,normalize='phys')
+        cents, p1d_cross, p2d_cross = self.power(self.ktemplate, self.klensing)
+        self.template_cross_p1d = p1d_cross
+
+        if debug and self.rank==0:
+            cents, p1d_auto, p2d_auto = self.power(self.klensing, self.klensing)
+
+            io.plot_img((np.fft.fftshift(self.modlmap**2 * p2d_cross)),self._out('template_cross_p2d.png'))
+            pl = io.Plotter(xyscale='linlin',xlabel='L',ylabel='L^2 C_L')
+            pl.add(cents,cents**2 * p1d_cross,marker='o',label='cross')
+            pl.add(cents,cents**2 * p1d_auto,marker='o',label='lensing template auto')
+            pl.add(cents,cents**2 * p1d,marker='o',label='correlation template auto')
+            pl.vline(x=500)
+            pl.hline(y=0)
+            pl.done(self._out('template_cross_p1d.png'))
+
         self.fit_Kmask = maps.mask_kspace(self.shape, self.wcs, lmin=c.Lmin, lmax=c.Lmax)
 
         if self.rank==0:
@@ -238,7 +272,9 @@ class Analysis(object):
             lcents = self.lcents
             Lmin = self.Lmin
             Lmax = self.Lmax
-            p1d = self.template_auto_p1d
+            if self.atype=='flatsky_sim':
+                p1d = self.template_cross_p1d
+            else: p1d = self.template_auto_p1d
             cmean = self.s.stats['cp1d']['mean']
             cerr = self.s.stats['cp1d']['errmean']
             ccov = self.s.stats['cp1d']['covmean']
@@ -306,7 +342,7 @@ class Analysis(object):
 
             pl = io.Plotter()
             pl.add_err(rcents[rsel]/u.arcmin,rmean,yerr=rerr,marker='o')
-            pl.add(self.thetas/u.arcmin, self.template_kappa_1d)
+            pl.add(self.thetas/u.arcmin, self.kappa) #FIXME: only for flatsky sim?
             pl._ax.set_xlim(0,10)
             pl._ax.set_ylim(-0.01,rmean.max()*1.2)
             pl.hline(y=0)

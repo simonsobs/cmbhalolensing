@@ -133,6 +133,18 @@ class Analysis(object):
         cents, p1d_cross, p2d_cross = self.power(self.ktemplate, self.klensing)
         self.template_cross_p1d = p1d_cross
 
+        if debug and self.rank==0:
+            cents, p1d_auto, p2d_auto = self.power(self.klensing, self.klensing)
+
+            io.plot_img((np.fft.fftshift(self.modlmap**2 * p2d_cross)),self._out('template_cross_p2d.png'))
+            pl = io.Plotter(xyscale='linlin',xlabel='L',ylabel='L^2 C_L')
+            pl.add(cents,cents**2 * p1d_cross,marker='o',label='cross')
+            pl.add(cents,cents**2 * p1d_auto,marker='o',label='lensing template auto')
+            pl.add(cents,cents**2 * p1d,marker='o',label='correlation template auto')
+            pl.vline(x=500)
+            pl.hline(y=0)
+            pl.done(self._out('template_cross_p1d.png'))
+
         self.fit_Kmask = maps.mask_kspace(self.shape, self.wcs, lmin=c.Lmin, lmax=c.Lmax)
 
         if self.rank==0:

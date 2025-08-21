@@ -42,7 +42,10 @@ ybeam_noise_uk_arcmin: 10.0
 # ================================================
 # How the template and reconstruction are treated
 # ================================================
-
+# This is the profile used for lensing reconstruction in the flatsky sim case
+mass: 2.0e+14
+delta: 500 #'200' or '500' for critical mass (profiley will calculate m200c or m500c)
+z: 1.0
 theta_max_arc: 20.0 # All templates and reconstructions are masked beyond this radius so that we are not sensitive to the modeling there
 roll_arc: 20.0 # with a cosine taper that rolls of to zero in this distance
 # The above two decide what ctaper looks like (saved to ctaper.png)

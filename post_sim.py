@@ -180,8 +180,10 @@ print("profile diff \t \t n-sigma \t \t pte")
 
 if plot_tk1d:
     tk1d_diff, tk_err_diff, tk_cov_diff = difference(k1d[baseline], tk1d[baseline], all_stack1d[baseline], all_tk1d[baseline])
-    tk_chi2_diff, tk_pte_diff = chi_square_pte(tk1d_diff, tk_cov_diff)
-    tk_nsigma_diff = np.sqrt(tk_chi2_diff)
+    # tk_chi2_diff, tk_pte_diff = chi_square_pte(tk1d_diff, tk_cov_diff)
+    # tk_nsigma_diff = np.sqrt(tk_chi2_diff)
+    tk_pte_diff = stats.sim_pte(tk1d_diff, tk_cov_diff, 1.e5)
+    tk_nsigma_diff = stats.nsigma_from_pte(tk_pte_diff)
     print(f"{baseline}-true \t \t {tk_nsigma_diff} \t \t {tk_pte_diff}")
     pl_tk1d.add_err(r[baseline]+o, tk1d_diff, yerr=tk_err_diff, ls="-", label = labeling(baseline))
     a*=da
@@ -195,8 +197,10 @@ for i,fg in enumerate(foregrounds):
     r_diff = r[fg]-r[baseline]
     assert np.sum(r_diff) == 0.
     k1d_diff, err_diff, cov_diff = difference(k1d[fg], k1d[baseline], all_stack1d[fg], all_stack1d[baseline])
-    chi2_diff, pte_diff = chi_square_pte(k1d_diff, cov_diff)
-    nsigma_diff = np.sqrt(chi2_diff)
+    # chi2_diff, pte_diff = chi_square_pte(k1d_diff, cov_diff)
+    # nsigma_diff = np.sqrt(chi2_diff)
+    pte_diff = stats.sim_pte(k1d_diff, cov_diff, 1.e5)
+    nsigma_diff = stats.nsigma_from_pte(pte_diff)
     print(f"{fg}-{baseline} \t \t {nsigma_diff} \t \t {pte_diff}")
     pl_data.add_err(r[baseline]+o, k1d_diff, yerr=err_diff, ls="-", label=label, alpha=a, color=color)
     # if plot_mf:
@@ -204,8 +208,10 @@ for i,fg in enumerate(foregrounds):
     #     pl_mf.add_err(r[baseline]+o, mf1d_diff, yerr=err_diff, ls="--", label=f"{label} relative mf", alpha=a, color=color)
     if plot_tk1d:
         tk1d_diff, tk_err_diff, tk_cov_diff = difference(k1d[fg], tk1d[baseline], all_stack1d[fg], all_tk1d[baseline])
-        tk_chi2_diff, tk_pte_diff = chi_square_pte(tk1d_diff, tk_cov_diff)
-        tk_nsigma_diff = np.sqrt(tk_chi2_diff)
+        # tk_chi2_diff, tk_pte_diff = chi_square_pte(tk1d_diff, tk_cov_diff)
+        # tk_nsigma_diff = np.sqrt(tk_chi2_diff)
+        tk_pte_diff = stats.sim_pte(tk1d_diff, tk_cov_diff, 1.e5)
+        tk_nsigma_diff = stats.nsigma_from_pte(tk_pte_diff)
         print(f"{fg}-true \t \t {tk_nsigma_diff} \t \t {tk_pte_diff}")
         pl_tk1d.add_err(r[baseline]+o, tk1d_diff, yerr=tk_err_diff, ls="-", label=label, alpha=a, color=color)
     a*=da

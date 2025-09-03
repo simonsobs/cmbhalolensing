@@ -344,7 +344,8 @@ class Analysis(object):
             pl.add_err(rcents[rsel]/u.arcmin,rmean,yerr=rerr,marker='o')
             pl.add(self.thetas/u.arcmin, self.kappa) #FIXME: only for flatsky sim?
             pl._ax.set_xlim(0,10)
-            pl._ax.set_ylim(-0.01,rmean.max()*1.2)
+            pl._ax.set_ylim(rmean.min()-0.1,rmean.max()+0.1)
+            # pl._ax.set_ylim(-0.01,rmean.max()*1.2)
             pl.hline(y=0)
             pl.done(self._out('recon_profile.png'))
     

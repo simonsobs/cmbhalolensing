@@ -308,7 +308,7 @@ except:
         dBnudT = (2.*hplanck*nu**3.)/clight**2. * (np.exp(X))/(np.exp(X)-1.)**2. * X/tcmb_uK * 1e26
         return 1./dBnudT
 
-        # frequency for CIB 
+    # frequency for CIB 
 
     cibmap = ItoDeltaT(freq_cib) * cibmap_i 
     if args.which_sim == "websky": cibmap *= 1.e6 # MJy/sr -> Jy/sr -> Tcmb

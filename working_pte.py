@@ -38,23 +38,25 @@ chisquare = np.dot(np.dot(diff,cinv),diff)
 print("Chisquare , dof : ", chisquare, diff.size)
 
 Nsims = 10000000
-samples = np.random.multivariate_normal(diff*0,scov,size=Nsims)
-    # if label=='curl':
-    #     Nexs = 20
-    #     for i in range(Nexs):
-    #         pl2 = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
-    #         pl2.add_err(cents[:nbins], samples[i], yerr=np.sqrt(np.diagonal(scov)))
-    #         pl2.hline(y=0)
-    #         pl2.done(f'{isave_name}_curl_sample_{i}.png')
+# samples = np.random.multivariate_normal(diff*0,scov,size=Nsims)
+#     # if label=='curl':
+#     #     Nexs = 20
+#     #     for i in range(Nexs):
+#     #         pl2 = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
+#     #         pl2.add_err(cents[:nbins], samples[i], yerr=np.sqrt(np.diagonal(scov)))
+#     #         pl2.hline(y=0)
+#     #         pl2.done(f'{isave_name}_curl_sample_{i}.png')
 
-chisquares = np.einsum('ik,ik->i', np.einsum('ij,jk->ik',samples,cinv),samples)
+# chisquares = np.einsum('ik,ik->i', np.einsum('ij,jk->ik',samples,cinv),samples)
 
-pte = chisquares[chisquares>chisquare].size / Nsims
+# pte = chisquares[chisquares>chisquare].size / Nsims
 
+pte = stats.sim_pte(diff*0, scov, Nsims)
 ptetext = f"PTE: {pte:.1e}"
 print(ptetext)
 
-nsigma = np.sqrt(2.) * erfinv(1.-pte)
+# nsigma = np.sqrt(2.) * erfinv(1.-pte)
+nsigma = nsigma_from_pte(pte)
 snrtext = f"SNR: {nsigma:.2f}"
 print(snrtext)
 

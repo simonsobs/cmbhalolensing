@@ -1,6 +1,6 @@
 import matplotlib.colors as mcolors
 import numpy as np
-from orphics.io import plot_img, Plotter
+from orphics import io, stats
 import pixell.utils as u
 import sys
 from sklearn.covariance import LedoitWolf
@@ -13,7 +13,7 @@ stack_path = sys.argv[2] # where profiles and stacks are saved
 sim = sys.argv[3] # agora, websky
 freq = sys.argv[4] # 90, 150
 title_text = sys.argv[5]
-prefixes = sys.argv[6:] # cmb, cmb_cib, cmb_ksz_cib, cmb_tsz, cmb_tsz_cib, cmb_tsz_ksz_cib
+prefixes = sys.argv[6:] # cmb cmb_cib cmb_ksz_cib cmb_tsz cmb_tsz_cib cmb_tsz_ksz_cib
 
 plot_mf = True
 plot_tk1d = True
@@ -68,14 +68,14 @@ for prefix in prefixes:
     kmap_zoom = kmap[100:140,100:140]
     np.save(f"{pathname}_1rkappa_mfsub.npy", kmap)
     
-    plot_img(kmap,f"{pathname}_1rkappa_mfsub.png", flip=False, ftsize=12, ticksize=10,cmap='coolwarm',
+    io.plot_img(kmap,f"{pathname}_1rkappa_mfsub.png", flip=False, ftsize=12, ticksize=10,cmap='coolwarm',
             label=r'$\kappa$',arc_width=120,xlabel=r"$\theta_x$ (arcmin)",ylabel=r"$\theta_y$ (arcmin)")
-    plot_img(kmap_zoom,f"{pathname}_1rkappa_mfsub_zoom.png", flip=False, ftsize=12, ticksize=10,
+    io.plot_img(kmap_zoom,f"{pathname}_1rkappa_mfsub_zoom.png", flip=False, ftsize=12, ticksize=10,
             cmap='coolwarm',label=r'$\kappa$',arc_width=20,xlabel=r"$\theta_x$ (arcmin)",ylabel=r"$\theta_y$ (arcmin)")
 
-    plot_img(corr[prefix],f'{pathname}_1rkappa_corr.png')
+    io.plot_img(corr[prefix],f'{pathname}_1rkappa_corr.png')
 
-    pl = Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
+    pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
     pl.add_err(r[prefix], k1d[prefix], yerr=err[prefix], ls="-",label="Filtered kappa, mean-field subtracted")
     if plot_mf:
         pl.add_err(r[prefix], mf1d[prefix], yerr=mf_err[prefix],label="Mean-field",ls="-",alpha=0.5)
@@ -100,8 +100,8 @@ def labeling(prefix):
 # overplotting
 colors = list(mcolors.TABLEAU_COLORS.values())
 
-pl = Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
-if plot_mf: plmf = Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
+pl = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
+if plot_mf: plmf = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
 
 a=1.    #line opacity
 o=0     #offset
@@ -153,13 +153,13 @@ def difference(mean1, mean2, all1, all2):
 # relative difference
 colors = list(mcolors.TABLEAU_COLORS.values())
 
-pl_data = Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', 
+pl_data = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', 
                   ylabel='$\\kappa_{CMB+} - \kappa_{CMB}$')
 
 # if plot_mf:
-#     pl_mf = Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
+#     pl_mf = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', ylabel='$\\kappa$')
 if plot_tk1d:
-    pl_tk1d = Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', 
+    pl_tk1d = io.Plotter(xyscale='linlin', xlabel='$\\theta$ [arcmin]', 
                       ylabel='$\\kappa_{recon} - \kappa_{true}$')
                       
 
@@ -182,7 +182,7 @@ if plot_tk1d:
     tk1d_diff, tk_err_diff, tk_cov_diff = difference(k1d[baseline], tk1d[baseline], all_stack1d[baseline], all_tk1d[baseline])
     # tk_chi2_diff, tk_pte_diff = chi_square_pte(tk1d_diff, tk_cov_diff)
     # tk_nsigma_diff = np.sqrt(tk_chi2_diff)
-    tk_pte_diff = stats.sim_pte(tk1d_diff, tk_cov_diff, 1.e5)
+    tk_pte_diff = stats.sim_pte(tk1d_diff, tk_cov_diff, 100000)
     tk_nsigma_diff = stats.nsigma_from_pte(tk_pte_diff)
     print(f"{baseline}-true \t \t {tk_nsigma_diff} \t \t {tk_pte_diff}")
     pl_tk1d.add_err(r[baseline]+o, tk1d_diff, yerr=tk_err_diff, ls="-", label = labeling(baseline))
@@ -199,10 +199,13 @@ for i,fg in enumerate(foregrounds):
     k1d_diff, err_diff, cov_diff = difference(k1d[fg], k1d[baseline], all_stack1d[fg], all_stack1d[baseline])
     # chi2_diff, pte_diff = chi_square_pte(k1d_diff, cov_diff)
     # nsigma_diff = np.sqrt(chi2_diff)
-    pte_diff = stats.sim_pte(k1d_diff, cov_diff, 1.e5)
+    pte_diff = stats.sim_pte(k1d_diff, cov_diff, 100000)
     nsigma_diff = stats.nsigma_from_pte(pte_diff)
     print(f"{fg}-{baseline} \t \t {nsigma_diff} \t \t {pte_diff}")
     pl_data.add_err(r[baseline]+o, k1d_diff, yerr=err_diff, ls="-", label=label, alpha=a, color=color)
+    io.save_cols(f"{stack_path}/{savename}_{fg}_1bias_fg_rkappa_mfsub.txt", (r[baseline], k1d_diff))
+    io.save_cols(f"{stack_path}/{savename}_{fg}_1bias_fg_rkappa_errs.txt", (r[baseline], err_diff))
+    np.savetxt(f"{stack_path}/{savename}_{fg}_1bias_fg_rkappa_cov.txt", cov_diff)
     # if plot_mf:
     #     mf1d_diff, mf_err_diff = difference(all_mf1d[fg], all_mf1d[baseline])
     #     pl_mf.add_err(r[baseline]+o, mf1d_diff, yerr=err_diff, ls="--", label=f"{label} relative mf", alpha=a, color=color)
@@ -210,10 +213,13 @@ for i,fg in enumerate(foregrounds):
         tk1d_diff, tk_err_diff, tk_cov_diff = difference(k1d[fg], tk1d[baseline], all_stack1d[fg], all_tk1d[baseline])
         # tk_chi2_diff, tk_pte_diff = chi_square_pte(tk1d_diff, tk_cov_diff)
         # tk_nsigma_diff = np.sqrt(tk_chi2_diff)
-        tk_pte_diff = stats.sim_pte(tk1d_diff, tk_cov_diff, 1.e5)
+        tk_pte_diff = stats.sim_pte(tk1d_diff, tk_cov_diff, 100000)
         tk_nsigma_diff = stats.nsigma_from_pte(tk_pte_diff)
         print(f"{fg}-true \t \t {tk_nsigma_diff} \t \t {tk_pte_diff}")
         pl_tk1d.add_err(r[baseline]+o, tk1d_diff, yerr=tk_err_diff, ls="-", label=label, alpha=a, color=color)
+        io.save_cols(f"{stack_path}/{savename}_{fg}_1bias_recon_tkappa_rkappa_mfsub.txt", (r[baseline], tk1d_diff))
+        io.save_cols(f"{stack_path}/{savename}_{fg}_1bias_recon_tkappa_rkappa_errs.txt", (r[baseline], tk_err_diff))
+        np.savetxt(f"{stack_path}/{savename}_{fg}_recon_tkappa_rkappa_cov.txt", tk_cov_diff)
     a*=da
     o+=do
 pl_data.hline(y=0)

@@ -625,6 +625,11 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
             ras = desi_data["ra"]
             decs = desi_data["dec"]
             zs = desi_data["z_not4clus"]
+        
+        sel = np.logical_and(zs>=zmin,zs<zmax)
+        ras = ras[sel]
+        decs = decs[sel]
+        zs = zs[sel]
 
         ws = ras*0 + 1
 

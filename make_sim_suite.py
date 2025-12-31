@@ -31,6 +31,9 @@ parser.add_argument(
     "freq", type=int, help="Frequency for tSZ and CIB"
 )
 parser.add_argument(
+    "leg", type=str, help="grad or hres"
+)
+parser.add_argument(
     "--high-accuracy", action="store_true", help="If using a high accuracy websky map, choose this option."
 )
 args = parser.parse_args() 
@@ -60,16 +63,24 @@ print(" ::: saving to", save_dir)
 
 
 # SIM SETTING ------------------------------------------------------------------
+px = 0.5
+nlevel = 15.0
+nlevel_plc = 35.0  
+fwhm90 = 2.2
+fwhm150 = 1.5
+fwhm_plc = 5.0
 
 freq_sz = args.freq
 print(" ::: map frequency at %d GHz" %freq_sz)
 
-px = 0.5
-fwhm = 1.5
-nlevel = 15.0  
-
-
-
+if args.leg == "grad":
+    nlevel = nlevel_plc
+    fwhm = fwhm_plc
+elif args.leg == "hres":
+    if args.freq == 90:
+        fwhm = fwhm90
+    elif args.freq == 150:
+        fwhm  = fwhm150
 
 
 

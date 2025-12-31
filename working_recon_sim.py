@@ -32,7 +32,7 @@ parser.add_argument(
     "sim_version", type=str, help="Version name of simsuite."
 )
 parser.add_argument(
-    "which_cat", type=str, help="Choose the catalogue type e.g. halo or tsz."
+    "which_cat", type=str, help="Choose the catalogue type e.g. halo or tsz or cmass."
 )
 parser.add_argument(
     "hres_choice", type=str, help="Choose the map for high resolution leg e.g. cmb, cmb_tsz, etc."
@@ -58,6 +58,12 @@ parser.add_argument(
 parser.add_argument(
     "--inpaint", action="store_true", help="Perform gradient inpainting."
 )
+parser.add_argument(
+    "--only90", action="store_true", help="Perform reconstruction on 90GHz only, no ILC."
+)
+parser.add_argument(
+    "--only150", action="store_true", help="Perform reconstruction on 150GHz only, no ILC."
+)
 
 args = parser.parse_args() 
 
@@ -72,24 +78,33 @@ save_dir = f"{output_path}/{save_name}"
 io.mkdir(f"{save_dir}")
 print(" ::: saving to", save_dir)
 
-simsuite_path_90 = f"{paths.simsuite_path}/{args.which_sim}_{args.sim_version}_90/"
-simsuite_path_150 = f"{paths.simsuite_path}/{args.which_sim}_{args.sim_version}_150/"
+if args.only90:
+    hres_simsuite_path_90 = f"{paths.simsuite_path}/{args.which_sim}_{args.sim_version}_90_hres/"
+    grad_simsuite_path_90 = f"{paths.simsuite_path}/{args.which_sim}_{args.sim_version}_90_grad/"
+elif args.only150:
+    hres_simsuite_path_150 = f"{paths.simsuite_path}/{args.which_sim}_{args.sim_version}_150_hres/"
+    grad_simsuite_path_150 = f"{paths.simsuite_path}/{args.which_sim}_{args.sim_version}_150_grad/"
+else:
+    hres_simsuite_path_90 = f"{paths.simsuite_path}/{args.which_sim}_{args.sim_version}_90_hres/"
+    hres_simsuite_path_150 = f"{paths.simsuite_path}/{args.which_sim}_{args.sim_version}_150_hres/"
+    grad_simsuite_path_150 = f"{paths.simsuite_path}/{args.which_sim}_{args.sim_version}_150_grad/"
+
 # cat_path = f"{paths.cat_path}/{paths.nemosim_version}/"
 # cat = paths.cmass_cat
 # print(" ::: catalogue:", args.which_sim, args.which_cat, "[ simsuite ver:", args.sim_version, "]")
 # print(" ::: catalogue:", args.which_sim, args.which_cat, "[ simsuite ver:", args.sim_version, "/ nemosim ver:", paths.nemosim_version, "]")
 print(" ::: catalogue:", args.which_sim, args.which_cat)
-print(" ::: hres:", args.hres_choice, "/ grad: cmb")
+print(" ::: hres:", args.hres_choice, "/ grad:", args.grad_choice)
 
 if args.is_meanfield: print(" ::: this is a mean-field run")
 
 
 # SIM SETTING ------------------------------------------------------------------
 
-xlmin = 200 
+xlmin = 600 
 xlmax = 2000
 
-ylmin = 200
+ylmin = 600
 ylmax = 6000 #3500  # low lmax cut (high lmax cut is 6000)
 ylcut = 2
 
@@ -118,7 +133,8 @@ highres_fiducial_alpha = -4
 tap_per = 12.0
 pad_per = 3.0
 
-fwhm = 1.5
+fwhm90 = 2.2
+fwhm150 = 1.5
 fwhm_plc = 5.0
 nlevel = 15.0   
 nlevel_plc = 35.0 
@@ -247,19 +263,44 @@ elif args.which_sim == "agora":
 
 print(" ::: preparing for OBSERVED maps")
 
-hres90 = f"{simsuite_path_90}o{args.hres_choice}.fits"
-hres150 = f"{simsuite_path_150}o{args.hres_choice}.fits"
-grad = f"{simsuite_path_90}ocmb.fits"
-
+if args.only90:
+    hres90 = f"{hres_simsuite_path_90}o{args.hres_choice}.fits"
+    grad90 = f"{grad_simsuite_path_90}o{args.grad_choice}.fits"
+elif args.only150:
+    hres150 = f"{hres_simsuite_path_150}o{args.hres_choice}.fits"
+    grad150 = f"{grad_simsuite_path_150}o{args.grad_choice}.fits"
+else:
+    hres90 = f"{hres_simsuite_path_90}o{args.hres_choice}.fits"
+    hres150 = f"{hres_simsuite_path_150}o{args.hres_choice}.fits"
+    grad150 = f"{grad_simsuite_path_150}o{args.grad_choice}.fits"
 
 print(" ::: reading true kappa map:", true)
-print(" ::: reading lensed hres map:", hres90, hres150)
-print(" ::: reading lensed grad map:", grad)
-
 true_map = enmap.read_map(true, delayed=False)
-hres90_map = enmap.read_map(hres90, delayed=False)
-hres150_map = enmap.read_map(hres150, delayed=False)
-grad_map = enmap.read_map(grad, delayed=False)
+
+if args.only90:
+    print(" ::: reading lensed hres 90 GHz map:", hres90)
+    hres90_map = enmap.read_map(hres90, delayed=False)
+
+    print(" ::: reading lensed grad 90 GHz map:", grad90)
+    grad_map = enmap.read_map(grad90, delayed=False)
+
+elif args.only150:
+    print(" ::: reading lensed hres 150 GHz map:", hres150)
+    hres150_map = enmap.read_map(hres150, delayed=False)
+    
+    print(" ::: reading lensed grad 150 GHz map:", grad150)
+    grad_map = enmap.read_map(grad150, delayed=False)
+
+else: #ILC case
+    print(" ::: reading lensed hres 90 GHz map:", hres90)
+    hres90_map = enmap.read_map(hres90, delayed=False)
+
+    print(" ::: reading lensed hres 150 GHz map:", hres150)
+    hres150_map = enmap.read_map(hres150, delayed=False)
+    
+    print(" ::: reading lensed grad 150 GHz map:", grad150)
+    grad_map = enmap.read_map(grad150, delayed=False)   #using 150 for grad (where CIB peaks)
+
 print(" ::: maps are ready!")
 
 # FOR ILC / COADD ----------------------------------------------------------------
@@ -281,7 +322,7 @@ def fit_p1d(
     cls = p1d[sel]
     cltt = tfunc(ells)  # fiducial Cltt
 
-    if which == "plc" or which == "act" or which == "act_cross":
+    if which == "plc" or which == "act" or which == "act_cross" or which == "plc_cross":
         w0 = gradient_fiducial_rms if which=='plc' else highres_fiducial_rms
         sigma2 = stats.get_sigma2(ells, cltt, w0, delta_ells, fsky, ell0=0, alpha=1)
         func = stats.fit_cltt_power(ells, cls, tfunc, w0, sigma2, ell0=0, alpha=1, fix_knee=True)
@@ -358,25 +399,27 @@ for task in my_tasks:
         pixwin=False
     ) # true kappa
 
-    hres90 = reproject.thumbnails(
-        hres90_map,
-        coords,
-        r=maxr,
-        res=px * utils.arcmin,
-        proj="tan",
-        oversample=2,
-        pixwin=True if args.high_accuracy else False # only True for maps made natively in CAR
-    ) # lensed hres 90GHz
+    if not args.only150:
+        hres90 = reproject.thumbnails(
+            hres90_map,
+            coords,
+            r=maxr,
+            res=px * utils.arcmin,
+            proj="tan",
+            oversample=2,
+            pixwin=True if args.high_accuracy else False # only True for maps made natively in CAR
+        ) # lensed hres 90GHz
 
-    hres150 = reproject.thumbnails(
-        hres150_map,
-        coords,
-        r=maxr,
-        res=px * utils.arcmin,
-        proj="tan",
-        oversample=2,
-        pixwin=True if args.high_accuracy else False # only True for maps made natively in CAR
-    ) # lensed hres 150GHz
+    if not args.only90:
+        hres150 = reproject.thumbnails(
+            hres150_map,
+            coords,
+            r=maxr,
+            res=px * utils.arcmin,
+            proj="tan",
+            oversample=2,
+            pixwin=True if args.high_accuracy else False # only True for maps made natively in CAR
+        ) # lensed hres 150GHz
 
     grad = reproject.thumbnails(
         grad_map,
@@ -386,7 +429,7 @@ for task in my_tasks:
         proj="tan",
         oversample=2,
         pixwin=True if args.high_accuracy else False # only True for maps made natively in CAR
-    ) # lensed grad
+    ) # lensed grad (150GHz if using ILC)
 
     # initialise calculations based on geometry 
 
@@ -398,9 +441,12 @@ for task in my_tasks:
         modlmap = enmap.modlmap(shape, wcs)
         modrmap = enmap.modrmap(shape, wcs)
         
-        assert wcsutils.equal(kstamp.wcs, hres90.wcs)
-        assert wcsutils.equal(kstamp.wcs, hres150.wcs)
+        if not args.only150:
+            assert wcsutils.equal(kstamp.wcs, hres90.wcs)
+        if not args.only90:
+            assert wcsutils.equal(kstamp.wcs, hres150.wcs)
         assert wcsutils.equal(kstamp.wcs, grad.wcs)
+
 
         # get an edge taper map and apodize
         taper = maps.get_taper(
@@ -413,7 +459,8 @@ for task in my_tasks:
         taper = taper[0]  
 
         # evaluate the 2D Gaussian beam on an isotropic Fourier grid
-        beam2d = maps.gauss_beam(modlmap, fwhm)
+        beam2d_90 = maps.gauss_beam(modlmap, fwhm90)
+        beam2d_150 = maps.gauss_beam(modlmap, fwhm150)
         beam2d_plc = maps.gauss_beam(modlmap, fwhm_plc)
         
         bfunc150 = lambda x: maps.gauss_beam(ilc_beam_fwhm150, x)
@@ -431,12 +478,6 @@ for task in my_tasks:
         # get theory spectrum and build interpolated 2D Fourier CMB from theory and maps      
         theory = cosmology.default_theory()
         ucltt2d = theory.lCl("TT", modlmap)
-
-        # if not ILC:
-        # total spectrum includes beam-deconvolved noise       
-        # npower = (nlevel * np.pi/180./60.)**2.
-        # tcltt2d = ucltt2d + npower/beam2d**2.
-        # tcltt2d[~np.isfinite(tcltt2d)] = 0
 
         # bin size and range for 1D binned power spectrum
         minell = 2 * maps.minimum_ell(shape, wcs)
@@ -457,9 +498,12 @@ for task in my_tasks:
     # grad = globals()[args.grad_choice]
 
     # taper stamp
-    tapered_hres90 = hres90 * taper
-    tapered_hres150 = hres150 * taper
+    if not args.only150:
+        tapered_hres90 = hres90 * taper
+    if not args.only90:
+        tapered_hres150 = hres150 * taper
     tapered_grad = grad * taper  
+
 
     if args.inpaint:
         """ 
@@ -495,119 +539,126 @@ for task in my_tasks:
         else:
             inpaint_st = inpaint_st + inp_stamp
 
-
-    # ILC will return a beam-deconvolved Fourier transformed stamp
-    k_grad = enmap.fft(tapered_grad, normalize="phys")
-    k150 = enmap.fft(tapered_hres150, normalize="phys")
-    k90 = enmap.fft(tapered_hres90, normalize="phys")
-    assert np.all(np.isfinite(k150)) 
-    assert np.all(np.isfinite(k90))  
-
-    # Fourier map -> PS
-    pow = lambda x, y: (x * y.conj()).real 
-
-    # measure the binned power spectrum from given stamp
-    act_cents, act_p1d_150 = lbinner.bin(pow(k150, k150) / w2)
-    act_cents, act_p1d_90 = lbinner.bin(pow(k90, k90) / w2)
-    act_cents, act_p1d_150_90 = lbinner.bin(pow(k150, k90) / w2)
-    plc_cents, plc_p1d = lbinner.bin(pow(k_grad, k_grad) / w2)
-
-    # fit power spectra 
-    tclaa_150 = fit_p1d(
-        l_edges,
-        act_cents,
-        act_p1d_150,
-        "act",
-        modlmap,
-        bfunc150,
-        bfunc150,
-        rms=highres_fiducial_rms,
-        lmin=highres_fit_ellmin,
-        lmax=highres_fit_ellmax,
-    )
-
-    tclaa_90 = fit_p1d(
-        l_edges,
-        act_cents,
-        act_p1d_90,
-        "act",
-        modlmap,
-        bfunc90,
-        bfunc90,
-        rms=highres_fiducial_rms,
-        lmin=highres_fit_ellmin,
-        lmax=highres_fit_ellmax,
-    )
-
-    tclaa_150_90 = fit_p1d(
-        l_edges,
-        act_cents,
-        act_p1d_150_90,
-        "act_cross",
-        modlmap,
-        bfunc150,
-        bfunc90,
-        rms=0,
-        lmin=highres_fit_ellmin,
-        lmax=highres_fit_ellmax,
-    )
-
-    tclpp = fit_p1d(
-        l_edges,
-        plc_cents,
-        plc_p1d,
-        "plc",
-        modlmap,
-        lambda x: maps.gauss_beam(x, fwhm_plc),
-        lambda x: maps.gauss_beam(x, fwhm_plc),
-        rms=gradient_fiducial_rms,
-        lmin=gradient_fit_ellmin,
-        lmax=gradient_fit_ellmax,
-    )
-
-    # ILC / coadd 
-    k_hres, tclaa = ilc(
-        modlmap,
-        k150,
-        k90,
-        tclaa_150,
-        tclaa_90,
-        tclaa_150_90,
-        act_150_kbeam2d,
-        act_90_kbeam2d,
-    ) # beam deconvolved
-
-    k_grad = k_grad / plc_kbeam2d  
-    tclpp = tclpp / (plc_kbeam2d ** 2.0)
-
-    # # fit cross-power of gradient and ILC hres 
-    # cents, c_ap = lbinner.bin(pow(k_hres, k_grad) / w2)
-    # tclap = fit_p1d(
-    #     l_edges, 
-    #     cents, 
-    #     c_ap, 
-    #     "apcross", 
-    #     modlmap, 
-    #     None, 
-    #     None, 
-    #     rms=0, 
-    #     lmin=highres_fit_ellmin, 
-    #     lmax=gradient_fit_ellmax
-    # ) # shouldn't this be beam deconvolved as well?
-    # tclap[~np.isfinite(tclap)] = 0
-
-    #if not ILC:
-        # cmb only hres run doesn't involve ILC
+    #single freq power spectra and stamps
+    if args.only90 or args.only150:
         # total spectrum includes beam-deconvolved noise       
-        # npower = (nlevel * np.pi/180./60.)**2.
-        # npower_plc = (nlevel_plc * np.pi/180./60.)**2.
+        npower = (nlevel * np.pi/180./60.)**2.
+        npower_plc = (nlevel_plc * np.pi/180./60.)**2.
 
-        # tclaa = ucltt2d + npower/beam2d**2.
-        # tclpp = ucltt2d + npower_plc/beam2d_plc**2.
+        # get a beam-deconvolved Fourier transformed stamp and power spectrum
+        tclpp = ucltt2d + npower_plc/beam2d_plc**2.
+        k_grad = enmap.fft(tapered_grad, normalize="phys")/beam2d_plc
+        if args.only90:
+            tclaa = ucltt2d + npower/beam2d_90**2.
+            k_hres = enmap.fft(tapered_hres90, normalize="phys")/beam2d_90
+        elif args.only150:
+            tclaa = ucltt2d + npower/beam2d_150**2.
+            k_hres = enmap.fft(tapered_hres150, normalize="phys")/beam2d_150
+    
+    #ILC power spectra
+    else:
+        # ILC will return a beam-deconvolved Fourier transformed stamp
+        k_grad = enmap.fft(tapered_grad, normalize="phys")
+        k150 = enmap.fft(tapered_hres150, normalize="phys")
+        k90 = enmap.fft(tapered_hres90, normalize="phys")
+        assert np.all(np.isfinite(k_grad)) 
+        assert np.all(np.isfinite(k150)) 
+        assert np.all(np.isfinite(k90))  
 
-        # # get a beam-deconvolved Fourier transformed stamp
-        # k_grad = enmap.fft(tapered_grad, normalize="phys")/beam2d_plc
-        # k_hres = enmap.fft(tapered_hres, normalize="phys")/beam2d
+        # Fourier map -> PS
+        pow = lambda x, y: (x * y.conj()).real 
+
+        # measure the binned power spectrum from given stamp
+        act_cents, act_p1d_150 = lbinner.bin(pow(k150, k150) / w2)
+        act_cents, act_p1d_90 = lbinner.bin(pow(k90, k90) / w2)
+        act_cents, act_p1d_150_90 = lbinner.bin(pow(k150, k90) / w2)
+        plc_cents, plc_p1d_150 = lbinner.bin(pow(k_grad, k_grad) / w2)
+
+
+
+        # fit power spectra 
+        tclaa_150 = fit_p1d(
+            l_edges,
+            act_cents,
+            act_p1d_150,
+            "act",
+            modlmap,
+            bfunc150,
+            bfunc150,
+            rms=highres_fiducial_rms,
+            lmin=highres_fit_ellmin,
+            lmax=highres_fit_ellmax,
+        )
+
+        tclaa_90 = fit_p1d(
+            l_edges,
+            act_cents,
+            act_p1d_90,
+            "act",
+            modlmap,
+            bfunc90,
+            bfunc90,
+            rms=highres_fiducial_rms,
+            lmin=highres_fit_ellmin,
+            lmax=highres_fit_ellmax,
+        )
+
+        tclaa_150_90 = fit_p1d(
+            l_edges,
+            act_cents,
+            act_p1d_150_90,
+            "act_cross",
+            modlmap,
+            bfunc150,
+            bfunc90,
+            rms=0,
+            lmin=highres_fit_ellmin,
+            lmax=highres_fit_ellmax,
+        )
+
+        tclpp = fit_p1d(
+            l_edges,
+            plc_cents,
+            plc_p1d_150,
+            "plc",
+            modlmap,
+            lambda x: maps.gauss_beam(x, fwhm_plc),
+            lambda x: maps.gauss_beam(x, fwhm_plc),
+            rms=gradient_fiducial_rms,
+            lmin=gradient_fit_ellmin,
+            lmax=gradient_fit_ellmax,
+        )
+
+        # ILC / coadd 
+        k_hres, tclaa = ilc(
+            modlmap,
+            k150,
+            k90,
+            tclaa_150,
+            tclaa_90,
+            tclaa_150_90,
+            act_150_kbeam2d,
+            act_90_kbeam2d,
+        ) # beam deconvolved
+
+        k_grad = k_grad / plc_kbeam2d  
+        tclpp = tclpp / (plc_kbeam2d ** 2.0)
+
+        # # fit cross-power of gradient and ILC hres 
+        # cents, c_ap = lbinner.bin(pow(k_hres, k_grad) / w2)
+        # tclap = fit_p1d(
+        #     l_edges, 
+        #     cents, 
+        #     c_ap, 
+        #     "apcross", 
+        #     modlmap, 
+        #     None, 
+        #     None, 
+        #     rms=0, 
+        #     lmin=highres_fit_ellmin, 
+        #     lmax=gradient_fit_ellmax
+        # ) # shouldn't this be beam deconvolved as well?
+        # tclap[~np.isfinite(tclap)] = 0
 
     assert np.all(np.isfinite(k_hres))            
     assert np.all(np.isfinite(k_grad)) 
@@ -654,8 +705,10 @@ for task in my_tasks:
     k1ds.append(binned_kappa.copy()) 
 
     # stack stamps pre-reconstruction as well (same filter as hres leg)
-    hres90_stamp = maps.filter_map(hres90, ymask)
-    hres150_stamp = maps.filter_map(hres150, ymask)
+    if not args.only150:
+        hres90_stamp = maps.filter_map(hres90, ymask)
+    if not args.only90:
+        hres150_stamp = maps.filter_map(hres150, ymask)
     grad_stamp = maps.filter_map(grad, ymask)  
 
     # save the list of masses and redshifts for matched stack mass fitting
@@ -664,21 +717,27 @@ for task in my_tasks:
         if masses is not None: Ms.append(masses[i].copy(),)
     
     if j == 0:
-
-        hstamps90 = hres90_stamp.copy()
-        hstamps150 = hres150_stamp.copy()
+        if not args.only150:
+            hstamps90 = hres90_stamp.copy()
+        if not args.only90:
+            hstamps150 = hres150_stamp.copy()
         gstamps = grad_stamp.copy()
+
         if args.debug:
             hres90_pre = hres90.copy()
             hres150_pre = hres150.copy()
-            grad_pre = grad.copy()
+            grad90_pre = grad90.copy()
+            grad150_pre = grad150.copy()
+
         else:
             kstamps = k_stamp.copy()
             lstamps = kappa.copy()
 
     else:
-        hstamps90 = hstamps90 + hres90_stamp
-        hstamps150 = hstamps150 + hres150_stamp
+        if not args.only150:
+            hstamps90 = hstamps90 + hres90_stamp
+        if not args.only90:
+            hstamps150 = hstamps150 + hres150_stamp
         gstamps = gstamps + grad_stamp
         if args.debug:
             hres90_pre = hres90_pre + hres90
@@ -697,12 +756,12 @@ print(f"Rank {rank} has {Nobj} total")
 
             
 # COLLECT FROM ALL MPI CORES AND CALCULATE STACKS ------------------------------
-
-hstamps90 = np.asarray(hstamps90)
-hres90_st = utils.reduce(hstamps90, comm, root=0, op=mpi.MPI.SUM)
-
-hstamps150 = np.asarray(hstamps150)
-hres150_st = utils.reduce(hstamps150, comm, root=0, op=mpi.MPI.SUM)
+if not args.only150:
+    hstamps90 = np.asarray(hstamps90)
+    hres90_st = utils.reduce(hstamps90, comm, root=0, op=mpi.MPI.SUM)
+if not args.only90:
+    hstamps150 = np.asarray(hstamps150)
+    hres150_st = utils.reduce(hstamps150, comm, root=0, op=mpi.MPI.SUM)
 
 gstamps = np.asarray(gstamps)
 grad_st = utils.reduce(gstamps, comm, root=0, op=mpi.MPI.SUM)
@@ -726,11 +785,13 @@ if not args.debug:
     zvals = utils.allgatherv(zvals, comm)
 
 else:
-    hres90_pre = np.asarray(hres90_pre)
-    hres90_pre_st = utils.reduce(hres90_pre, comm, root=0, op=mpi.MPI.SUM)
+    if not args.only150:
+        hres90_pre = np.asarray(hres90_pre)
+        hres90_pre_st = utils.reduce(hres90_pre, comm, root=0, op=mpi.MPI.SUM)
 
-    hres150_pre = np.asarray(hres150_pre)
-    hres150_pre_st = utils.reduce(hres150_pre, comm, root=0, op=mpi.MPI.SUM)
+    if not args.only90:
+        hres150_pre = np.asarray(hres150_pre)
+        hres150_pre_st = utils.reduce(hres150_pre, comm, root=0, op=mpi.MPI.SUM)
 
     grad_pre = np.asarray(grad_pre)
     grad_pre_st = utils.reduce(grad_pre, comm, root=0, op=mpi.MPI.SUM)
@@ -752,36 +813,46 @@ if rank==0:
         assert k1ds.shape[0] == Nobj[0]
         assert tk1ds.shape[0] == Nobj[0]
 
-    hres90_st = enmap.enmap(hres90_st, wcs)
-    hres150_st = enmap.enmap(hres150_st, wcs)
+    if not args.only150:
+        hres90_st = enmap.enmap(hres90_st, wcs)
+        hres90_st /= Nobj
+        hres90_zoom = hres90_st[100:140,100:140] 
+    if not args.only90:
+        hres150_st = enmap.enmap(hres150_st, wcs)
+        hres150_st /= Nobj
+        hres150_zoom = hres150_st[100:140,100:140]  
+
     grad_st = enmap.enmap(grad_st, wcs)
-    
-    hres90_st /= Nobj
-    hres150_st /= Nobj
     grad_st /= Nobj
-    hres90_zoom = hres90_st[100:140,100:140]  
-    hres150_zoom = hres150_st[100:140,100:140]  
     grad_zoom = grad_st[100:140,100:140] 
+
          
     modrmap = grad_zoom.modrmap()
     modrmap = np.rad2deg(modrmap)*60. 
     
-    h90binned = bin(hres90_zoom, modrmap, bin_edges)
-    h150binned = bin(hres150_zoom, modrmap, bin_edges)
-    gbinned = bin(grad_zoom, modrmap, bin_edges)
+    if not args.only150:
+        h90binned = bin(hres90_zoom, modrmap, bin_edges)
+        io.plot_img(hres90_st, f"{save_dir}/{save_name}_0hres90.png") 
+        io.plot_img(hres90_zoom, f"{save_dir}/{save_name}_0hres90_zoom.png")   
+        np.save(f"{save_dir}/{save_name}_0hres90.npy", hres90_st)
+        io.save_cols(f"{save_dir}/{save_name}_0binned_hres90.txt", (centers, h90binned))   
 
-    io.plot_img(hres90_st, f"{save_dir}/{save_name}_0hres90.png")  
-    io.plot_img(hres150_st, f"{save_dir}/{save_name}_0hres150.png")  
-    io.plot_img(grad_st, f"{save_dir}/{save_name}_0grad.png")             
-    io.plot_img(hres90_zoom, f"{save_dir}/{save_name}_0hres90_zoom.png")   
-    io.plot_img(hres150_zoom, f"{save_dir}/{save_name}_0hres150_zoom.png")  
+
+    if not args.only90:
+        h150binned = bin(hres150_zoom, modrmap, bin_edges)
+        io.plot_img(hres150_st, f"{save_dir}/{save_name}_0hres150.png") 
+        io.plot_img(hres150_zoom, f"{save_dir}/{save_name}_0hres150_zoom.png")  
+        np.save(f"{save_dir}/{save_name}_0hres150.npy", hres150_st) 
+        io.save_cols(f"{save_dir}/{save_name}_0binned_hres150.txt", (centers, h150binned))   
+
+
+
+    gbinned = bin(grad_zoom, modrmap, bin_edges)
+    io.plot_img(grad_st, f"{save_dir}/{save_name}_0grad.png")                
     io.plot_img(grad_zoom, f"{save_dir}/{save_name}_0grad_zoom.png")  
-    np.save(f"{save_dir}/{save_name}_0hres90.npy", hres90_st) 
-    np.save(f"{save_dir}/{save_name}_0hres150.npy", hres150_st) 
     np.save(f"{save_dir}/{save_name}_0grad.npy", grad_st)  
-    io.save_cols(f"{save_dir}/{save_name}_0binned_hres90.txt", (centers, h90binned))   
-    io.save_cols(f"{save_dir}/{save_name}_0binned_hres150.txt", (centers, h150binned))   
     io.save_cols(f"{save_dir}/{save_name}_0binned_grad.txt", (centers, gbinned))      
+
 
     if args.inpaint:
         inp_st = enmap.enmap(inpaint_st, wcs)/Nobj
@@ -844,34 +915,48 @@ if rank==0:
     else:
         hres90_pre_st = enmap.enmap(hres90_pre_st, wcs)
         hres150_pre_st = enmap.enmap(hres150_pre_st, wcs)
-        grad_pre_st = enmap.enmap(grad_pre_st, wcs)
+        grad90_pre_st = enmap.enmap(grad90_pre_st, wcs)
+        grad150_pre_st = enmap.enmap(grad150_pre_st, wcs)
+
         
         hres90_pre_st /= Nobj
         hres150_pre_st /= Nobj
-        grad_pre_st /= Nobj
+        grad90_pre_st /= Nobj
+        grad150_pre_st /= Nobj
         hres90_pre_zoom = hres90_pre_st[100:140,100:140]  
         hres150_pre_zoom = hres150_pre_st[100:140,100:140]  
-        grad_pre_zoom = grad_pre_st[100:140,100:140] 
+        grad90_pre_zoom = grad90_pre_st[100:140,100:140] 
+        grad150_pre_zoom = grad150_pre_st[100:140,100:140] 
+
             
-        modrmap = grad_pre_zoom.modrmap()
+        modrmap = hres90_pre_zoom.modrmap()
         modrmap = np.rad2deg(modrmap)*60. 
         
         h90binned_pre = bin(hres90_pre_zoom, modrmap, bin_edges)
         h150binned_pre = bin(hres150_pre_zoom, modrmap, bin_edges)
-        gbinned_pre = bin(grad_pre_zoom, modrmap, bin_edges)
+        g90binned_pre = bin(grad90_pre_zoom, modrmap, bin_edges)
+        g150binned_pre = bin(grad150_pre_zoom, modrmap, bin_edges)
 
         io.plot_img(hres90_pre_st, f"{save_dir}/{save_name}_0hres90_unfiltered.png")  
         io.plot_img(hres150_pre_st, f"{save_dir}/{save_name}_0hres150_unfiltered.png")  
-        io.plot_img(grad_pre_st, f"{save_dir}/{save_name}_0grad_unfiltered.png")             
+        io.plot_img(grad90_pre_st, f"{save_dir}/{save_name}_0grad90_unfiltered.png")      
+        io.plot_img(grad150_pre_st, f"{save_dir}/{save_name}_0grad150_unfiltered.png")             
+       
         io.plot_img(hres90_pre_zoom, f"{save_dir}/{save_name}_0hres90_unfiltered_zoom.png")   
         io.plot_img(hres150_pre_zoom, f"{save_dir}/{save_name}_0hres150_unfiltered_zoom.png")  
-        io.plot_img(grad_pre_zoom, f"{save_dir}/{save_name}_0grad_unfiltered_zoom.png")  
+        io.plot_img(grad90_pre_zoom, f"{save_dir}/{save_name}_0grad90_unfiltered_zoom.png")  
+        io.plot_img(grad150_pre_zoom, f"{save_dir}/{save_name}_0grad150_unfiltered_zoom.png")  
+
         np.save(f"{save_dir}/{save_name}_0hres90_unfiltered.npy", hres90_pre_st) 
         np.save(f"{save_dir}/{save_name}_0hres150_unfiltered.npy", hres150_pre_st) 
-        np.save(f"{save_dir}/{save_name}_0grad_unfiltered.npy", grad_pre_st)  
+        np.save(f"{save_dir}/{save_name}_0grad90_unfiltered.npy", grad90_pre_st)  
+        np.save(f"{save_dir}/{save_name}_0grad150_unfiltered.npy", grad150_pre_st)  
+
         io.save_cols(f"{save_dir}/{save_name}_0binned_hres90_unfiltered.txt", (centers, h90binned_pre))   
         io.save_cols(f"{save_dir}/{save_name}_0binned_hres150_unfiltered.txt", (centers, h150binned_pre))
-        io.save_cols(f"{save_dir}/{save_name}_0binned_grad_unfiltered.txt", (centers, gbinned_pre)) 
+        io.save_cols(f"{save_dir}/{save_name}_0binned_grad90_unfiltered.txt", (centers, g90binned_pre)) 
+        io.save_cols(f"{save_dir}/{save_name}_0binned_grad150_unfiltered.txt", (centers, g150binned_pre)) 
+
 
     # if not args.is_meanfield:
     #     np.savetxt(f"{save_dir}/{save_name}_z_mass1e14.txt", np.c_[s.vectors["redshift"], s.vectors["masses"]])

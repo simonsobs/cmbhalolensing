@@ -374,6 +374,7 @@ comm, rank, my_tasks = mpi.distribute(nsims)
 s = stats.Stats(comm)
 
 tk1ds = []
+tk1ds_pre = []
 k1ds = []
 zvals = []
 if masses is not None: Ms = []
@@ -490,8 +491,11 @@ for task in my_tasks:
 
     # same filter as the post-reconstuction for true kappa
     k_stamp = maps.filter_map(kstamp*taper, kmask)
-    binned_true = bin(k_stamp, modrmap * (180 * 60 / np.pi), bin_edges)   
+    binned_true = bin(k_stamp, modrmap * (180 * 60 / np.pi), bin_edges)
     tk1ds.append(binned_true.copy())
+
+    binned_true_pre = bin(kstamp, modrmap * (180 * 60 / np.pi), bin_edges)
+    tk1ds_pre.append(binned_true_pre.copy())  
 
     # choose the map for each leg 
     # hres = globals()[args.hres_choice]
@@ -731,6 +735,7 @@ for task in my_tasks:
 
         else:
             kstamps = k_stamp.copy()
+            kstamps_pre = kstamp.copy()
             lstamps = kappa.copy()
 
     else:
@@ -745,6 +750,7 @@ for task in my_tasks:
             grad_pre = grad_pre + grad
         else:
             kstamps = kstamps + k_stamp
+            kstamps_pre = kstamps_pre + kstamp
             lstamps = lstamps + kappa
     Nobj +=1
     j = j + 1
@@ -777,10 +783,14 @@ if not args.debug:
     kstamps = np.asarray(kstamps)
     kmap = utils.reduce(kstamps, comm, root=0, op=mpi.MPI.SUM)
 
+    kstamps_pre = np.asarray(kstamps_pre)
+    kmap_pre = utils.reduce(kstamps_pre, comm, root=0, op=mpi.MPI.SUM)
+
     lstamps = np.asarray(lstamps)
     lmap = utils.reduce(lstamps, comm, root=0, op=mpi.MPI.SUM)
     
     tk1ds = utils.allgatherv(tk1ds, comm)
+    tk1ds_pre = utils.allgatherv(tk1ds_pre, comm)
     k1ds = utils.allgatherv(k1ds, comm)
     zvals = utils.allgatherv(zvals, comm)
 
@@ -866,46 +876,64 @@ if rank==0:
     if not args.debug:
         # reconstructed lensing field     
         kmap = enmap.enmap(kmap, wcs)
+        kmap_pre = enmap.enmap(kmap_pre, wcs)
         lmap = enmap.enmap(lmap, wcs)
         kmap /= Nobj
+        kmap_pre /= Nobj
         lmap /= Nobj
 
         kmap_zoom = kmap[100:140,100:140] 
+        kmap_pre_zoom = kmap_pre[100:140,100:140]
         lmap_zoom = lmap[100:140,100:140] 
                 
         modrmap = kmap_zoom.modrmap()
         modrmap = np.rad2deg(modrmap)*60. 
 
         kbinned = bin(kmap_zoom, modrmap, bin_edges)
+        kbinned_pre = bin(kmap_pre_zoom, modrmap, bin_edges)
         lbinned = bin(lmap_zoom, modrmap, bin_edges)
 
         io.plot_img(kmap, f"{save_dir}/{save_name}_1tkappa.png")   
+        io.plot_img(kmap_pre, f"{save_dir}/{save_name}_0tkappa_unfiltered.png")
         io.plot_img(lmap, f"{save_dir}/{save_name}_1rkappa.png")                 
-        io.plot_img(kmap[100:140,100:140], f"{save_dir}/{save_name}_1tkappa_zoom.png")   
+        io.plot_img(kmap[100:140,100:140], f"{save_dir}/{save_name}_1tkappa_zoom.png")
+        io.plot_img(kmap_pre[100:140,100:140], f"{save_dir}/{save_name}_0tkappa_unfiltered_zoom.png")    
         io.plot_img(lmap[100:140,100:140], f"{save_dir}/{save_name}_1rkappa_zoom.png")  
-        np.save(f"{save_dir}/{save_name}_1tkappa.npy", kmap)     
+        np.save(f"{save_dir}/{save_name}_1tkappa.npy", kmap) 
+        np.save(f"{save_dir}/{save_name}_0tkappa_unfiltered.npy", kmap_pre)    
         np.save(f"{save_dir}/{save_name}_1rkappa.npy", lmap)                 
         io.save_cols(f"{save_dir}/{save_name}_1binned_tkappa_from2D.txt", (centers, kbinned))
+        io.save_cols(f"{save_dir}/{save_name}_0binned_tkappa_unfiltered_from2D.txt", (centers, kbinned_pre))
         io.save_cols(f"{save_dir}/{save_name}_1binned_rkappa_from2D.txt", (centers, lbinned))
 
         tbinned = tk1ds.mean(axis=0)
         print("true:", tk1ds.shape, tbinned.shape)
         terrs, tcovm = profiles.errors(tk1ds, Nobj=tk1ds.shape[0])
         tcorr = profiles.correlation_matrix(tcovm)
+
+        tbinned_pre = tk1ds_pre.mean(axis=0)
+        print("true:", tk1ds_pre.shape, tbinned_pre.shape)
+        terrs_pre, tcovm_pre = profiles.errors(tk1ds_pre, Nobj=tk1ds_pre.shape[0])
+        tcorr_pre = profiles.correlation_matrix(tcovm_pre)
         
         binned = k1ds.mean(axis=0)
         errs, covm = profiles.errors(k1ds, Nobj=k1ds.shape[0])
         corr = profiles.correlation_matrix(covm)
 
-        np.savetxt(f"{save_dir}/{save_name}_1tkappa_errs.txt", terrs)               
+        np.savetxt(f"{save_dir}/{save_name}_1tkappa_errs.txt", terrs)
+        np.savetxt(f"{save_dir}/{save_name}_0tkappa_unfiltered_errs.txt", terrs_pre)               
         np.savetxt(f"{save_dir}/{save_name}_1rkappa_errs.txt", errs)    
         np.savetxt(f"{save_dir}/{save_name}_1tkappa_covm.txt", tcovm)
+        np.savetxt(f"{save_dir}/{save_name}_0tkappa_unfiltered_covm.txt", tcovm_pre)
         np.savetxt(f"{save_dir}/{save_name}_1rkappa_covm.txt", covm)
-        np.save(f"{save_dir}/{save_name}_1tkappa_corr.npy", tcorr)  
+        np.save(f"{save_dir}/{save_name}_1tkappa_corr.npy", tcorr)
+        np.save(f"{save_dir}/{save_name}_0tkappa_unfiltered_corr.npy", tcorr_pre)  
         np.save(f"{save_dir}/{save_name}_1rkappa_corr.npy", corr) 
         io.save_cols(f"{save_dir}/{save_name}_1binned_tkappa.txt", (centers, tbinned))
+        io.save_cols(f"{save_dir}/{save_name}_0binned_unfiltered_tkappa.txt", (centers, tbinned_pre))
         io.save_cols(f"{save_dir}/{save_name}_1binned_rkappa.txt", (centers, binned))
         np.savetxt(f"{save_dir}/{save_name}_1binned_tkappa_vectors.txt", tk1ds)
+        np.savetxt(f"{save_dir}/{save_name}_0binned_tkappa_unfiltered_vectors.txt", tk1ds_pre)
         np.savetxt(f"{save_dir}/{save_name}_1binned_rkappa_vectors.txt", k1ds)
 
         enmap.write_map(f"{save_dir}/{save_name}_kmask.fits", kmask)   

@@ -104,12 +104,16 @@ if not (args.inject_sim):
         if not(args.full_sim_index is None):
             amap_150 = enmap.read_map(f'{paths.fullsim_path}/af150_sim_{args.full_sim_index:06d}.fits')
         else:
-            if not (args.ilc_maps): 
-                act_map = (paths.act_data + data_choice.hres_150)
-                famap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
-            else:
+            if args.ilc_maps: 
                 act_map = (paths.act_data + data_choice.hres)
                 famap_150 = enmap.read_map(act_map, delayed=False)
+            elif args.night_only:
+                act_map = (paths.act_data + data_choice.hres_150_night)
+                famap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+            else:
+                act_map = (paths.act_data + data_choice.hres_150)
+                famap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+
 
             # SZ cluster model image subtraction for 150 GHz
             if args.hres_grad:            
@@ -127,8 +131,12 @@ if not (args.inject_sim):
         if not(args.full_sim_index is None):
             amap_90 = enmap.read_map(f'{paths.fullsim_path}/af090_sim_{args.full_sim_index:06d}.fits')
         else:
-            act_map = (paths.act_data + data_choice.hres_090)
-            famap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+            if args.night_only:
+                act_map = (paths.act_data + data_choice.hres_090_night)
+                famap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+            else:
+                act_map = (paths.act_data + data_choice.hres_090)
+                famap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
 
             # SZ cluster model image subtraction for 90 GHz    
             if args.hres_grad:            

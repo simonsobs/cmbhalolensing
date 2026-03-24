@@ -155,27 +155,13 @@ def file_to_map(fname, shape=None, wcs=None):
 
     return omap
 
-# reading lensed cmb map
-try:
-    lmap = enmap.read_map(r_lmap, delayed=False)
-    print(" ::: reading reprojected lensed cmb map:", r_lmap)
-
-except:
-    shape, wcs = enmap.fullsky_geometry(res=px*utils.arcmin, proj="car")
-    ifile = sim_path + sim_info['lensed_cmb']
-    lmap = file_to_map(ifile, shape, wcs) #should preserve high accuracy (doesn't read shape and wcs)
-
-    enmap.write_map(r_lmap, lmap)
-print("lmap", lmap.shape) 
-shape, wcs = lmap.shape, lmap.wcs
-
-
-# reading true kappa map 
+### reading true kappa map 
 try:
     kmap = enmap.read_map(r_kmap, delayed=False)
     print(" ::: reading reprojected true kappa map:", r_kmap)
 
 except:
+    shape, wcs = enmap.fullsky_geometry(res=px*utils.arcmin, proj="car")
     ifile = sim_path + sim_info['true_kappa']
     kmap = file_to_map(ifile, shape, wcs)
 
@@ -183,9 +169,21 @@ except:
     print(" ::: reading and reprojecting true kappa map:", ifile)
 
 print("kmap", kmap.shape)
+shape, wcs = kmap.shape, kmap.wcs
 
+### reading lensed cmb map
+try:
+    lmap = enmap.read_map(r_lmap, delayed=False)
+    print(" ::: reading reprojected lensed cmb map:", r_lmap)
 
-# reading tsz map
+except:
+    ifile = sim_path + sim_info['lensed_cmb']
+    lmap = file_to_map(ifile, shape, wcs) #should preserve high accuracy (doesn't read shape and wcs)
+
+    enmap.write_map(r_lmap, lmap)
+print("lmap", lmap.shape) 
+
+### reading tsz map
 try:
     tszmap = enmap.read_map(r_tszmap, delayed=False)
     print(" ::: reading reprojected tsz map:", r_tszmap) 
@@ -207,7 +205,7 @@ if args.flux_cut is not None:
 
 print("tszmap", tszmap.shape)
 
-# reading ksz map
+### reading ksz map
 try:
     kszmap = enmap.read_map(r_kszmap, delayed=False)
     print(" ::: reading reprojected ksz map:", r_kszmap)
@@ -219,12 +217,13 @@ except:
     enmap.write_map(r_kszmap, kszmap)
     print(" ::: reading and reprojecting ksz map:", ifile) 
 
-print("kszmap", kszmap.shape)
+    print("kszmap", kszmap.shape)
+
 if args.flux_cut is not None:
     print(" ::: kszmap pixels above cut:", np.count_nonzero(kszmap>flux_cut_uK))
     kszmap[kszmap>flux_cut_uK] = flux_cut_uK
 
-# reading cib map
+### reading cib map
 try:
     if args.freq_sz == 90: r_cibmap = r_cib093map
     elif args.freq_sz == 150: r_cibmap = r_cib145map
@@ -238,7 +237,7 @@ except:
     elif args.freq_sz == 150: ifile = sim_path + sim_info['cib_nu145']
 
     cibmap_i = file_to_map(ifile, shape, wcs)
-    
+
     if sim_name == "websky":
         cibmap_i*=1e6 # MJy/sr -> Jy/sr
 
@@ -261,7 +260,7 @@ if args.flux_cut is not None:
 
 print("cibmap", cibmap.shape)
 
-# check and make signal/observed maps
+### check and make signal/observed maps
 
 def make_save_maps(lmap, fgmaps = None, fgnames = None, save_beam = False):
     smap = lmap
@@ -283,7 +282,11 @@ def make_save_maps(lmap, fgmaps = None, fgnames = None, save_beam = False):
     enmap.write_map(f"{save_dir}scmb{map_names}.fits", smap)
     enmap.write_map(f"{save_dir}ocmb{map_names}.fits", omap)
 
-
+print("kmap:", kmap.shape, kmap.wcs)
+print("lmap:", lmap.shape, lmap.wcs)
+print("tszmap:", tszmap.shape, tszmap.wcs)
+print("kszmap:", kszmap.shape, kszmap.wcs)
+print("cibmap:", cibmap.shape, cibmap.wcs)
 assert wcsutils.equal(kmap.wcs, lmap.wcs)  
 assert wcsutils.equal(kmap.wcs, tszmap.wcs)
 

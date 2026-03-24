@@ -11,11 +11,11 @@ from profiles import errors, chi_square_pte
 savename = sys.argv[1] # prefix for files (e.g. agora_90)
 stack_path = sys.argv[2] # where profiles and stacks are saved
 sim = sys.argv[3] # agora, websky
-freq = sys.argv[4] # 90, 150
+freq = sys.argv[4] # 90, 150, ilc
 title_text = sys.argv[5]
 prefixes = sys.argv[6:] # cmb cmb_cib cmb_ksz_cib cmb_tsz cmb_tsz_cib cmb_tsz_ksz_cib
 
-plot_mf = True
+plot_mf = False
 plot_tk1d = True
 
 
@@ -176,7 +176,8 @@ o=0     #offset
 da = 0.8
 do = 0.1
 
-print("profile diff \t \t n-sigma \t \t pte")
+text_file = f"{stack_path}/{savename}_nsigma_pte.txt"
+text_out = ["profile diff \t \t n-sigma \t \t pte"]
 
 if plot_tk1d:
     tk1d_diff, tk_err_diff, tk_cov_diff = difference(k1d[baseline], tk1d[baseline], all_stack1d[baseline], all_tk1d[baseline])
@@ -184,7 +185,8 @@ if plot_tk1d:
     # tk_nsigma_diff = np.sqrt(tk_chi2_diff)
     tk_pte_diff = stats.sim_pte(tk1d_diff, tk_cov_diff, 100000)
     tk_nsigma_diff = stats.nsigma_from_pte(tk_pte_diff)
-    print(f"{baseline}-true \t \t {tk_nsigma_diff} \t \t {tk_pte_diff}")
+    text_out.append("\n")
+    text_out.append(f"{baseline}-true \t \t {tk_nsigma_diff} \t \t {tk_pte_diff}")
     pl_tk1d.add_err(r[baseline]+o, tk1d_diff, yerr=tk_err_diff, ls="-", label = labeling(baseline))
     a*=da
     o+=do
@@ -201,7 +203,8 @@ for i,fg in enumerate(foregrounds):
     # nsigma_diff = np.sqrt(chi2_diff)
     pte_diff = stats.sim_pte(k1d_diff, cov_diff, 100000)
     nsigma_diff = stats.nsigma_from_pte(pte_diff)
-    print(f"{fg}-{baseline} \t \t {nsigma_diff} \t \t {pte_diff}")
+    text_out.append("\n")
+    text_out.append( f"{fg}-{baseline} \t \t {nsigma_diff} \t \t {pte_diff}")
     pl_data.add_err(r[baseline]+o, k1d_diff, yerr=err_diff, ls="-", label=label, alpha=a, color=color)
     io.save_cols(f"{stack_path}/{savename}_{fg}_1bias_fg_rkappa_mfsub.txt", (r[baseline], k1d_diff))
     io.save_cols(f"{stack_path}/{savename}_{fg}_1bias_fg_rkappa_errs.txt", (r[baseline], err_diff))
@@ -215,7 +218,8 @@ for i,fg in enumerate(foregrounds):
         # tk_nsigma_diff = np.sqrt(tk_chi2_diff)
         tk_pte_diff = stats.sim_pte(tk1d_diff, tk_cov_diff, 100000)
         tk_nsigma_diff = stats.nsigma_from_pte(tk_pte_diff)
-        print(f"{fg}-true \t \t {tk_nsigma_diff} \t \t {tk_pte_diff}")
+        text_out.append("\n")
+        text_out.append(f"{fg}-true \t \t {tk_nsigma_diff} \t \t {tk_pte_diff}")
         pl_tk1d.add_err(r[baseline]+o, tk1d_diff, yerr=tk_err_diff, ls="-", label=label, alpha=a, color=color)
         io.save_cols(f"{stack_path}/{savename}_{fg}_1bias_recon_tkappa_rkappa_mfsub.txt", (r[baseline], tk1d_diff))
         io.save_cols(f"{stack_path}/{savename}_{fg}_1bias_recon_tkappa_rkappa_errs.txt", (r[baseline], tk_err_diff))
@@ -236,3 +240,8 @@ if plot_tk1d:
     pl_tk1d.done(f"{stack_path}/{savename}_1bias_recon_tkappa_rkappa_mfsub.png")
 
 print("all plots made and saved!")
+
+with open(text_file, 'w') as f:
+    f.writelines(text_out)
+    
+print("all nsigma, ptes saved in", text_file)

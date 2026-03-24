@@ -8,9 +8,13 @@
 
 agora:
   nside: 8192
-  lensed_cmb: cmb/len/tqu1/agora_tqu1_phiNG_seed1_lmax16000_nside8192_interp1.6_method1_pol_1_lensedmap.fits
-  true_kappa: ../../kappa_alm_recon_agora_phiNG_phi1_seed1.fits
-  tsz: tsz/len/agora_ltszNG_bahamas78_bnd_unb_1.0e+12_1.0e+18_lensed.fits
+  lensed_cmb: full/components/cmb/len/tqu1/agora_tqu1_phiNG_seed1_lmax16000_nside8192_interp1.6_method1_pol_1_lensedmap.fits
+  true_kappa: full/components/kappa/kappa_alm_recon_agora_phiNG_phi1_seed1.fits
+  tsz: full/components/tsz/unl/agora_utszNG_bahamas80_bnd_unb_1.0e+12_1.0e+18.fits #y-map
+  ksz: full/components/ksz/unl/agora_ukszNG_bahamas80_bnd_unb_1.0e+12_1.0e+18.fits #temperature map
+  cib90: full/components/cib/uK/len/act/agora_len_mag_cibmap_act_90ghz_uk.fits #using lensed, unlensed not found
+  cib150: full/components/cib/uK/len/act/agora_len_mag_cibmap_act_150ghz_uk.fits #using lensed, unlensed not found
+  cib220: full/components/cib/uK/len/act/agora_len_mag_cibmap_act_220ghz_uk.fits #using lensed, unlensed not found
 
 websky:
   nside: 8192

@@ -48,7 +48,8 @@ save_name = f"{sim_name}_{args.freq_sz}ghz"
 if args.flux_cut is not None:
     save_name += f"_fluxcut{args.flux_cut}mJy"
 if args.planck_like:
-    save_name += "_planck_like"
+    save_name += "_planck"
+else: save_name += "_act"
 sim_path = paths[f"{sim_name}_sim_path"]
 sim_info = sim_spec[sim_name]
  

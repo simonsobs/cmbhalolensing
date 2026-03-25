@@ -35,10 +35,13 @@ parser.add_argument(
     "which_cat", type=str, help="Choose the catalogue type e.g. halo or tsz or cmass."
 )
 parser.add_argument(
-    "hres_choice", type=str, help="Choose the map for high resolution leg e.g. cmb, cmb_tsz, etc."
+    "hres_fg", type=str, help="Choose the map for high resolution leg e.g. cmb, cmb_tsz, etc."
 )
 parser.add_argument(
-    "grad_choice", type=str, help="Choose the map for gradient leg e.g. cmb, cmb_tsz, etc."
+    "grad_fg", type=str, help="Choose the map for gradient leg e.g. cmb, cmb_tsz, etc."
+)
+parser.add_argument(
+    "--map-spec", type=str, help="simname_Xghz_act_SPEC"
 )
 parser.add_argument(
     "--is-meanfield", action="store_true", help="This is a mean-field run."
@@ -78,23 +81,26 @@ save_dir = f"{output_path}/{save_name}"
 io.mkdir(f"{save_dir}")
 print(" ::: saving to", save_dir)
 
+if args.map_spec is not None:
+    spec_str = "_" + args.map_spec
+else: spec_str = ""
 if args.only90:
-    hres_simsuite_path_90 = f"{paths.simsuite_path}/{args.which_sim}_{args.sim_version}_90_hres/"
-    grad_simsuite_path_90 = f"{paths.simsuite_path}/{args.which_sim}_{args.sim_version}_90_grad/"
+    hres_simsuite_path_90 = f"{paths.simsuite_path}/{args.which_sim}_90ghz_act{spec_str}/"
+    grad_simsuite_path_90 = f"{paths.simsuite_path}/{args.which_sim}_90ghz_planck{spec_str}/"
 elif args.only150:
-    hres_simsuite_path_150 = f"{paths.simsuite_path}/{args.which_sim}_{args.sim_version}_150_hres/"
-    grad_simsuite_path_150 = f"{paths.simsuite_path}/{args.which_sim}_{args.sim_version}_150_grad/"
+    hres_simsuite_path_150 = f"{paths.simsuite_path}/{args.which_sim}_150ghz_act{spec_str}/"
+    grad_simsuite_path_150 = f"{paths.simsuite_path}/{args.which_sim}_150ghz_planck{spec_str}/"
 else:
-    hres_simsuite_path_90 = f"{paths.simsuite_path}/{args.which_sim}_{args.sim_version}_90_hres/"
-    hres_simsuite_path_150 = f"{paths.simsuite_path}/{args.which_sim}_{args.sim_version}_150_hres/"
-    grad_simsuite_path_150 = f"{paths.simsuite_path}/{args.which_sim}_{args.sim_version}_150_grad/"
+    hres_simsuite_path_90 = f"{paths.simsuite_path}/{args.which_sim}_90ghz_act{spec_str}/"
+    hres_simsuite_path_150 = f"{paths.simsuite_path}/{args.which_sim}_150ghz_act{spec_str}/"
+    grad_simsuite_path_150 = f"{paths.simsuite_path}/{args.which_sim}_150ghz_planck{spec_str}/"
 
 # cat_path = f"{paths.cat_path}/{paths.nemosim_version}/"
 # cat = paths.cmass_cat
 # print(" ::: catalogue:", args.which_sim, args.which_cat, "[ simsuite ver:", args.sim_version, "]")
 # print(" ::: catalogue:", args.which_sim, args.which_cat, "[ simsuite ver:", args.sim_version, "/ nemosim ver:", paths.nemosim_version, "]")
 print(" ::: catalogue:", args.which_sim, args.which_cat)
-print(" ::: hres:", args.hres_choice, "/ grad:", args.grad_choice)
+print(" ::: hres:", args.hres_fg, "/ grad:", args.grad_fg)
 
 if args.is_meanfield: print(" ::: this is a mean-field run")
 
@@ -259,20 +265,20 @@ if args.which_sim == "websky":
 elif args.which_sim == "sehgal":
     true = paths.sehgal_sim_path + paths.sehgal_kappa_reproj
 elif args.which_sim == "agora":
-    true = paths.agora_sim_path + paths.agora_kappa_reproj
+    true = paths.agora_sim_path + paths.agora['true_kappa']
 
 print(" ::: preparing for OBSERVED maps")
 
 if args.only90:
-    hres90 = f"{hres_simsuite_path_90}o{args.hres_choice}.fits"
-    grad90 = f"{grad_simsuite_path_90}o{args.grad_choice}.fits"
+    hres90 = f"{hres_simsuite_path_90}o{args.hres_fg}.fits"
+    grad90 = f"{grad_simsuite_path_90}o{args.grad_fg}.fits"
 elif args.only150:
-    hres150 = f"{hres_simsuite_path_150}o{args.hres_choice}.fits"
-    grad150 = f"{grad_simsuite_path_150}o{args.grad_choice}.fits"
+    hres150 = f"{hres_simsuite_path_150}o{args.hres_fg}.fits"
+    grad150 = f"{grad_simsuite_path_150}o{args.grad_fg}.fits"
 else:
-    hres90 = f"{hres_simsuite_path_90}o{args.hres_choice}.fits"
-    hres150 = f"{hres_simsuite_path_150}o{args.hres_choice}.fits"
-    grad150 = f"{grad_simsuite_path_150}o{args.grad_choice}.fits"
+    hres90 = f"{hres_simsuite_path_90}o{args.hres_fg}.fits"
+    hres150 = f"{hres_simsuite_path_150}o{args.hres_fg}.fits"
+    grad150 = f"{grad_simsuite_path_150}o{args.grad_fg}.fits"
 
 print(" ::: reading true kappa map:", true)
 true_map = enmap.read_map(true, delayed=False)
@@ -498,8 +504,8 @@ for task in my_tasks:
     tk1ds_pre.append(binned_true_pre.copy())  
 
     # choose the map for each leg 
-    # hres = globals()[args.hres_choice]
-    # grad = globals()[args.grad_choice]
+    # hres = globals()[args.hres_fg]
+    # grad = globals()[args.grad_fg]
 
     # taper stamp
     if not args.only150:

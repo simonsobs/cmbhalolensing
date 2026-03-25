@@ -26,10 +26,13 @@ parser.add_argument(
     "freq_sz", type=int, help="Set frequency for maps in GHz (90 or 150 or 220)."
 )
 parser.add_argument(
+    "--which_fgs", nargs='+', help="List of fg combinations of tsz, ksz, cib as [x,x_y_z]"
+)
+parser.add_argument(
     "--flux_cut", type=float, help="If using flux cut, set max in mJy."
 )
 parser.add_argument(
-    "--high-accuracy", action="store_true", help="If using a high accuracy websky map, choose this option."
+    "--high_accuracy", action="store_true", help="If using a high accuracy websky map, choose this option."
 )
 parser.add_argument(
     "--planck_like", action="store_true", help="Set sim settings to be same as Planck SMICA."
@@ -45,11 +48,14 @@ if args.high_accuracy:
 
 print(f" ::: producing maps for {sim_name.upper()} sim")
 save_name = f"{sim_name}_{args.freq_sz}ghz"
-if args.flux_cut is not None:
-    save_name += f"_fluxcut{args.flux_cut}mJy"
+
 if args.planck_like:
     save_name += "_planck"
-else: save_name += "_act"
+else: save_name += "_act" 
+
+if args.flux_cut is not None:
+    save_name += f"_fluxcut{args.flux_cut}mJy"
+
 sim_path = paths[f"{sim_name}_sim_path"]
 sim_info = sim_spec[sim_name]
  
@@ -167,18 +173,16 @@ if args.flux_cut is not None:
     print(" ::: cibmap pixels above cut:", np.count_nonzero(cibmap>flux_cut_uK))
     cibmap[cibmap>flux_cut_uK] = flux_cut_uK
 
+
 ### check and make signal/observed maps
 
-def make_save_maps(lmap, fgmaps = None, fgnames = None, save_beam = False):
-    smap = lmap
-    map_names = ""
+def make_save_maps(smap, fgnames = None, save_beam = True):
+    if fgnames == None:
+        map_names = 'cmb'
+    else:
+        map_names = 'cmb_' + fgnames
 
-    if fgmaps:
-        for fgmap, name in zip(fgmaps, fgnames):
-            smap += fgmap
-            map_names += f"_{name}"
-    
-    print(" ::: made map: cmb", map_names, "\n ::: applying beam and noise")
+    print(" ::: made map:", map_names, "\n ::: applying beam and noise")
 
     bmap = apply_beam(smap)
 
@@ -186,25 +190,36 @@ def make_save_maps(lmap, fgmaps = None, fgnames = None, save_beam = False):
     omap = bmap + white_noise
 
     if save_beam:
-        enmap.write_map(f"{save_dir}bcmb{map_names}.fits", bmap)
+        enmap.write_map(f"{save_dir}b{map_names}.fits", bmap)
 
-    enmap.write_map(f"{save_dir}scmb{map_names}.fits", smap)
-    enmap.write_map(f"{save_dir}ocmb{map_names}.fits", omap)
+    enmap.write_map(f"{save_dir}s{map_names}.fits", smap)
+    enmap.write_map(f"{save_dir}o{map_names}.fits", omap)
 
-    print(f" ::: saved cmb{map_names} map to {save_dir}")
+    print(f" ::: saved {map_names} maps to {save_dir}")
 
+
+fgname_to_map = {'tsz': tszmap,
+                 'ksz': kszmap,
+                 'cib': cibmap}
+
+# always save cmb-only and true kappa
+
+print(f" ::: saving true kappa and cmb only maps")
 assert wcsutils.equal(kmap.wcs, lmap.wcs)  
-assert wcsutils.equal(kmap.wcs, tszmap.wcs)
+enmap.write_map(f"{save_dir}true_kappa.fits", kmap)
+make_save_maps(lmap)
 
-make_save_maps(lmap, save_beam = True)
-make_save_maps(lmap, fgmaps = [tszmap], fgnames = ['tsz'])
+if args.which_fgs is not None:
+    for combo in args.which_fgs:
+        all_maps = lmap.copy()
+        print(f" ::: preparing map: cmb_{combo}")
+        for fg in combo.split("_"):
+            if fg.lower() == 'cmb': continue
 
-
-assert wcsutils.equal(kmap.wcs, kszmap.wcs)
-assert wcsutils.equal(kmap.wcs, cibmap.wcs)
-
-make_save_maps(lmap, fgmaps = [kszmap + cibmap], fgnames = ['ksz_cib'], save_beam = True)
-make_save_maps(lmap, fgmaps = [tszmap, kszmap + cibmap], fgnames = ['tsz', 'ksz_cib'])
+            fgmap = fgname_to_map[fg]
+            assert wcsutils.equal(kmap.wcs, fgmap.wcs)
+            all_maps += fgname_to_map[fg]
+            make_save_maps(all_maps, combo)
 
 elapsed = t.time() - start
 print("\r ::: entire run took %.1f seconds" %elapsed)

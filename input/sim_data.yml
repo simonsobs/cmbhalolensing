@@ -15,19 +15,21 @@ agora_highmass_cat: /data7/nehajo/sims/sim_cats/agora_highmass.npy
 
 # reprojected maps
 
-websky_dlensed_reproj: reproj_90_150/dlensed_reproj.fits
-websky_kappa4p5_reproj: reproj_90_150/kap_lt4.5_reproj.fits
-websky_dtsz090_reproj: reproj_90_150/dtsz_nu090_8192_reproj.fits
-websky_dtsz150_reproj: reproj_90_150/dtsz_nu150_8192_reproj.fits
-websky_dksz_reproj: reproj_90_150/dksz_reproj.fits
-websky_dcib093_reproj: reproj_90_150/dcib_nu0093_reproj.fits
-websky_dcib145_reproj: reproj_90_150/dcib_nu0145_reproj.fits
+# websky: ###TODO: rename these!!
+#   dlensed: reproj_90_150/dlensed.fits
+#   kappa4p5: reproj_90_150/kap_lt4.5.fits
+#   dtsz090: reproj_90_150/dtsz_nu090_8192.fits
+#   dtsz150: reproj_90_150/dtsz_nu150_8192.fits
+#   dksz: reproj_90_150/dksz.fits
+#   dcib093: reproj_90_150/dcib_nu0093.fits
+#   dcib145: reproj_90_150/dcib_nu0145.fits
 
-agora_kappa_reproj: reproj_fullsky/kappa_alm_recon_agora_phiNG_phi1_seed1.fits
-agora_cmb_reproj: reproj_fullsky/agora_tqu1_phiNG_seed1_lmax16000_nside8192_interp1.6_method1_pol_1_lensedmap.fits
-agora_tsz_reproj: reproj_fullsky/agora_utszNG_bahamas80_bnd_unb_1.0e+12_1.0e+18.fits #y-map
-agora_ksz_reproj: reproj_fullsky/agora_ukszNG_bahamas80_bnd_unb_1.0e+12_1.0e+18.fits #temperature map
-agora_cib90_reproj: reproj_fullsky/agora_len_mag_cibmap_act_90ghz_uk.fits
-agora_cib150_reproj: reproj_fullsky/agora_len_mag_cibmap_act_150ghz_uk.fits
-agora_cib220_reproj: reproj_fullsky/agora_len_mag_cibmap_act_220ghz_uk.fits
+agora:
+  true_kappa: reproj_fullsky/kappa_alm_recon_agora_phiNG_phi1_seed1.fits
+  lensed_cmb: reproj_fullsky/agora_tqu1_phiNG_seed1_lmax16000_nside8192_interp1.6_method1_pol_1_lensedmap.fits
+  tsz: reproj_fullsky/agora_utszNG_bahamas80_bnd_unb_1.0e+12_1.0e+18.fits #y-map
+  ksz: reproj_fullsky/agora_ukszNG_bahamas80_bnd_unb_1.0e+12_1.0e+18.fits #temperature map
+  cib90: reproj_fullsky/agora_len_mag_cibmap_act_90ghz_uk.fits
+  cib150: reproj_fullsky/agora_len_mag_cibmap_act_150ghz_uk.fits
+  cib220: reproj_fullsky/agora_len_mag_cibmap_act_220ghz_uk.fits
 

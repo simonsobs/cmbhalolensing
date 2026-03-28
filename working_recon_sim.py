@@ -29,9 +29,6 @@ parser.add_argument(
     "which_sim", type=str, help="Choose the sim e.g. websky or sehgal or agora."
 )
 parser.add_argument(
-    "sim_version", type=str, help="Version name of simsuite."
-)
-parser.add_argument(
     "which_cat", type=str, help="Choose the catalogue type e.g. halo or tsz or cmass."
 )
 parser.add_argument(
@@ -39,6 +36,24 @@ parser.add_argument(
 )
 parser.add_argument(
     "grad_fg", type=str, help="Choose the map for gradient leg e.g. cmb, cmb_tsz, etc."
+)
+parser.add_argument(
+    "--grad-lmin", type=int, default=200, help="Minimum multipole for gradient leg."
+)
+parser.add_argument(
+    "--grad-lmax", type=int, default=2000, help="Maximum multipole for gradient leg."
+)
+parser.add_argument(
+    "--hres-lmin", type=int, default=200, help="Minimum multipole for high resolution leg."
+)
+parser.add_argument(
+    "--hres-lmax", type=int, default=6000, help="Maximum multipole for high resolution leg."
+)
+parser.add_argument(
+    "--klmin", type=int, default=200, help="Minimum multipole for recon."
+)
+parser.add_argument(
+    "--klmax", type=int, default=5000, help="Maximum multipole for recon."
 )
 parser.add_argument(
     "--map-spec", type=str, help="simname_Xghz_act_SPEC"
@@ -77,7 +92,7 @@ elif args.which_sim == "agora": output_path = paths.agora_output_path
 
 save_name = args.save_name
 
-save_dir = f"{output_path}/{save_name}"
+save_dir = f"{output_path}/{args.which_sim}_Lmin{args.klmin}_Lmax{args.klmax}/{save_name}"
 io.mkdir(f"{save_dir}")
 print(" ::: saving to", save_dir)
 
@@ -107,15 +122,15 @@ if args.is_meanfield: print(" ::: this is a mean-field run")
 
 # SIM SETTING ------------------------------------------------------------------
 
-xlmin = 600 
-xlmax = 2000
+xlmin = args.grad_lmin
+xlmax = args.grad_lmax
 
-ylmin = 600
-ylmax = 6000 #3500  # low lmax cut (high lmax cut is 6000)
+ylmin = args.hres_lmin
+ylmax = args.hres_lmax #3500  # low lmax cut (high lmax cut is 6000)
 ylcut = 2
 
-klmin = 600
-klmax = 5000 #3000  # low lmax cut (high lmax cut is 5000)
+klmin = args.klmin
+klmax = args.klmax #3000  # low lmax cut (high lmax cut is 5000)
 print(" ::: hlmax =", ylmax, "and klmax =", klmax)
 
 

@@ -572,14 +572,20 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
         elif dr=='dr12':
             broot = paths.boss_dr12_data
             fstr = 'DR12v5'
-        if is_meanfield:
-            # One random has 50x, more than enough for mean-fields.
-            boss_files = [broot+x for x in  [f'random0_{fstr}_CMASS_North.fits.gz',f'random0_{fstr}_CMASS_South.fits.gz']]
-        else:
-            boss_files = [broot+x for x in  [f'galaxy_{fstr}_CMASS_North.fits.gz',f'galaxy_{fstr}_CMASS_South.fits.gz']]
+        
         if zmin is None: zmin = 0.43
         if zmax is None: zmax = 0.70
-        ras,decs,ws,zs = catalogs.load_boss(boss_files,zmin=zmin,zmax=zmax,do_weights=not(is_meanfield),sys_weights=False)
+        if is_meanfield:
+            try: 
+                ras, decs, ws, zs = np.loadtxt(paths.cmass_rand_file, unpack=True)
+            except:
+                # One random has 50x, more than enough for mean-fields.
+                boss_files = [broot+x for x in  [f'random0_{fstr}_CMASS_North.fits.gz',f'random0_{fstr}_CMASS_South.fits.gz']]
+                ras,decs,ws,zs = catalogs.load_boss(boss_files,zmin=zmin,zmax=zmax,do_weights=not(is_meanfield),sys_weights=False)
+
+        else:
+            boss_files = [broot+x for x in  [f'galaxy_{fstr}_CMASS_North.fits.gz',f'galaxy_{fstr}_CMASS_South.fits.gz']]
+            ras,decs,ws,zs = catalogs.load_boss(boss_files,zmin=zmin,zmax=zmax,do_weights=not(is_meanfield),sys_weights=False)
         if ws is None: ws = ras*0 + 1
         ws = ws[decs<25]
         ras = ras[decs<25]

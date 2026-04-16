@@ -1143,6 +1143,8 @@ for task in my_tasks:
     # transform to real space for unweighted stack
     kappa = enmap.ifft(krecon, normalize="phys").real
 
+    
+
 
 
 
@@ -1426,6 +1428,9 @@ if rank == 0:
         enmap.write_map(f"{paths.savedir}/modrmap.fits", modrmap)
         np.savetxt(f"{paths.savedir}/bin_edges.txt", bin_edges)
         if not(args.is_meanfield) and not (args.debug_stack):
+            if args.kappa_and_curl:
+                np.savetxt(f"{paths.savedir}/profiles_curl.txt",s.vectors['curl'])
+
             np.savetxt(f"{paths.savedir}/profiles.txt",s.vectors['k1d'])
             try:
                 np.savetxt(f"{paths.savedir}/z_mass.txt", np.c_[s.vectors['redshift'], s.vectors['mass']])

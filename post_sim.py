@@ -1,3 +1,4 @@
+import argparse
 import matplotlib.colors as mcolors
 import numpy as np
 from orphics import io, stats
@@ -8,19 +9,50 @@ import os
 sys.path.append(os.path.abspath("/home3/nehajo/scripts/"))
 from profiles import errors, chi_square_pte
 
-savename = sys.argv[1] # prefix for files (e.g. agora_90)
-stack_path = sys.argv[2] # where profiles and stacks are saved
-sim = sys.argv[3] # agora, websky
-freq = sys.argv[4] # 90, 150, ilc
-title_text = sys.argv[5]
-prefixes = sys.argv[6:] # cmb cmb_cib cmb_ksz_cib cmb_tsz cmb_tsz_cib cmb_tsz_ksz_cib
+parser = argparse.ArgumentParser() 
+parser.add_argument(
+    "save_name", type=str, help="Name you want for your output."
+)
+parser.add_argument(
+    "stack_path", type=str, help="Where profiles and stacks are saved."
+)
+parser.add_argument(
+    "sim", type=str, help="agora or websky"
+)
+parser.add_argument(
+    "freq", type=str, help="90, 150, ilc"
+)
+parser.add_argument(
+    "components", nargs='+', help="List of fg combinations of tsz, ksz, cib as {x, x_y_z}"
+)
+parser.add_argument(
+    "--title_text", type=str, help="Title for plots"
+)
+parser.add_argument(
+    "--plot_mf", action="store_true", help="Make plots that show meanfield stack profiles."
+)
+parser.add_argument(
+    "--plot_true", action="store_true", help="Make plots that show true kappa stack."
+)
+parser.add_argument(
+    "--ymin", type=float, help="Minimum y-value for kappa plots."
+)
+parser.add_argument(
+    "--ymax", type=float, help="Maximum y-value for kappa plots."
+)
+args = parser.parse_args() 
 
-plot_mf = False
-plot_tk1d = True
+savename = args.save_name
+stack_path = args.stack_path
+sim = args.sim
+freq = args.freq
+prefixes = args.components
+title_text = args.title_text
+plot_mf = args.plot_mf
+plot_tk1d = args.plot_true
 
-
-ymin=None
-ymax=None
+ymin=args.ymin
+ymax=args.ymax
 
 stack = {}  # recon stack
 mf = {}     # meanfield
@@ -177,7 +209,7 @@ da = 0.8
 do = 0.1
 
 text_file = f"{stack_path}/{savename}_nsigma_pte.txt"
-text_out = ["profile diff \t \t n-sigma \t \t pte"]
+text_out = ["# profile diff \t \t n-sigma \t \t pte"]
 
 if plot_tk1d:
     tk1d_diff, tk_err_diff, tk_cov_diff = difference(k1d[baseline], tk1d[baseline], all_stack1d[baseline], all_tk1d[baseline])

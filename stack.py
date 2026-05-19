@@ -1,6 +1,3 @@
-# inpainting test
-# do inpainting on 90 and 150 GHz separately first and then ILC
-
 import numpy as np
 import matplotlib
 # Force matplotlib to not use any Xwindows backend.
@@ -170,7 +167,7 @@ if not (args.inject_sim):
 
 
         rms_map = maps.rms_from_ivar(
-            imap_90, cylindrical=True
+            imap_90, cylindrical=True, safe=False # safe=False for DR6 maps
         ) # convert to RMS noise map
 
 
@@ -682,42 +679,56 @@ for task in my_tasks:
     else:
         gact_stamp_150 = gastamp_150 * taper
         gact_stamp_90 = gastamp_90 * taper
-    
-    if args.inpaint: # only with hres_grad for now 
-        """
-        If inpainting, we 
-        (1) resample the stamp to 64x64 (2 arcmin pixels)
-        (2) Inpaint a hole of radius 4 arcmin 
-        """
-        rmin = 4 * utils.arcmin
-        crop_pixels = int(16.  / args.pwidth) # 16 arcminutes wide
-        act150 = maps.crop_center(gact_stamp_150,cropy=crop_pixels,cropx=crop_pixels,sel=False)
-        act90 = maps.crop_center(gact_stamp_90,cropy=crop_pixels,cropx=crop_pixels,sel=False)
-        act_sel150 = maps.crop_center(gact_stamp_150,cropy=crop_pixels,cropx=crop_pixels,sel=True)
-        act_sel90 = maps.crop_center(gact_stamp_90,cropy=crop_pixels,cropx=crop_pixels,sel=True)
-        Ndown150, Ndown2 = act150.shape[-2:]
-        #print(Ndown150, Ndown2) # 32 32
-        if Ndown150 != Ndown2: raise Exception
-        Ndown90, Ndown2 = act90.shape[-2:]
-        if Ndown90 != Ndown2: raise Exception
+
+
+
+
+
+    if args.inpaint: # here inpainting is done on gradient leg map 
+
+        s.add_to_stack("grad2d_before", pstamp)    
+        binned_grad = bin(pstamp, pstamp.modrmap() * (180 * 60 / np.pi), bin_edges)   
+        s.add_to_stats("grad1d_before", binned_grad) 
+
+        # # this is a NEW inpainting method 
+        # mask = np.zeros(pstamp.shape, dtype=bool)
+        # mask[pstamp.modrmap()<10.0 * utils.arcmin] = True
+        # mask[mask==0] = False
+        # mask = enmap.enmap(mask, pstamp.wcs)
+        # pstamp = maps.gapfill_edge_conv_flat(pstamp, mask) 
+        # plc_stamp = pstamp * taper
+
+        # this is a OLD inpainting method 
+        rmin = 4.0 * utils.arcmin # inpainting radius is set to 4 
+        px = 0.5
+        crop_pixels = int(16. / px) # 16 arcminutes wide
+        tapered_grad = plc_stamp
+        cutout = maps.crop_center(tapered_grad, cropy=crop_pixels, cropx=crop_pixels, sel=False)
+        cutout_sel = maps.crop_center(tapered_grad, cropy=crop_pixels, cropx=crop_pixels, sel=True)
+        Ndown, Ndown2 = cutout.shape[-2:]
+        if Ndown != Ndown2: raise Exception
+        grad_fiducial_rms = 35
 
         if j==0:
             from orphics import pixcov
-            pshape = act150.shape
-            pwcs = act150.wcs
-            beam_fn150 = cutils.load_beam("f150")
-            beam_fn90 = cutils.load_beam("f090")
+            pshape = cutout.shape
+            pwcs = cutout.wcs
+            fwhm = 5.0
+            beam_fn = lambda x: maps.gauss_beam(fwhm, x)
             ipsizemap = enmap.pixsizemap(pshape, pwcs)
-            pivar = maps.ivar(pshape, pwcs, defaults.highres_fiducial_rms, ipsizemap=ipsizemap)
-            pcov150 = pixcov.tpcov_from_ivar(Ndown150, pivar, theory.lCl, beam_fn150)
-            pcov90 = pixcov.tpcov_from_ivar(Ndown90, pivar, theory.lCl, beam_fn90)            
-            geo150 = pixcov.make_geometry(pshape, pwcs, rmin, n=Ndown150, deproject=True, iau=False, res=None, pcov=pcov150)
-            geo90 = pixcov.make_geometry(pshape, pwcs, rmin, n=Ndown90, deproject=True, iau=False, res=None, pcov=pcov90)
+            pivar = maps.ivar(pshape, pwcs, grad_fiducial_rms, ipsizemap=ipsizemap)
+            pcov = pixcov.tpcov_from_ivar(Ndown, pivar, theory.lCl, beam_fn)            
+            geo = pixcov.make_geometry(pshape, pwcs, rmin, n=Ndown, deproject=True, iau=False, res=None, pcov=pcov)
 
-        act150 = pixcov.inpaint_stamp(act150, geo150)
-        act90 = pixcov.inpaint_stamp(act90, geo90)
-        gact_stamp_150[act_sel150] = act150.copy()
-        gact_stamp_90[act_sel90] = act90.copy()
+        cutout = pixcov.inpaint_stamp(cutout, geo)
+        tapered_grad[cutout_sel] = cutout.copy()
+        plc_stamp = tapered_grad
+        pstamp = tapered_grad / taper
+
+        s.add_to_stack("grad2d_after", pstamp)    
+        binned_grad = bin(pstamp, pstamp.modrmap() * (180 * 60 / np.pi), bin_edges)   
+        s.add_to_stats("grad1d_after", binned_grad) 
+    
 
     if args.day_null:
         nact_stamp_150 = nastamp_150 * taper

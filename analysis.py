@@ -11,7 +11,7 @@ class Analysis(object):
                  debug=False, outname=''):
 
         self.s = stats.Stats(comm)
-        self.rank = comm.Get_rank()
+        self.rank = comm.Get_rank() if comm is not None else 0
 
         cdict = io.config_from_yaml(choices_yaml)
 

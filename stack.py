@@ -674,60 +674,37 @@ for task in my_tasks:
     act_stamp_150 = astamp_150 * taper
     act_stamp_90 = astamp_90 * taper
 
+
+    if args.inpaint:  # gradient leg (Planck-like, single channel)
+        if args.hres_grad: raise NotImplementedError("Inpainting when using high-resolution gradient not supported.")
+
+        s.add_to_stack("grad2d_before", pstamp)
+        binned_grad = bin(pstamp, pstamp.modrmap() * (180 * 60 / np.pi), bin_edges)
+        s.add_to_stats("grad1d_before", binned_grad)
+
+        if j == 0:
+            from inpaint_utils import Inpainter
+            grad_inpainter = Inpainter(
+                fine_shape=pstamp.shape,
+                fine_wcs=pstamp.wcs,
+                hole_radius_arcmin=4.0,
+                theory=theory,
+                beam_fn=lambda x: maps.gauss_beam(5.0, x),
+                noise_uK_arcmin=35.0,
+            )
+        pstamp = grad_inpainter.inpaint(pstamp)
+
+        s.add_to_stack("grad2d_after", pstamp)
+        binned_grad = bin(pstamp, pstamp.modrmap() * (180 * 60 / np.pi), bin_edges)
+        s.add_to_stats("grad1d_after", binned_grad)
+
     if not (args.hres_grad):
         plc_stamp = pstamp * taper
     else:
         gact_stamp_150 = gastamp_150 * taper
         gact_stamp_90 = gastamp_90 * taper
+        
 
-
-
-
-
-    if args.inpaint: # here inpainting is done on gradient leg map 
-
-        s.add_to_stack("grad2d_before", pstamp)    
-        binned_grad = bin(pstamp, pstamp.modrmap() * (180 * 60 / np.pi), bin_edges)   
-        s.add_to_stats("grad1d_before", binned_grad) 
-
-        # # this is a NEW inpainting method 
-        # mask = np.zeros(pstamp.shape, dtype=bool)
-        # mask[pstamp.modrmap()<10.0 * utils.arcmin] = True
-        # mask[mask==0] = False
-        # mask = enmap.enmap(mask, pstamp.wcs)
-        # pstamp = maps.gapfill_edge_conv_flat(pstamp, mask) 
-        # plc_stamp = pstamp * taper
-
-        # this is a OLD inpainting method 
-        rmin = 4.0 * utils.arcmin # inpainting radius is set to 4 
-        px = 0.5
-        crop_pixels = int(16. / px) # 16 arcminutes wide
-        tapered_grad = plc_stamp
-        cutout = maps.crop_center(tapered_grad, cropy=crop_pixels, cropx=crop_pixels, sel=False)
-        cutout_sel = maps.crop_center(tapered_grad, cropy=crop_pixels, cropx=crop_pixels, sel=True)
-        Ndown, Ndown2 = cutout.shape[-2:]
-        if Ndown != Ndown2: raise Exception
-        grad_fiducial_rms = 35
-
-        if j==0:
-            from orphics import pixcov
-            pshape = cutout.shape
-            pwcs = cutout.wcs
-            fwhm = 5.0
-            beam_fn = lambda x: maps.gauss_beam(fwhm, x)
-            ipsizemap = enmap.pixsizemap(pshape, pwcs)
-            pivar = maps.ivar(pshape, pwcs, grad_fiducial_rms, ipsizemap=ipsizemap)
-            pcov = pixcov.tpcov_from_ivar(Ndown, pivar, theory.lCl, beam_fn)            
-            geo = pixcov.make_geometry(pshape, pwcs, rmin, n=Ndown, deproject=True, iau=False, res=None, pcov=pcov)
-
-        cutout = pixcov.inpaint_stamp(cutout, geo)
-        tapered_grad[cutout_sel] = cutout.copy()
-        plc_stamp = tapered_grad
-        pstamp = tapered_grad / taper
-
-        s.add_to_stack("grad2d_after", pstamp)    
-        binned_grad = bin(pstamp, pstamp.modrmap() * (180 * 60 / np.pi), bin_edges)   
-        s.add_to_stats("grad1d_after", binned_grad) 
     
 
     if args.day_null:

@@ -385,7 +385,14 @@ def main():
         s.add_to_stats("cross", cross_binned)
         s.add_to_stats("nused", np.array([1.0]))
 
+        # Real-space response stamp (for diagnostic plots only)
+        response_real = np.asarray(
+            enmap.ifft(enmap.enmap(response_k, wcs), normalize="phys").real
+        )
+        s.add_to_stack("response_real", response_real)
+
     s.get_stats()
+    s.get_stacks()
     if rank != 0:
         return
 
@@ -425,6 +432,132 @@ def main():
     print(f"[cal] Saved cal.npz  ({n_used}/{params['nsims']} sims used)")
     print(f"[cal] mean R(L) in [{params['kappa_lmin']},{params['kappa_lmax']}]: "
           f"{float(np.mean(R_L[safe])):.4f}")
+
+    # Diagnostic plots
+    try:
+        response_real_stack = np.asarray(s.stacks["response_real"])
+        kappa_filt_real = np.asarray(
+            enmap.ifft(enmap.enmap(ktrue_k, wcs), normalize="phys").real
+        )
+        modrmap_arcmin = enmap.modrmap(shape, wcs) * (180.0 * 60.0 / np.pi)
+        _make_plots(
+            args.output_dir, params, ell_centers, R_L, R_L_err,
+            response_real_stack, kappa_filt_real, modrmap_arcmin,
+            n_used,
+        )
+        print(f"[cal] Saved plots to {args.output_dir}")
+    except Exception as e:
+        print(f"[cal] WARNING: plot generation failed: {e}")
+
+
+def _make_plots(out_dir, params, ell_centers, R_L, R_L_err,
+                response_real, kappa_filt, modrmap_arcmin, n_used):
+    """Three diagnostic plots written under out_dir.
+
+    cal_R_L.png        : R(L) +/- err vs L, with unity reference
+    cal_stamps.png     : zoomed 2D stamps of filtered true kappa vs mean
+                         recovered response
+    cal_profile.png    : 1D radial profiles of the same
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    title_suffix = (
+        f"hole={params['inpaint_radius_arcmin']}',  "
+        f"M={params['mass']:.2e},  z={params['redshift']},  "
+        f"nsims={n_used}"
+    )
+
+    # ---- R(L) ----
+    fig, ax = plt.subplots(figsize=(7.5, 4.5))
+    ax.errorbar(ell_centers, R_L, yerr=R_L_err, fmt="o-", color="#1f77b4",
+                capsize=2, lw=1.5, ms=5, label=r"$R(L)$")
+    ax.axhline(1.0, ls="--", color="k", alpha=0.5, lw=1, label="unity")
+    safe = R_L_err < 1.0  # avoid garbage bins outside the kmask band
+    if safe.any():
+        mean_R = float(np.mean(R_L[safe]))
+        ax.axhline(mean_R, ls=":", color="#d62728", lw=1.5,
+                   label=fr"$\langle R \rangle = {mean_R:.3f}$")
+    ax.set_xlabel(r"multipole $L$")
+    ax.set_ylabel(r"$R(L)$")
+    ax.set_title("QE response transfer function\n" + title_suffix,
+                 fontsize=10)
+    ax.legend(loc="best", framealpha=0.9)
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(os.path.join(out_dir, "cal_R_L.png"), dpi=130)
+    plt.close(fig)
+
+    # ---- 2D stamps (zoomed) ----
+    n = response_real.shape[-1]
+    half_arcmin = 20.0
+    half_pix = int(half_arcmin / params["pix_arcmin"])
+    cy = n // 2
+    sl = (slice(cy - half_pix, cy + half_pix),
+          slice(cy - half_pix, cy + half_pix))
+    extent = [-half_arcmin, half_arcmin, -half_arcmin, half_arcmin]
+
+    true_crop = kappa_filt[sl]
+    resp_crop = response_real[sl]
+    vmax = max(np.nanmax(true_crop), np.nanmax(resp_crop))
+    vmin = min(np.nanmin(true_crop), np.nanmin(resp_crop))
+    abs_max = max(abs(vmin), abs(vmax))
+    norm_kwargs = dict(vmin=-abs_max, vmax=abs_max, cmap="RdBu_r")
+
+    fig, axs = plt.subplots(1, 3, figsize=(13.5, 4.4),
+                            gridspec_kw={"width_ratios": [1, 1, 1]})
+    for ax_, data, ttl in zip(
+        axs,
+        [true_crop, resp_crop, resp_crop - true_crop],
+        ["filtered true kappa", "mean recovered response",
+         "residual (recov - true)"],
+    ):
+        im = ax_.imshow(data, origin="lower", extent=extent, **norm_kwargs)
+        ax_.set_title(ttl, fontsize=10)
+        ax_.set_xlabel("arcmin")
+        plt.colorbar(im, ax=ax_, fraction=0.046)
+    axs[0].set_ylabel("arcmin")
+    fig.suptitle(title_suffix, fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.savefig(os.path.join(out_dir, "cal_stamps.png"), dpi=130)
+    plt.close(fig)
+
+    # ---- 1D radial profile ----
+    from orphics.stats import bin2D
+    r_edges = np.arange(0.0, 15.01, 1.0)
+    r_centers = (r_edges[:-1] + r_edges[1:]) / 2.0
+    rbinner = bin2D(modrmap_arcmin, r_edges)
+    _, prof_true = rbinner.bin(kappa_filt)
+    _, prof_resp = rbinner.bin(response_real)
+
+    fig, axs = plt.subplots(2, 1, figsize=(7.5, 6.5),
+                            gridspec_kw={"height_ratios": [3, 1.4]},
+                            sharex=True)
+    axs[0].plot(r_centers, prof_true, "o-", color="k", lw=1.5, ms=5,
+                label="filtered true kappa")
+    axs[0].plot(r_centers, prof_resp, "s-", color="#1f77b4", lw=1.5, ms=5,
+                label="mean recovered response")
+    axs[0].axhline(0, ls="-", color="k", alpha=0.2, lw=1)
+    axs[0].set_ylabel(r"$\kappa(\theta)$ profile")
+    axs[0].set_title("Real-space response vs true kappa\n" + title_suffix,
+                     fontsize=10)
+    axs[0].legend(loc="best", framealpha=0.9)
+    axs[0].grid(alpha=0.3)
+
+    safe_r = np.abs(prof_true) > 1e-10
+    ratio = np.full_like(prof_true, np.nan)
+    ratio[safe_r] = prof_resp[safe_r] / prof_true[safe_r]
+    axs[1].plot(r_centers, ratio, "o-", color="#d62728", lw=1.5, ms=5)
+    axs[1].axhline(1.0, ls="--", color="k", alpha=0.5, lw=1)
+    axs[1].set_xlabel(r"$\theta$ (arcmin)")
+    axs[1].set_ylabel("recov / true")
+    axs[1].set_ylim(0.0, 1.5)
+    axs[1].grid(alpha=0.3)
+
+    fig.tight_layout()
+    fig.savefig(os.path.join(out_dir, "cal_profile.png"), dpi=130)
+    plt.close(fig)
 
 
 if __name__ == "__main__":

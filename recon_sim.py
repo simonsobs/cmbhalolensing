@@ -86,7 +86,11 @@ parser.add_argument(
 parser.add_argument(
     "--inpaint", type=float, default=None, help="Inpainting for gradient leg. Enter the inpainting radius in arcmin."
 )
-args = parser.parse_args() 
+parser.add_argument(
+    "--calibration", type=str, default=None,
+    help="Directory written by cal_response.py.  Divides krecon by R(L) before stacking."
+)
+args = parser.parse_args()
 
 if args.which_sim == "websky": output_path = paths.websky_output_path
 elif args.which_sim == "sehgal": output_path = paths.sehgal_output_path
@@ -1028,9 +1032,31 @@ for task in my_tasks:
             l_edges = np.arange(minell / 2, 8001, minell)
             lbinner = stats.bin2D(modlmap, l_edges)
             # PS correction factor
-            w2 = np.mean(taper ** 2) 
+            w2 = np.mean(taper ** 2)
             # fsky for bandpower variance
             fsky = enmap.area(shape, wcs) * w2 / 4.0 / np.pi
+
+        R_2d = None
+        if args.calibration is not None:
+            from cal_utils import load_calibration, check_compatibility, build_R_2d
+            _cal = load_calibration(args.calibration)
+            check_compatibility(
+                _cal["params"],
+                pix_arcmin=px,
+                stamp_width_arcmin=width_deg * 60,
+                taper_percent=tap_per, pad_percent=pad_per,
+                grad_lmin=xlmin, grad_lmax=xlmax,
+                hres_lmin=ylmin, hres_lmax=ylmax,
+                hres_lxcut=lycut, hres_lycut=lycut,
+                kappa_lmin=klmin, kappa_lmax=klmax,
+                grad_beam_fwhm=fwhm_plc, grad_noise_uK_arcmin=nlevel_plc,
+                hres_beam_fwhms=[ilc_beam_fwhm150, ilc_beam_fwhm090],
+                hres_noise_uK_arcmin=nlevel,
+                inpaint_radius_arcmin=(args.inpaint or 0.0),
+            )
+            R_2d = build_R_2d(_cal["R_L"], _cal["ell_centers"], modlmap)
+            if rank == 0:
+                print(f" ::: applying response calibration from {_cal['path']}")
 
     # same filter as the post-reconstuction for true kappa (also tapered!)
     k_stamp = maps.filter_map(kstamp*taper, kmask)   
@@ -1292,6 +1318,10 @@ for task in my_tasks:
 
     # Fourier space lens reconstruction
     rkmap = cqe.reconstruct(feed_dict, xname="X_l1", yname="Y_l2", physical_units=True)
+
+    if R_2d is not None:
+        from cal_utils import apply_R_2d
+        rkmap = apply_R_2d(rkmap, R_2d)
 
     assert np.all(np.isfinite(rkmap))
 

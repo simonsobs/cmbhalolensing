@@ -155,6 +155,10 @@ def initialize_pipeline_config():
         "--inpaint", action="store_true", help="Inpaint gradient."
     )
     parser.add_argument(
+        "--calibration", type=str, default=None,
+        help="Directory written by cal_response.py.  Divides krecon by R(L) before stacking."
+    )
+    parser.add_argument(
         "--no-sz-sub",
         action="store_true",
         help="Use the high-res maps without SZ subtraction.",

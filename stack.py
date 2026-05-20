@@ -879,6 +879,28 @@ for task in my_tasks:
         # map of distances from center
         modrmap = enmap.modrmap(shape, wcs)
 
+        R_2d = None
+        if args.calibration is not None:
+            from cal_utils import load_calibration, check_compatibility, build_R_2d
+            _cal = load_calibration(args.calibration)
+            check_compatibility(
+                _cal["params"],
+                pix_arcmin=args.pwidth,
+                stamp_width_arcmin=args.swidth,
+                taper_percent=args.tap_per, pad_percent=args.pad_per,
+                grad_lmin=xlmin, grad_lmax=xlmax,
+                hres_lmin=ylmin, hres_lmax=ylmax,
+                hres_lxcut=args.hres_lxcut, hres_lycut=args.hres_lycut,
+                kappa_lmin=klmin, kappa_lmax=klmax,
+                grad_beam_fwhm=plc_beam_fwhm,
+                grad_noise_uK_arcmin=defaults.gradient_fiducial_rms,
+                hres_noise_uK_arcmin=defaults.highres_fiducial_rms,
+                inpaint_radius_arcmin=(4.0 if args.inpaint else 0.0),
+            )
+            R_2d = build_R_2d(_cal["R_L"], _cal["ell_centers"], modlmap)
+            if rank == 0:
+                print(f" ::: applying response calibration from {_cal['path']}")
+
     # Fourier map -> PS
     pow = lambda x, y: (x * y.conj()).real 
 
@@ -1118,7 +1140,11 @@ for task in my_tasks:
     )
     # Fourier space lens reconstruction
     krecon = cqe.reconstruct(feed_dict, xname="X_l1", yname="Y_l2", physical_units=True)
-    # not the pixel unit 
+    # not the pixel unit
+
+    if R_2d is not None:
+        from cal_utils import apply_R_2d
+        krecon = apply_R_2d(krecon, R_2d)
 
     # transform to real space for unweighted stack
     kappa = enmap.ifft(krecon, normalize="phys").real

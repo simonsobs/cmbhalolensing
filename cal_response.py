@@ -58,7 +58,7 @@ def _gnfw(x):
 def nfw_kappa_map(shape, wcs, M200c, z, c200c):
     """Projected NFW convergence on an enmap grid (colossus cosmology)."""
     from colossus.cosmology import cosmology as col_cosmo
-    col_cosmo.setCosmology("planck18")
+    col_cosmo.setCosmology("planck18",persistence="")
     cosmo = col_cosmo.getCurrent()
     rho_c = cosmo.rho_c(z)
     R200c_kpc = (3 * M200c / (4 * np.pi * 200 * rho_c)) ** (1 / 3)
@@ -290,10 +290,8 @@ def main():
     kappa_true = nfw_kappa_map(shape, wcs, params["mass"],
                                params["redshift"], params["concentration"])
     grad_phi = olensing.alpha_from_kappa(kappa_true)
-    ktrue_k = np.asarray(
-        enmap.fft(enmap.enmap(np.asarray(kappa_true) * taper_arr, wcs),
-                  normalize="phys") * kmask
-    )
+    ktrue_k =    enmap.fft(enmap.enmap(kappa_true * taper_arr, wcs),normalize="phys") * kmask
+    
     if rank == 0:
         print(f"[cal] NFW: M={params['mass']:.2e}, z={params['redshift']}, "
               f"c={params['concentration']}, "
@@ -331,13 +329,12 @@ def main():
             print(f"[cal] sim {j}/{n_my}  ({time.time()-t0:.0f}s)")
         seed = params["seed"] + int(isim)
 
-        unlensed = np.asarray(mgen.get_map(seed=seed)[0], dtype=np.float64)
+        unlensed = mgen.get_map(seed=seed)[0]
         lensed = enlensing.lens_map(unlensed, grad_phi,
                                     order=5, border="cyclic")
 
         krecon_pair = []
-        for cmb_input in (lensed, unlensed):
-            cmb_in = enmap.enmap(np.asarray(cmb_input, dtype=np.float64), wcs)
+        for cmb_in in (lensed, unlensed):
 
             # Gradient leg: beam-convolve, inpaint (untapered), taper, FFT, deconvolve.
             g_k = enmap.fft(cmb_in, normalize="phys") * Bplc
@@ -378,7 +375,7 @@ def main():
             rkmap = qe_obj.reconstruct(feed_dict,
                                        xname="X_l1", yname="Y_l2",
                                        physical_units=True)
-            krecon_pair.append(np.asarray(rkmap))
+            krecon_pair.append(rkmap)
 
         response_k = krecon_pair[0] - krecon_pair[1]
         if not np.all(np.isfinite(response_k)):
@@ -394,7 +391,7 @@ def main():
 
     cross_mean = s.stats["cross"]["mean"]
     cross_err = s.stats["cross"]["errmean"]
-    n_used = int(np.round(s.stats["nused"]["mean"] * size))
+    n_used = int(np.round(float(s.stats["nused"]["mean"][0]) * size))
 
     safe = auto_power > 1e-30
     R_L = np.ones(n_ell)

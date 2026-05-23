@@ -94,5 +94,11 @@ def build_R_2d(R_L, ell_centers, modlmap, fill_value=1.0):
 
 
 def apply_R_2d(rkmap, R_2d, eps=1e-3):
-    """Safe division: rkmap / R_2d, zero where |R_2d| < eps."""
-    return np.where(np.abs(R_2d) > eps, rkmap / R_2d, 0.0)
+    """Safe division: rkmap / R_2d, zero where |R_2d| < eps.
+
+    Preserves the enmap subclass (and wcs) of ``rkmap`` by avoiding
+    np.where, which strips the subclass.  Bands where |R_2d| < eps get
+    R_safe = inf, so rkmap / R_safe = 0 there.
+    """
+    R_safe = np.where(np.abs(R_2d) > eps, R_2d, np.inf)
+    return rkmap / R_safe

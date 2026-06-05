@@ -1557,9 +1557,9 @@ def build_parser():
     p.add_argument(
         "--snr-min",
         type=float,
-        default=6.0,
+        default=0.0,
         dest="snr_min",
-        help="Minimum S/N to actually subtract a cluster.",
+        help="Minimum *fit* S/N to actually subtract a cluster. This is not the SNR in the provided catalog, but the SNR from fitting. You probably don't want to use this if you are already selecting on SNR>x with --query.",
     )
     p.add_argument(
         "--stack-arcmin",

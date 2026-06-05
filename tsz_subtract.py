@@ -765,7 +765,10 @@ def run_pipeline(args):
         # use the first (temperature) component of a multi-component map.
         try:
             data = enmap.read_map(args.coadd, pixbox=pb)
-            ivar = enmap.read_map(args.ivar, pixbox=pb)
+            if isinstance(args.ivar, str):
+                ivar = enmap.read_map(args.ivar, pixbox=pb)
+            else:
+                ivar = maps.ivar(data.shape,data.wcs,args.ivar)
         except Exception as e:
             nskip += 1
             if rank == 0 and args.debug:
@@ -1339,7 +1342,8 @@ def build_parser():
     p.add_argument(
         "--ivar",
         help="Path to the inverse-variance map (FITS). If multi-component, the "
-        "first map is used.",
+        "first map is used. If only a float is specified, this is interpreted as"
+        "the homogenous RMS in uK-arcmin (not inverse variance uK^2).",
     )
     p.add_argument(
         "--catalog",
@@ -1427,7 +1431,7 @@ def main():
         run_selftest(args)
         return
     missing = [
-        k for k in ("coadd", "ivar", "catalog", "beam") if getattr(args, k) is None
+        k for k in ("coadd", "catalog", "beam") if getattr(args, k) is None
     ]
     if missing:
         raise SystemExit(f"Missing required arguments: {missing} (or use --selftest).")

@@ -84,6 +84,9 @@ ARNAUD = dict(P0=8.403, c500=1.177, gamma=0.3081, alpha=1.0510, beta=5.4905)
 # low-redshift clusters (angular R500c up to ~10'), so it is painted out to here.
 PROFILE_MAX_ARCMIN = 40.0
 
+# In --debug, cap a real-data run to this many clusters for a quick smoke test.
+DEBUG_NCLUSTERS = 50
+
 
 # ===========================================================================
 # Cosmology helpers
@@ -566,20 +569,23 @@ def m200c_to_m500c(m200c, z, cosmo):
         M500c in solar masses.
     """
     h = cosmo.H0.value / 100.0
-    c200 = 5.71 * (m200c * h / 2.0e12) ** -0.084 * (1.0 + np.asarray(z)) ** -0.47
 
     def mu(x):
         return np.log(1.0 + x) - x / (1.0 + x)
 
-    # Solve 2.5 y^3 mu(c200) = mu(y c200) for y = r500/r200 in (0, 1] by bisection.
-    lo = np.full_like(c200, 0.2)
-    hi = np.full_like(c200, 1.0)
-    for _ in range(60):
+    # Non-positive / NaN masses (dropped later) would warn here; let them flow
+    # through as NaN, which the row filter in load_catalog removes.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        c200 = 5.71 * (m200c * h / 2.0e12) ** -0.084 * (1.0 + np.asarray(z)) ** -0.47
+        # Solve 2.5 y^3 mu(c200) = mu(y c200) for y = r500/r200 in (0, 1] by bisection.
+        lo = np.full_like(c200, 0.2)
+        hi = np.full_like(c200, 1.0)
+        for _ in range(60):
+            y = 0.5 * (lo + hi)
+            pos = 2.5 * y**3 * mu(c200) - mu(y * c200) > 0
+            hi = np.where(pos, y, hi)
+            lo = np.where(pos, lo, y)
         y = 0.5 * (lo + hi)
-        pos = 2.5 * y**3 * mu(c200) - mu(y * c200) > 0
-        hi = np.where(pos, y, hi)
-        lo = np.where(pos, lo, y)
-    y = 0.5 * (lo + hi)
     return m200c * 2.5 * y**3
 
 
@@ -807,6 +813,9 @@ def run_pipeline(args):
     ra, dec, m500c, z = load_catalog(
         args.catalog, query=args.query, mass_col=args.mass_col
     )
+    if args.debug and ra.size > DEBUG_NCLUSTERS:
+        log(f"--debug: using the first {DEBUG_NCLUSTERS} of {ra.size} clusters.")
+        ra, dec, m500c, z = (a[:DEBUG_NCLUSTERS] for a in (ra, dec, m500c, z))
     ncl = ra.size
     shape, wcs = enmap.read_map_geometry(args.coadd)
     pixboxes = compute_pixboxes(shape, wcs, ra, dec, args.radius_arcmin * utils.arcmin)
@@ -1518,7 +1527,8 @@ def build_parser():
     p.add_argument(
         "--debug",
         action="store_true",
-        help="Fast, low-resolution configuration for quick testing.",
+        help=f"Fast configuration for quick testing: coarser CMB/scale grids and, "
+        f"on real data, only the first {DEBUG_NCLUSTERS} clusters.",
     )
     return p
 

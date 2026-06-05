@@ -543,14 +543,55 @@ def fit_cluster(data, ivar, m500c, z, cosmo, nu_ghz, profiler, scov_cache, s_val
 # ===========================================================================
 # Map / catalog I/O and stamp extraction
 # ===========================================================================
-def load_catalog(path, query=None):
+def m200c_to_m500c(m200c, z, cosmo):
+    """Convert M200c to M500c assuming an NFW profile (Duffy et al. 2008 c-M).
+
+    Both overdensities are relative to the critical density, so the conversion
+    depends only on the concentration ``c200c(M200c, z)``; the critical density
+    cancels. Accurate to a few percent, which is well below the cluster-to-cluster
+    scatter and ample for sizing the tSZ template.
+
+    Parameters
+    ----------
+    m200c : ndarray
+        M200c in solar masses.
+    z : ndarray
+        Redshift per cluster.
+    cosmo : FlatLambdaCDM
+        Cosmology (for the Hubble parameter in the c-M pivot).
+
+    Returns
+    -------
+    ndarray
+        M500c in solar masses.
+    """
+    h = cosmo.H0.value / 100.0
+    c200 = 5.71 * (m200c * h / 2.0e12) ** -0.084 * (1.0 + np.asarray(z)) ** -0.47
+
+    def mu(x):
+        return np.log(1.0 + x) - x / (1.0 + x)
+
+    # Solve 2.5 y^3 mu(c200) = mu(y c200) for y = r500/r200 in (0, 1] by bisection.
+    lo = np.full_like(c200, 0.2)
+    hi = np.full_like(c200, 1.0)
+    for _ in range(60):
+        y = 0.5 * (lo + hi)
+        pos = 2.5 * y**3 * mu(c200) - mu(y * c200) > 0
+        hi = np.where(pos, y, hi)
+        lo = np.where(pos, lo, y)
+    y = 0.5 * (lo + hi)
+    return m200c * 2.5 * y**3
+
+
+def load_catalog(path, query=None, mass_col=None):
     """Load a cluster catalog (RA, Dec, M500c, z), with optional row selection.
 
-    Reads a FITS table (e.g. the ACT DR6 cluster catalog) or a four-column text
+    Reads a FITS table (e.g. the ACT/nemo cluster catalogs) or a four-column text
     file (ra_deg dec_deg m500c z). Column names are matched case-insensitively
-    against common aliases (RADeg/decDeg/redshift/M500c ...). M500c stored in
-    units of 1e14 Msun (as in the ACT catalogs) is auto-detected and converted to
-    Msun.
+    against common aliases (RADeg/decDeg/redshift/M500c ...). Masses tabulated in
+    1e14 Msun (as in the ACT catalogs) are auto-detected and converted to Msun.
+    If only an M200c column is present it is converted to M500c via
+    :func:`m200c_to_m500c`.
 
     Parameters
     ----------
@@ -560,6 +601,8 @@ def load_catalog(path, query=None):
         Optional SQL-like row selection applied to the full table before column
         extraction (pandas ``DataFrame.query`` syntax), e.g.
         "SNR > 6 and redshift < 0.5". Any catalog column may be referenced.
+    mass_col : str or None
+        Explicit mass column name, taken as M500c (overrides auto-detection).
 
     Returns
     -------
@@ -577,20 +620,53 @@ def load_catalog(path, query=None):
 
     cols = {c.lower(): c for c in t.colnames}
 
-    def pick(*names):
+    def pick(*names, required=True):
         for n in names:
             if n in cols:
                 return np.asarray(t[cols[n]], dtype=float)
-        raise KeyError(f"None of {names} found in catalog columns {t.colnames}")
+        if required:
+            raise KeyError(f"None of {names} found in catalog columns {t.colnames}")
+        return None
 
     ra = pick("ra", "ra_deg", "radeg")
     dec = pick("dec", "dec_deg", "decdeg")
-    m500c = pick("m500c", "mass", "m500", "m500c_msun")
     z = pick("z", "redshift", "zcmb")
-    # ACT catalogs tabulate M500c in 1e14 Msun; detect and convert to Msun.
-    if m500c.size and np.nanmedian(m500c) < 1e5:
-        m500c = m500c * 1e14
-    return ra, dec, m500c, z
+
+    # Masses may be tabulated in 1e14 Msun (ACT/nemo convention); detect by scale.
+    def to_msun(m):
+        return m * 1e14 if m.size and np.nanmedian(m) < 1e5 else m
+
+    if mass_col is not None:
+        if mass_col.lower() not in cols:
+            raise KeyError(f"--mass-col '{mass_col}' not in columns {t.colnames}")
+        m500c = to_msun(np.asarray(t[cols[mass_col.lower()]], dtype=float))
+    elif (
+        m500c := pick("m500c", "mass", "m500", "m500c_msun", required=False)
+    ) is not None:
+        m500c = to_msun(m500c)
+    elif (
+        m200c := pick("m200c", "m200", "m200c_msun", "m200cuncorr", required=False)
+    ) is not None:
+        m500c = m200c_to_m500c(to_msun(m200c), z, COSMO)
+        print("Note: catalog has no M500c; converted M200c -> M500c (NFW, Duffy+08).")
+    else:
+        raise KeyError(
+            "No mass column found (looked for M500c/M200c aliases). "
+            f"Available columns: {t.colnames}. Pass --mass-col to name one."
+        )
+    # Drop rows that cannot be fit (missing position/redshift/mass, e.g. clusters
+    # with no measured redshift in the ACT/nemo catalogs).
+    good = (
+        np.isfinite(ra)
+        & np.isfinite(dec)
+        & np.isfinite(z)
+        & np.isfinite(m500c)
+        & (m500c > 0)
+        & (z > 0)
+    )
+    if not good.all():
+        print(f"Note: dropping {int((~good).sum())} catalog rows with missing m500c/z.")
+    return ra[good], dec[good], m500c[good], z[good]
 
 
 def compute_pixboxes(shape, wcs, ra_deg, dec_deg, radius_rad):
@@ -728,11 +804,23 @@ def run_pipeline(args):
     os.makedirs(args.outdir, exist_ok=True)
 
     # --- Inputs (small) read by all ranks -------------------------------------
-    ra, dec, m500c, z = load_catalog(args.catalog, query=args.query)
+    ra, dec, m500c, z = load_catalog(
+        args.catalog, query=args.query, mass_col=args.mass_col
+    )
     ncl = ra.size
     shape, wcs = enmap.read_map_geometry(args.coadd)
     pixboxes = compute_pixboxes(shape, wcs, ra, dec, args.radius_arcmin * utils.arcmin)
-    log(f"Catalog: {ncl} clusters; map shape {shape[-2:]}; {size} MPI rank(s).")
+    # --ivar may be a path to an ivar map or a uniform white-noise level in
+    # uK-arcmin (a plain number), from which a per-pixel ivar stamp is built.
+    try:
+        noise_uk_arcmin = float(args.ivar)
+    except (TypeError, ValueError):
+        noise_uk_arcmin = None
+    ivar_desc = f"{noise_uk_arcmin:.1f} uK-arcmin" if noise_uk_arcmin else args.ivar
+    log(
+        f"Catalog: {ncl} clusters; map shape {shape[-2:]}; "
+        f"ivar={ivar_desc}; {size} MPI rank(s)."
+    )
 
     beam_fn = get_beam_fn(args.beam)
     # Model is painted out to the full profile extent so low-z (large) clusters
@@ -765,19 +853,19 @@ def run_pipeline(args):
         # use the first (temperature) component of a multi-component map.
         try:
             data = enmap.read_map(args.coadd, pixbox=pb)
-            if isinstance(args.ivar, str):
-                ivar = enmap.read_map(args.ivar, pixbox=pb)
+            if data.ndim > 2:
+                data = data[0]
+            if noise_uk_arcmin is not None:
+                ivar = maps.ivar(data.shape, data.wcs, noise_uk_arcmin)
             else:
-                ivar = maps.ivar(data.shape,data.wcs,args.ivar)
+                ivar = enmap.read_map(args.ivar, pixbox=pb)
+                if ivar.ndim > 2:
+                    ivar = ivar[0]
         except Exception as e:
             nskip += 1
             if rank == 0 and args.debug:
                 print(f"  skip {idx}: read failed ({e})")
             continue
-        if data.ndim > 2:
-            data = data[0]
-        if ivar.ndim > 2:
-            ivar = ivar[0]
         if (
             data.shape != ivar.shape
             or np.asarray(ivar).max() <= 0
@@ -787,17 +875,23 @@ def run_pipeline(args):
             continue
 
         tf = time.time()
-        model, res = fit_cluster(
-            data,
-            ivar,
-            m500c[idx],
-            z[idx],
-            COSMO,
-            args.nu_eff,
-            profiler,
-            scov_cache,
-            s_vals,
-        )
+        try:
+            model, res = fit_cluster(
+                data,
+                ivar,
+                m500c[idx],
+                z[idx],
+                COSMO,
+                args.nu_eff,
+                profiler,
+                scov_cache,
+                s_vals,
+            )
+        except Exception as e:
+            nskip += 1
+            if rank == 0 and args.debug:
+                print(f"  skip {idx}: fit failed ({e})")
+            continue
         t_fit += time.time() - tf
 
         if res["snr"] < args.snr_min:
@@ -1356,6 +1450,13 @@ def build_parser():
         help="Optional SQL-like row selection on the catalog (pandas query "
         'syntax), e.g. "SNR > 6 and redshift < 0.5".',
     )
+    p.add_argument(
+        "--mass-col",
+        default=None,
+        dest="mass_col",
+        help="Catalog mass column to use as M500c (overrides auto-detection of "
+        "M500c/M200c aliases).",
+    )
     p.add_argument("--beam", help="Beam FWHM in arcmin (float) or ell,B_ell file path.")
     p.add_argument(
         "--nu-eff",
@@ -1430,9 +1531,7 @@ def main():
     if args.selftest:
         run_selftest(args)
         return
-    missing = [
-        k for k in ("coadd", "catalog", "beam") if getattr(args, k) is None
-    ]
+    missing = [k for k in ("coadd", "catalog", "beam") if getattr(args, k) is None]
     if missing:
         raise SystemExit(f"Missing required arguments: {missing} (or use --selftest).")
     if args.nu_eff is None:

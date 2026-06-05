@@ -63,7 +63,7 @@ from astropy.cosmology import FlatLambdaCDM
 
 from pixell import enmap, reproject, curvedsky, pointsrcs, utils
 
-from orphics import pixcov, foregrounds, mpi, io, stats, maps
+from orphics import foregrounds, mpi, io, stats, maps
 
 # ---------------------------------------------------------------------------
 # Physical constants (CGS / keV units for the Compton-y line-of-sight integral)
@@ -86,6 +86,11 @@ PROFILE_MAX_ARCMIN = 40.0
 
 # In --debug, cap a real-data run to this many clusters for a quick smoke test.
 DEBUG_NCLUSTERS = 50
+
+# Single precision for the pixel covariance: cho_factor is ~2x faster and the
+# matrices are half the size. S_cmb + N_ivar is well within float32 conditioning
+# for realistic noise levels (the diagonal noise floor bounds the eigenvalues).
+COV_DTYPE = np.float32
 
 
 # ===========================================================================
@@ -370,7 +375,7 @@ class ScovCache:
         )
         np.clip(cosang, -1.0, 1.0, out=cosang)
         rmat = np.arccos(cosang)
-        scov = self.corr_fn(rmat)
+        scov = self.corr_fn(rmat).astype(COV_DTYPE)
         self._cache[key] = scov
         return scov
 
@@ -497,19 +502,26 @@ def fit_cluster(data, ivar, m500c, z, cosmo, nu_ghz, profiler, scov_cache, s_val
     """
     dT_interp, theta500 = deltaT_profile(m500c, z, cosmo, nu_ghz)
 
-    scov = scov_cache.get(data)
-    ncov = pixcov.ncov_from_ivar(np.asarray(ivar), ncomp=1)[0, 0]
-    cmat = scov + ncov
+    # C = S_cmb (cached, float32) + diagonal pixel noise from ivar, assembled and
+    # factored in single precision. Add the noise to a copy of the cached S so the
+    # shared matrix is not mutated.
+    ivar_flat = np.asarray(ivar, dtype=np.float64).reshape(-1)
+    var = 1.0 / ivar_flat
+    bad = ~np.isfinite(var)
+    if bad.any():
+        var[bad] = 1.0 / ivar_flat[ivar_flat > 0].max()
+    cmat = scov_cache.get(data).astype(COV_DTYPE, copy=True)
+    cmat[np.diag_indices_from(cmat)] += var.astype(COV_DTYPE)
     cho = cho_factor(cmat)
 
-    d = np.asarray(data).reshape(-1)
+    d = np.asarray(data, dtype=COV_DTYPE).reshape(-1)
     cinv_d = cho_solve(cho, d)
     dt_cinv_d = float(d @ cinv_d)
 
     def chi2_for_scale(s):
         prof = profiler.beamed(dT_interp, s)
         templ = model_stamp(data, profiler.r, prof)
-        t = np.asarray(templ).reshape(-1)
+        t = np.asarray(templ, dtype=COV_DTYPE).reshape(-1)
         cinv_t = cho_solve(cho, t)
         tct = float(t @ cinv_t)
         if tct <= 0:
@@ -786,6 +798,32 @@ def gather_lists(comm, local):
 # ===========================================================================
 # Main pipeline
 # ===========================================================================
+def launcher_info():
+    """Process count and rank the MPI launcher advertises via the environment.
+
+    Lets us detect the common failure where a job is started under
+    ``mpirun``/``srun`` with N processes but mpi4py is not bound to that MPI and
+    each process initializes its own size-1 communicator.
+
+    Returns
+    -------
+    (nproc, rank) : (int or None, int)
+        Launcher process count (None if not launched under a recognised MPI),
+        and this process's launcher rank (0 if unknown).
+    """
+    for nvar, rvar in (
+        ("OMPI_COMM_WORLD_SIZE", "OMPI_COMM_WORLD_RANK"),
+        ("PMI_SIZE", "PMI_RANK"),
+        ("SLURM_NTASKS", "SLURM_PROCID"),
+    ):
+        if nvar in os.environ:
+            try:
+                return int(os.environ[nvar]), int(os.environ.get(rvar, "0"))
+            except ValueError:
+                pass
+    return None, 0
+
+
 def run_pipeline(args):
     """Run the end-to-end fit-and-subtract pipeline.
 
@@ -805,6 +843,19 @@ def run_pipeline(args):
     def log(msg):
         if rank == 0:
             print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
+
+    # Detect a launcher/mpi4py mismatch: started with N processes but MPI reports
+    # size 1, so every process would redundantly do the whole catalogue.
+    nlaunch, lrank = launcher_info()
+    if nlaunch and nlaunch > 1 and size == 1 and lrank == 0:
+        print(
+            f"WARNING: started under a launcher with {nlaunch} processes but mpi4py "
+            "reports size=1 -- MPI is NOT active, so every process will fit the whole "
+            "catalogue and overwrite the same output. Rebuild mpi4py against this "
+            "cluster's MPI, e.g. `MPICC=$(which mpicc) pip install --no-binary mpi4py "
+            "--force-reinstall mpi4py`.",
+            flush=True,
+        )
 
     t0 = time.time()
     os.makedirs(args.outdir, exist_ok=True)
@@ -844,11 +895,16 @@ def run_pipeline(args):
     s_vals = np.linspace(smin, smax, int(ns))
 
     # --- Distribute clusters --------------------------------------------------
-    _, task_dist = (
-        mpi.mpi_distribute(ncl, size) if size > 1 else (None, [list(range(ncl))])
+    # Hand each rank a contiguous block of declination-sorted clusters, and fit
+    # them in that order. Each rank then spans only a narrow declination range, so
+    # the CMB-covariance cache holds just a couple of bands (bounded memory) and
+    # nearly every fit is a cache hit.
+    order = np.argsort(dec)
+    my_tasks = np.array_split(order, size)[rank]
+    log(
+        f"Distributing {ncl} clusters over {size} MPI rank(s); rank 0 handles "
+        f"{len(my_tasks)}."
     )
-    my_tasks = task_dist[rank]
-    log(f"Rank 0 handling {len(my_tasks)} clusters (of {ncl}).")
 
     stack_r = args.stack_arcmin * utils.arcmin
     stack_res = (args.stack_res_arcmin) * utils.arcmin

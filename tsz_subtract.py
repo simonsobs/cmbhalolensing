@@ -929,12 +929,16 @@ def run_pipeline(args):
                 ivar = enmap.read_map(args.ivar, pixbox=pb)
                 if ivar.ndim > 2:
                     ivar = ivar[0]
-        except Exception as e:
+        except Exception:
             nskip += 1
             skip_reasons["read error"] = skip_reasons.get("read error", 0) + 1
-            skip_examples.setdefault("read error", traceback.format_exc())
-            if rank == 0:
-                print(f"  skip {idx}: read failed ({e})", flush=True)
+            if "read error" not in skip_examples:
+                skip_examples["read error"] = traceback.format_exc()
+                print(
+                    f"[rank {rank}] first 'read error' (cluster {idx}); later "
+                    f"read errors are counted only:\n{skip_examples['read error']}",
+                    flush=True,
+                )
             continue
         if data.shape != ivar.shape:
             reason = "coadd/ivar stamp shape mismatch"
@@ -962,12 +966,16 @@ def run_pipeline(args):
                 scov_cache,
                 s_vals,
             )
-        except Exception as e:
+        except Exception:
             nskip += 1
             skip_reasons["fit error"] = skip_reasons.get("fit error", 0) + 1
-            skip_examples.setdefault("fit error", traceback.format_exc())
-            if rank == 0:
-                print(f"  skip {idx}: fit failed ({e})", flush=True)
+            if "fit error" not in skip_examples:
+                skip_examples["fit error"] = traceback.format_exc()
+                print(
+                    f"[rank {rank}] first 'fit error' (cluster {idx}); later "
+                    f"fit errors are counted only:\n{skip_examples['fit error']}",
+                    flush=True,
+                )
             continue
         t_fit += time.time() - tf
 

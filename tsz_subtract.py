@@ -52,6 +52,7 @@ This is a single-file module; run ``python tsz_subtract.py --help``.
 import argparse
 import os
 import time
+import traceback
 
 import numpy as np
 from scipy.interpolate import interp1d
@@ -913,6 +914,7 @@ def run_pipeline(args):
     t_fit = 0.0
     nfit = nskip = 0
     skip_reasons = {}  # reason -> count, so we can explain why clusters were dropped
+    skip_examples = {}  # reason -> first full traceback, for the exception reasons
     for ii, idx in enumerate(my_tasks):
         pb = pixboxes[idx]
         # Read only this stamp from disk (the full map is never held by a worker);
@@ -930,13 +932,14 @@ def run_pipeline(args):
         except Exception as e:
             nskip += 1
             skip_reasons["read error"] = skip_reasons.get("read error", 0) + 1
-            if rank == 0 and args.debug:
-                print(f"  skip {idx}: read failed ({e})")
+            skip_examples.setdefault("read error", traceback.format_exc())
+            if rank == 0:
+                print(f"  skip {idx}: read failed ({e})", flush=True)
             continue
         if data.shape != ivar.shape:
             reason = "coadd/ivar stamp shape mismatch"
-        elif np.asarray(ivar).max() <= 0:
-            reason = "ivar <= 0 over whole stamp (off footprint?)"
+        elif not np.any(np.asarray(ivar) > 0):
+            reason = "ivar not positive anywhere (off footprint / NaN?)"
         elif not np.all(np.isfinite(np.asarray(data))):
             reason = "non-finite coadd pixels"
         else:
@@ -962,8 +965,9 @@ def run_pipeline(args):
         except Exception as e:
             nskip += 1
             skip_reasons["fit error"] = skip_reasons.get("fit error", 0) + 1
-            if rank == 0 and args.debug:
-                print(f"  skip {idx}: fit failed ({e})")
+            skip_examples.setdefault("fit error", traceback.format_exc())
+            if rank == 0:
+                print(f"  skip {idx}: fit failed ({e})", flush=True)
             continue
         t_fit += time.time() - tf
 
@@ -1001,8 +1005,12 @@ def run_pipeline(args):
     # --- Gather to rank 0 -----------------------------------------------------
     comm.Barrier()
     allres = gather_lists(comm, local)
-    # Pool the per-rank skip tallies so rank 0 can report the global breakdown.
-    all_skips = comm.gather(skip_reasons, root=0) if size > 1 else [skip_reasons]
+    # Pool the per-rank skip tallies and example tracebacks for a global report.
+    if size > 1:
+        all_skips = comm.gather(skip_reasons, root=0)
+        all_examples = comm.gather(skip_examples, root=0)
+    else:
+        all_skips, all_examples = [skip_reasons], [skip_examples]
     if rank != 0:
         return
 
@@ -1010,6 +1018,10 @@ def run_pipeline(args):
     for d in all_skips:
         for reason, n in d.items():
             merged_skips[reason] = merged_skips.get(reason, 0) + n
+    merged_examples = {}
+    for d in all_examples:
+        for reason, tb in d.items():
+            merged_examples.setdefault(reason, tb)
     n_skip = sum(merged_skips.values())
     nsub = sum(1 for it in allres if it["result"].get("subtracted", False))
     log(
@@ -1024,6 +1036,10 @@ def run_pipeline(args):
                 for reason, n in sorted(merged_skips.items(), key=lambda kv: -kv[1])
             )
         )
+    for reason in ("fit error", "read error"):
+        if reason in merged_examples:
+            log(f"First '{reason}' traceback (representative of all such skips):")
+            print(merged_examples[reason], flush=True)
     if nsub == 0:
         log(
             "ERROR: 0 clusters subtracted -- nothing to do; no output map or report "

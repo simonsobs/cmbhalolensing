@@ -52,6 +52,7 @@ This is a single-file module; run ``python tsz_subtract.py --help``.
 import argparse
 import os
 import time
+import traceback
 
 import numpy as np
 from scipy.interpolate import interp1d
@@ -63,7 +64,7 @@ from astropy.cosmology import FlatLambdaCDM
 
 from pixell import enmap, reproject, curvedsky, pointsrcs, utils
 
-from orphics import pixcov, foregrounds, mpi, io, stats, maps
+from orphics import foregrounds, mpi, io, stats, maps
 
 # ---------------------------------------------------------------------------
 # Physical constants (CGS / keV units for the Compton-y line-of-sight integral)
@@ -83,6 +84,14 @@ ARNAUD = dict(P0=8.403, c500=1.177, gamma=0.3081, alpha=1.0510, beta=5.4905)
 # fixed stamp), but the subtracted model must reach the outskirts of large,
 # low-redshift clusters (angular R500c up to ~10'), so it is painted out to here.
 PROFILE_MAX_ARCMIN = 40.0
+
+# In --debug, cap a real-data run to this many clusters for a quick smoke test.
+DEBUG_NCLUSTERS = 50
+
+# Single precision for the pixel covariance: cho_factor is ~2x faster and the
+# matrices are half the size. S_cmb + N_ivar is well within float32 conditioning
+# for realistic noise levels (the diagonal noise floor bounds the eigenvalues).
+COV_DTYPE = np.float32
 
 
 # ===========================================================================
@@ -367,7 +376,7 @@ class ScovCache:
         )
         np.clip(cosang, -1.0, 1.0, out=cosang)
         rmat = np.arccos(cosang)
-        scov = self.corr_fn(rmat)
+        scov = self.corr_fn(rmat).astype(COV_DTYPE)
         self._cache[key] = scov
         return scov
 
@@ -494,19 +503,26 @@ def fit_cluster(data, ivar, m500c, z, cosmo, nu_ghz, profiler, scov_cache, s_val
     """
     dT_interp, theta500 = deltaT_profile(m500c, z, cosmo, nu_ghz)
 
-    scov = scov_cache.get(data)
-    ncov = pixcov.ncov_from_ivar(np.asarray(ivar), ncomp=1)[0, 0]
-    cmat = scov + ncov
+    # C = S_cmb (cached, float32) + diagonal pixel noise from ivar, assembled and
+    # factored in single precision. Add the noise to a copy of the cached S so the
+    # shared matrix is not mutated.
+    ivar_flat = np.asarray(ivar, dtype=np.float64).reshape(-1)
+    var = 1.0 / ivar_flat
+    bad = ~np.isfinite(var)
+    if bad.any():
+        var[bad] = 1.0 / ivar_flat[ivar_flat > 0].max()
+    cmat = scov_cache.get(data).astype(COV_DTYPE, copy=True)
+    cmat[np.diag_indices_from(cmat)] += var.astype(COV_DTYPE)
     cho = cho_factor(cmat)
 
-    d = np.asarray(data).reshape(-1)
+    d = np.asarray(data, dtype=COV_DTYPE).reshape(-1)
     cinv_d = cho_solve(cho, d)
     dt_cinv_d = float(d @ cinv_d)
 
     def chi2_for_scale(s):
         prof = profiler.beamed(dT_interp, s)
         templ = model_stamp(data, profiler.r, prof)
-        t = np.asarray(templ).reshape(-1)
+        t = np.asarray(templ, dtype=COV_DTYPE).reshape(-1)
         cinv_t = cho_solve(cho, t)
         tct = float(t @ cinv_t)
         if tct <= 0:
@@ -543,14 +559,58 @@ def fit_cluster(data, ivar, m500c, z, cosmo, nu_ghz, profiler, scov_cache, s_val
 # ===========================================================================
 # Map / catalog I/O and stamp extraction
 # ===========================================================================
-def load_catalog(path, query=None):
+def m200c_to_m500c(m200c, z, cosmo):
+    """Convert M200c to M500c assuming an NFW profile (Duffy et al. 2008 c-M).
+
+    Both overdensities are relative to the critical density, so the conversion
+    depends only on the concentration ``c200c(M200c, z)``; the critical density
+    cancels. Accurate to a few percent, which is well below the cluster-to-cluster
+    scatter and ample for sizing the tSZ template.
+
+    Parameters
+    ----------
+    m200c : ndarray
+        M200c in solar masses.
+    z : ndarray
+        Redshift per cluster.
+    cosmo : FlatLambdaCDM
+        Cosmology (for the Hubble parameter in the c-M pivot).
+
+    Returns
+    -------
+    ndarray
+        M500c in solar masses.
+    """
+    h = cosmo.H0.value / 100.0
+
+    def mu(x):
+        return np.log(1.0 + x) - x / (1.0 + x)
+
+    # Non-positive / NaN masses (dropped later) would warn here; let them flow
+    # through as NaN, which the row filter in load_catalog removes.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        c200 = 5.71 * (m200c * h / 2.0e12) ** -0.084 * (1.0 + np.asarray(z)) ** -0.47
+        # Solve 2.5 y^3 mu(c200) = mu(y c200) for y = r500/r200 in (0, 1] by bisection.
+        lo = np.full_like(c200, 0.2)
+        hi = np.full_like(c200, 1.0)
+        for _ in range(60):
+            y = 0.5 * (lo + hi)
+            pos = 2.5 * y**3 * mu(c200) - mu(y * c200) > 0
+            hi = np.where(pos, y, hi)
+            lo = np.where(pos, lo, y)
+        y = 0.5 * (lo + hi)
+    return m200c * 2.5 * y**3
+
+
+def load_catalog(path, query=None, mass_col=None):
     """Load a cluster catalog (RA, Dec, M500c, z), with optional row selection.
 
-    Reads a FITS table (e.g. the ACT DR6 cluster catalog) or a four-column text
+    Reads a FITS table (e.g. the ACT/nemo cluster catalogs) or a four-column text
     file (ra_deg dec_deg m500c z). Column names are matched case-insensitively
-    against common aliases (RADeg/decDeg/redshift/M500c ...). M500c stored in
-    units of 1e14 Msun (as in the ACT catalogs) is auto-detected and converted to
-    Msun.
+    against common aliases (RADeg/decDeg/redshift/M500c ...). Masses tabulated in
+    1e14 Msun (as in the ACT catalogs) are auto-detected and converted to Msun.
+    If only an M200c column is present it is converted to M500c via
+    :func:`m200c_to_m500c`.
 
     Parameters
     ----------
@@ -560,6 +620,8 @@ def load_catalog(path, query=None):
         Optional SQL-like row selection applied to the full table before column
         extraction (pandas ``DataFrame.query`` syntax), e.g.
         "SNR > 6 and redshift < 0.5". Any catalog column may be referenced.
+    mass_col : str or None
+        Explicit mass column name, taken as M500c (overrides auto-detection).
 
     Returns
     -------
@@ -577,20 +639,53 @@ def load_catalog(path, query=None):
 
     cols = {c.lower(): c for c in t.colnames}
 
-    def pick(*names):
+    def pick(*names, required=True):
         for n in names:
             if n in cols:
                 return np.asarray(t[cols[n]], dtype=float)
-        raise KeyError(f"None of {names} found in catalog columns {t.colnames}")
+        if required:
+            raise KeyError(f"None of {names} found in catalog columns {t.colnames}")
+        return None
 
     ra = pick("ra", "ra_deg", "radeg")
     dec = pick("dec", "dec_deg", "decdeg")
-    m500c = pick("m500c", "mass", "m500", "m500c_msun")
     z = pick("z", "redshift", "zcmb")
-    # ACT catalogs tabulate M500c in 1e14 Msun; detect and convert to Msun.
-    if m500c.size and np.nanmedian(m500c) < 1e5:
-        m500c = m500c * 1e14
-    return ra, dec, m500c, z
+
+    # Masses may be tabulated in 1e14 Msun (ACT/nemo convention); detect by scale.
+    def to_msun(m):
+        return m * 1e14 if m.size and np.nanmedian(m) < 1e5 else m
+
+    if mass_col is not None:
+        if mass_col.lower() not in cols:
+            raise KeyError(f"--mass-col '{mass_col}' not in columns {t.colnames}")
+        m500c = to_msun(np.asarray(t[cols[mass_col.lower()]], dtype=float))
+    elif (
+        m500c := pick("m500c", "mass", "m500", "m500c_msun", required=False)
+    ) is not None:
+        m500c = to_msun(m500c)
+    elif (
+        m200c := pick("m200c", "m200", "m200c_msun", "m200cuncorr", required=False)
+    ) is not None:
+        m500c = m200c_to_m500c(to_msun(m200c), z, COSMO)
+        print("Note: catalog has no M500c; converted M200c -> M500c (NFW, Duffy+08).")
+    else:
+        raise KeyError(
+            "No mass column found (looked for M500c/M200c aliases). "
+            f"Available columns: {t.colnames}. Pass --mass-col to name one."
+        )
+    # Drop rows that cannot be fit (missing position/redshift/mass, e.g. clusters
+    # with no measured redshift in the ACT/nemo catalogs).
+    good = (
+        np.isfinite(ra)
+        & np.isfinite(dec)
+        & np.isfinite(z)
+        & np.isfinite(m500c)
+        & (m500c > 0)
+        & (z > 0)
+    )
+    if not good.all():
+        print(f"Note: dropping {int((~good).sum())} catalog rows with missing m500c/z.")
+    return ra[good], dec[good], m500c[good], z[good]
 
 
 def compute_pixboxes(shape, wcs, ra_deg, dec_deg, radius_rad):
@@ -704,6 +799,32 @@ def gather_lists(comm, local):
 # ===========================================================================
 # Main pipeline
 # ===========================================================================
+def launcher_info():
+    """Process count and rank the MPI launcher advertises via the environment.
+
+    Lets us detect the common failure where a job is started under
+    ``mpirun``/``srun`` with N processes but mpi4py is not bound to that MPI and
+    each process initializes its own size-1 communicator.
+
+    Returns
+    -------
+    (nproc, rank) : (int or None, int)
+        Launcher process count (None if not launched under a recognised MPI),
+        and this process's launcher rank (0 if unknown).
+    """
+    for nvar, rvar in (
+        ("OMPI_COMM_WORLD_SIZE", "OMPI_COMM_WORLD_RANK"),
+        ("PMI_SIZE", "PMI_RANK"),
+        ("SLURM_NTASKS", "SLURM_PROCID"),
+    ):
+        if nvar in os.environ:
+            try:
+                return int(os.environ[nvar]), int(os.environ.get(rvar, "0"))
+            except ValueError:
+                pass
+    return None, 0
+
+
 def run_pipeline(args):
     """Run the end-to-end fit-and-subtract pipeline.
 
@@ -724,15 +845,43 @@ def run_pipeline(args):
         if rank == 0:
             print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
+    # Detect a launcher/mpi4py mismatch: started with N processes but MPI reports
+    # size 1, so every process would redundantly do the whole catalogue.
+    nlaunch, lrank = launcher_info()
+    if nlaunch and nlaunch > 1 and size == 1 and lrank == 0:
+        print(
+            f"WARNING: started under a launcher with {nlaunch} processes but mpi4py "
+            "reports size=1 -- MPI is NOT active, so every process will fit the whole "
+            "catalogue and overwrite the same output. Rebuild mpi4py against this "
+            "cluster's MPI, e.g. `MPICC=$(which mpicc) pip install --no-binary mpi4py "
+            "--force-reinstall mpi4py`.",
+            flush=True,
+        )
+
     t0 = time.time()
     os.makedirs(args.outdir, exist_ok=True)
 
     # --- Inputs (small) read by all ranks -------------------------------------
-    ra, dec, m500c, z = load_catalog(args.catalog, query=args.query)
+    ra, dec, m500c, z = load_catalog(
+        args.catalog, query=args.query, mass_col=args.mass_col
+    )
+    if args.debug and ra.size > DEBUG_NCLUSTERS:
+        log(f"--debug: using the first {DEBUG_NCLUSTERS} of {ra.size} clusters.")
+        ra, dec, m500c, z = (a[:DEBUG_NCLUSTERS] for a in (ra, dec, m500c, z))
     ncl = ra.size
     shape, wcs = enmap.read_map_geometry(args.coadd)
     pixboxes = compute_pixboxes(shape, wcs, ra, dec, args.radius_arcmin * utils.arcmin)
-    log(f"Catalog: {ncl} clusters; map shape {shape[-2:]}; {size} MPI rank(s).")
+    # --ivar may be a path to an ivar map or a uniform white-noise level in
+    # uK-arcmin (a plain number), from which a per-pixel ivar stamp is built.
+    try:
+        noise_uk_arcmin = float(args.ivar)
+    except (TypeError, ValueError):
+        noise_uk_arcmin = None
+    ivar_desc = f"{noise_uk_arcmin:.1f} uK-arcmin" if noise_uk_arcmin else args.ivar
+    log(
+        f"Catalog: {ncl} clusters; map shape {shape[-2:]}; "
+        f"ivar={ivar_desc}; {size} MPI rank(s)."
+    )
 
     beam_fn = get_beam_fn(args.beam)
     # Model is painted out to the full profile extent so low-z (large) clusters
@@ -747,11 +896,16 @@ def run_pipeline(args):
     s_vals = np.linspace(smin, smax, int(ns))
 
     # --- Distribute clusters --------------------------------------------------
-    _, task_dist = (
-        mpi.mpi_distribute(ncl, size) if size > 1 else (None, [list(range(ncl))])
+    # Hand each rank a contiguous block of declination-sorted clusters, and fit
+    # them in that order. Each rank then spans only a narrow declination range, so
+    # the CMB-covariance cache holds just a couple of bands (bounded memory) and
+    # nearly every fit is a cache hit.
+    order = np.argsort(dec)
+    my_tasks = np.array_split(order, size)[rank]
+    log(
+        f"Distributing {ncl} clusters over {size} MPI rank(s); rank 0 handles "
+        f"{len(my_tasks)}."
     )
-    my_tasks = task_dist[rank]
-    log(f"Rank 0 handling {len(my_tasks)} clusters (of {ncl}).")
 
     stack_r = args.stack_arcmin * utils.arcmin
     stack_res = (args.stack_res_arcmin) * utils.arcmin
@@ -759,42 +913,70 @@ def run_pipeline(args):
     local = []
     t_fit = 0.0
     nfit = nskip = 0
+    skip_reasons = {}  # reason -> count, so we can explain why clusters were dropped
+    skip_examples = {}  # reason -> first full traceback, for the exception reasons
     for ii, idx in enumerate(my_tasks):
         pb = pixboxes[idx]
         # Read only this stamp from disk (the full map is never held by a worker);
         # use the first (temperature) component of a multi-component map.
         try:
             data = enmap.read_map(args.coadd, pixbox=pb)
-            ivar = enmap.read_map(args.ivar, pixbox=pb)
-        except Exception as e:
+            if data.ndim > 2:
+                data = data[0]
+            if noise_uk_arcmin is not None:
+                ivar = maps.ivar(data.shape, data.wcs, noise_uk_arcmin)
+            else:
+                ivar = enmap.read_map(args.ivar, pixbox=pb)
+                if ivar.ndim > 2:
+                    ivar = ivar[0]
+        except Exception:
             nskip += 1
-            if rank == 0 and args.debug:
-                print(f"  skip {idx}: read failed ({e})")
+            skip_reasons["read error"] = skip_reasons.get("read error", 0) + 1
+            if "read error" not in skip_examples:
+                skip_examples["read error"] = traceback.format_exc()
+                print(
+                    f"[rank {rank}] first 'read error' (cluster {idx}); later "
+                    f"read errors are counted only:\n{skip_examples['read error']}",
+                    flush=True,
+                )
             continue
-        if data.ndim > 2:
-            data = data[0]
-        if ivar.ndim > 2:
-            ivar = ivar[0]
-        if (
-            data.shape != ivar.shape
-            or np.asarray(ivar).max() <= 0
-            or not np.all(np.isfinite(np.asarray(data)))
-        ):
+        if data.shape != ivar.shape:
+            reason = "coadd/ivar stamp shape mismatch"
+        elif not np.any(np.asarray(ivar) > 0):
+            reason = "ivar not positive anywhere (off footprint / NaN?)"
+        elif not np.all(np.isfinite(np.asarray(data))):
+            reason = "non-finite coadd pixels"
+        else:
+            reason = None
+        if reason is not None:
             nskip += 1
+            skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
             continue
 
         tf = time.time()
-        model, res = fit_cluster(
-            data,
-            ivar,
-            m500c[idx],
-            z[idx],
-            COSMO,
-            args.nu_eff,
-            profiler,
-            scov_cache,
-            s_vals,
-        )
+        try:
+            model, res = fit_cluster(
+                data,
+                ivar,
+                m500c[idx],
+                z[idx],
+                COSMO,
+                args.nu_eff,
+                profiler,
+                scov_cache,
+                s_vals,
+            )
+        except Exception:
+            nskip += 1
+            skip_reasons["fit error"] = skip_reasons.get("fit error", 0) + 1
+            if "fit error" not in skip_examples:
+                skip_examples["fit error"] = traceback.format_exc()
+                print(
+                    f"[rank {rank}] first 'fit error' (cluster {idx}); later "
+                    f"fit errors are counted only:\n{skip_examples['fit error']}",
+                    flush=True,
+                )
+            continue
         t_fit += time.time() - tf
 
         if res["snr"] < args.snr_min:
@@ -831,7 +1013,50 @@ def run_pipeline(args):
     # --- Gather to rank 0 -----------------------------------------------------
     comm.Barrier()
     allres = gather_lists(comm, local)
+    # Pool the per-rank skip tallies and example tracebacks for a global report.
+    if size > 1:
+        all_skips = comm.gather(skip_reasons, root=0)
+        all_examples = comm.gather(skip_examples, root=0)
+    else:
+        all_skips, all_examples = [skip_reasons], [skip_examples]
     if rank != 0:
+        return
+
+    merged_skips = {}
+    for d in all_skips:
+        for reason, n in d.items():
+            merged_skips[reason] = merged_skips.get(reason, 0) + n
+    merged_examples = {}
+    for d in all_examples:
+        for reason, tb in d.items():
+            merged_examples.setdefault(reason, tb)
+    n_skip = sum(merged_skips.values())
+    nsub = sum(1 for it in allres if it["result"].get("subtracted", False))
+    log(
+        f"Across all ranks: {len(allres)} fit, {n_skip} skipped, "
+        f"{nsub} subtracted (S/N > {args.snr_min:g}), of {len(allres) + n_skip} clusters."
+    )
+    if merged_skips:
+        log(
+            "Skips by reason: "
+            + "; ".join(
+                f"{reason} = {n}"
+                for reason, n in sorted(merged_skips.items(), key=lambda kv: -kv[1])
+            )
+        )
+    for reason in ("fit error", "read error"):
+        if reason in merged_examples:
+            log(f"First '{reason}' traceback (representative of all such skips):")
+            print(merged_examples[reason], flush=True)
+    if nsub == 0:
+        log(
+            "ERROR: 0 clusters subtracted -- nothing to do; no output map or report "
+            "written. The skip breakdown above usually identifies the cause: "
+            "'ivar <= 0' = clusters fall where the ivar map is zero (footprint or "
+            "coordinate mismatch -- try a scalar '--ivar <uK-arcmin>'); 'non-finite "
+            "coadd pixels' = NaN/inf in the coadd stamps; 'shape mismatch' = coadd and "
+            "ivar geometries differ."
+        )
         return
 
     # --- Subtract into full map and write ------------------------------------
@@ -1339,7 +1564,8 @@ def build_parser():
     p.add_argument(
         "--ivar",
         help="Path to the inverse-variance map (FITS). If multi-component, the "
-        "first map is used.",
+        "first map is used. If only a float is specified, this is interpreted as"
+        "the homogenous RMS in uK-arcmin (not inverse variance uK^2).",
     )
     p.add_argument(
         "--catalog",
@@ -1351,6 +1577,13 @@ def build_parser():
         default=None,
         help="Optional SQL-like row selection on the catalog (pandas query "
         'syntax), e.g. "SNR > 6 and redshift < 0.5".',
+    )
+    p.add_argument(
+        "--mass-col",
+        default=None,
+        dest="mass_col",
+        help="Catalog mass column to use as M500c (overrides auto-detection of "
+        "M500c/M200c aliases).",
     )
     p.add_argument("--beam", help="Beam FWHM in arcmin (float) or ell,B_ell file path.")
     p.add_argument(
@@ -1387,9 +1620,9 @@ def build_parser():
     p.add_argument(
         "--snr-min",
         type=float,
-        default=6.0,
+        default=0.0,
         dest="snr_min",
-        help="Minimum S/N to actually subtract a cluster.",
+        help="Minimum *fit* S/N to actually subtract a cluster. This is not the SNR in the provided catalog, but the SNR from fitting. You probably don't want to use this if you are already selecting on SNR>x with --query.",
     )
     p.add_argument(
         "--stack-arcmin",
@@ -1413,7 +1646,8 @@ def build_parser():
     p.add_argument(
         "--debug",
         action="store_true",
-        help="Fast, low-resolution configuration for quick testing.",
+        help=f"Fast configuration for quick testing: coarser CMB/scale grids and, "
+        f"on real data, only the first {DEBUG_NCLUSTERS} clusters.",
     )
     return p
 
@@ -1426,9 +1660,7 @@ def main():
     if args.selftest:
         run_selftest(args)
         return
-    missing = [
-        k for k in ("coadd", "ivar", "catalog", "beam") if getattr(args, k) is None
-    ]
+    missing = [k for k in ("coadd", "catalog", "beam") if getattr(args, k) is None]
     if missing:
         raise SystemExit(f"Missing required arguments: {missing} (or use --selftest).")
     if args.nu_eff is None:

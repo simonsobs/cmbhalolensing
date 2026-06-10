@@ -1149,6 +1149,30 @@ for task in my_tasks:
     # transform to real space for unweighted stack
     kappa = enmap.ifft(krecon, normalize="phys").real
 
+    """ 
+    !! REJECT WEIRD KAPPA
+    """
+
+    ##### temporary 3: to get rid of stamps with tSZ cluster in random locations
+    if np.any(np.abs(kappa) > 15):
+        print(f"{task} has large kappa")
+        if args.debug_anomalies:
+            io.plot_img(
+                kappa,
+                f"{paths.debugdir}kappa_err_stamp_large_kappa_{task}.png",
+                arc_width=args.swidth,
+                xlabel="$\\theta_x$ (arcmin)",
+                ylabel="$\\theta_y$ (arcmin)",
+            )
+        if args.debug_anomalies:
+            io.plot_img(
+                astamp_150,
+                f"{paths.debugdir}act_150_err_stamp_large_kappa_{task}.png",
+                arc_width=args.swidth,
+                xlabel="$\\theta_x$ (arcmin)",
+                ylabel="$\\theta_y$ (arcmin)",
+            )
+        continue    
 
 
 
@@ -1192,30 +1216,6 @@ for task in my_tasks:
     #---------------------------------------------------------------------------
 
 
-    """ 
-    !! REJECT WEIRD KAPPA
-    """
-
-    ##### temporary 3: to get rid of stamps with tSZ cluster in random locations
-    if np.any(np.abs(kappa) > 15):
-        print(f"{task} has large kappa")
-        if args.debug_anomalies:
-            io.plot_img(
-                kappa,
-                f"{paths.debugdir}kappa_err_stamp_large_kappa_{task}.png",
-                arc_width=args.swidth,
-                xlabel="$\\theta_x$ (arcmin)",
-                ylabel="$\\theta_y$ (arcmin)",
-            )
-        if args.debug_anomalies:
-            io.plot_img(
-                astamp_150,
-                f"{paths.debugdir}act_150_err_stamp_large_kappa_{task}.png",
-                arc_width=args.swidth,
-                xlabel="$\\theta_x$ (arcmin)",
-                ylabel="$\\theta_y$ (arcmin)",
-            )
-        continue    
 
     # Save power spectra to look at later
     if args.debug_powers:

@@ -1326,6 +1326,15 @@ for task in my_tasks:
     assert np.all(np.isfinite(rkmap))
 
 
+    # transform to real space
+    kappa = enmap.ifft(rkmap, normalize="phys").real    
+
+    # filter weird stamps (temporary2)
+    if np.any(np.abs(kappa) > 15):
+        print(f"{task} has large kappa")
+        continue
+
+    
     # for cross-correlation check ----------------------------------------------
 
     ikmap = enmap.fft(k_stamp, normalize="phys") # k_stamp is tapered and filtered true kappa
@@ -1376,13 +1385,6 @@ for task in my_tasks:
 
 
 
-    # transform to real space
-    kappa = enmap.ifft(rkmap, normalize="phys").real    
-
-    # filter weird stamps (temporary2)
-    if np.any(np.abs(kappa) > 15):
-        print(f"{task} has large kappa")
-        continue
 
 
     # stack reconstructed kappa     

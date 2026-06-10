@@ -1060,9 +1060,7 @@ for task in my_tasks:
 
     # same filter as the post-reconstuction for true kappa (also tapered!)
     k_stamp = maps.filter_map(kstamp*taper, kmask)   
-    s.add_to_stack("kstamp", k_stamp)
     binned_true = bin(k_stamp, modrmap * (180 * 60 / np.pi), bin_edges)   
-    s.add_to_stats("tk1d", binned_true)     
 
     if args.cmb:
         hres = h_cmb
@@ -1390,7 +1388,10 @@ for task in my_tasks:
     # stack reconstructed kappa     
     s.add_to_stack("lstamp", kappa)    
     binned_kappa = bin(kappa, modrmap * (180 * 60 / np.pi), bin_edges)   
-    s.add_to_stats("k1d", binned_kappa) 
+    s.add_to_stats("k1d", binned_kappa)
+    s.add_to_stack("kstamp", k_stamp)
+    s.add_to_stats("tk1d", binned_true)     
+
 
     # stack stamps pre-reconstruction as well (same filter as hres leg)
     if args.cmb:

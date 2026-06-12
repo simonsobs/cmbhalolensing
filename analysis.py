@@ -39,11 +39,17 @@ class Analysis(object):
         self.debug = debug
         
 
-        # Load template
+        # Load template for simulation
         thetas,kappa_1h,kappa_2h = np.loadtxt(c.template_file,unpack=True)
         kappa = kappa_1h + kappa_2h
         self.thetas = thetas
         self.template_kappa_1d = kappa
+
+        # Load template for cross-correlation
+        thetas_cross,kappa_1h_cross,kappa_2h_cross = np.loadtxt(c.cross_template_file,unpack=True)
+        kappa_cross = kappa_1h_cross + kappa_2h_cross
+        self.thetas_cross = thetas_cross
+        self.template_kappa_1d_cross = kappa_cross
 
         if atype=='flatsky_sim':
             # If we are doing a padded high-res flat sim
@@ -66,7 +72,7 @@ class Analysis(object):
         self.rbinner = stats.bin2D(self.modrmap,self.rbin_edges)
         self.rcents = self.rbinner.cents
         self.modlmap = enmap.modlmap(self.shape,self.wcs)
-        self.template = enmap.enmap(maps.interp(thetas,kappa)(self.modrmap),self.wcs)
+        self.template_cross = enmap.enmap(maps.interp(thetas_cross,kappa_cross)(self.modrmap),self.wcs)
 
 
         self.reconstructor = Recon(self.shape,self.wcs,
@@ -97,7 +103,7 @@ class Analysis(object):
         self.Lmin = c.Lmin
         self.Lmax = c.Lmax
 
-        self.ktemplate = enmap.fft(self.template * self.ctaper,normalize='phys')
+        self.ktemplate = enmap.fft(self.template_cross * self.ctaper,normalize='phys')
         cents,p1d,p2d = self.power(self.ktemplate,self.ktemplate)
         self.template_auto_p1d = p1d
         if debug and self.rank==0:

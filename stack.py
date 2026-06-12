@@ -1,18 +1,16 @@
-# inpainting test
-# do inpainting on 90 and 150 GHz separately first and then ILC
-
 import numpy as np
 import matplotlib
 # Force matplotlib to not use any Xwindows backend.
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import utils as cutils
-from pixell import enmap, reproject, enplot, utils, wcsutils
-from orphics import maps, mpi, io, stats, cosmology
+from pixell import enmap, reproject, utils, wcsutils, curvedsky
+from orphics import maps, mpi, io, stats, cosmology, lensing
 from scipy.optimize import curve_fit
 from numpy import save
 import time
-import symlens
+# import symlens
+from symlens.qe import QE, N_l, N_l_from_A_l_optimal
 import healpy as hp
 import os, sys
 from enlib import bench
@@ -90,11 +88,6 @@ if not (args.inject_sim):
                 # reproject the Planck map (healpix -> CAR)
                 fshape, fwcs = enmap.fullsky_geometry(res=2.0 * utils.arcmin, proj="car")
 
-                # this doesn't work with the latest pixell version (v0.20.3)
-                # pmap = reproject.enmap_from_healpix(
-                #     plc_map, fshape, fwcs, ncomp=1, unit=1, lmax=6000, rot="gal,equ"
-                # )
-
                 # reading the input map
                 p_map = np.atleast_2d(hp.read_map(plc_map, field=tuple(range(0,1)))).astype(np.float64)
 
@@ -111,11 +104,11 @@ if not (args.inject_sim):
         else:
             if not (args.ilc_maps): 
                 act_map = (paths.act_data + data_choice.hres_150)
-                famap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+                fmap = enmap.read_map(act_map, delayed=False)
+                famap_150 = fmap[0] if fmap.ndim == 3 else fmap
             else:
                 act_map = (paths.act_data + data_choice.hres)
                 famap_150 = enmap.read_map(act_map, delayed=False)
-                print(np.shape(famap_150))
 
             # SZ cluster model image subtraction for 150 GHz
             if args.hres_grad:            
@@ -128,19 +121,19 @@ if not (args.inject_sim):
                 amap_150 = famap_150 - enmap.read_map(paths.act_data + data_choice.hres_model_150)   
             else:
                 amap_150 = famap_150
-
         
         # ACT 90 GHz coadd map
         if not(args.full_sim_index is None):
             amap_90 = enmap.read_map(f'{paths.fullsim_path}/af090_sim_{args.full_sim_index:06d}.fits')
         else:
             act_map = (paths.act_data + data_choice.hres_090)
-            famap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+            fmap = enmap.read_map(act_map, delayed=False)
+            famap_90 = fmap[0] if fmap.ndim == 3 else fmap
 
             # SZ cluster model image subtraction for 90 GHz    
             if args.hres_grad:            
                 if not (args.grad_noszsub): 
-                    gamap_090 = famap_90 - enmap.read_map(paths.act_data + data_choice.hres_model_090)
+                    gamap_90 = famap_90 - enmap.read_map(paths.act_data + data_choice.hres_model_090)
                 else: 
                     gamap_90 = famap_90
 
@@ -156,31 +149,35 @@ if not (args.inject_sim):
             assert not(args.no_150)
             assert not(args.rand_rot)
             act_map = (
-                paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f150_night_srcfree_map.fits"
+                paths.act_data + data_choice.hres_150_night
             )
-            namap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+            fmap = enmap.read_map(act_map, delayed=False)
+            namap_150 = fmap[0] if fmap.ndim == 3 else fmap
             act_map = (
-                paths.coadd_data + f"{tags.apstr}_s08_{tags.s19str}_cmb_f090_night_srcfree_map.fits"
+                paths.act_data + data_choice.hres_090_night
             )
-            namap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
-
+            fmap = enmap.read_map(act_map, delayed=False)
+            namap_90 = fmap[0] if fmap.ndim == 3 else fmap
             null_map_150 = famap_150 - namap_150
             null_map_90 = famap_90 - namap_90
 
         # Inv var map for 90 GHz
         ivar_map = (paths.act_data + data_choice.hres_ivar)
-
-        # if data_choice.hres_map == 'dr6': imap_90 = enmap.read_map(ivar_map, delayed=False)
-        # else: imap_90 = enmap.read_map(ivar_map, delayed=False, sel=np.s_[0, ...]) ##### fix here 
-
-        try:
-            imap_90 = enmap.read_map(ivar_map, delayed=False, sel=np.s_[0, ...]) 
-        except:
-            imap_90 = enmap.read_map(ivar_map, delayed=False)
+        fmap = enmap.read_map(ivar_map, delayed=False)
+        imap_90 = fmap[0] if fmap.ndim == 3 else fmap
 
         rms_map = maps.rms_from_ivar(
-            imap_90, cylindrical=True
+            imap_90, cylindrical=True, safe=False # safe=False for DR6 maps
         ) # convert to RMS noise map
+
+
+        if args.dr6_lensing:
+            kappa_map = paths.act_data + "release/dr6_lensing_v1/maps/baseline/kappa_alm_data_act_dr6_lensing_v1_baseline.fits"
+            kmap = np.nan_to_num(hp.read_alm(kappa_map).astype(np.complex128))
+            # reading mask for geometry, mask is NOT applied to the map 
+            mask = enmap.read_map(paths.act_data + "DR6_lensing/masks/act_mask_20220316_GAL060_rms_70.00_d2sk.fits") 
+            k_map = curvedsky.alm2map(kmap, enmap.empty(mask.shape, mask.wcs, dtype=np.float64))
+
 
 # stamp size and resolution
 stamp_width_deg = args.swidth / 60.0        # stamp_width_arcmin: 128.0
@@ -377,6 +374,13 @@ klmin = args.klmin ; klmax = args.klmax             # 200, 5000 -> 3000
 bin_edges = np.arange(0, args.arcmax, args.arcstep) # 15 arcmin, 1.5 arcmin
 centers = (bin_edges[1:] + bin_edges[:-1]) / 2.0
 
+# for kappa L 
+ell_edges = np.arange(klmin, klmax, 200)
+ell_cents = (ell_edges[1:] + ell_edges[:-1]) / 2.0
+
+
+
+
 """ 
 !! BINNING
 """
@@ -413,6 +417,25 @@ def ilc(modlmap, m1, m2, p11, p22, p12, b1, b2):
     tret = p11 * 0
     tret[sel] = tcov
     return ret, tret
+
+
+
+
+#-------------------------------------------------------------------------------
+
+# agora sample mean 
+M200c = 6.37e14
+z = 0.6
+
+rstamp = 128.8 * utils.arcmin # args.swidth = 128
+res = pixel * utils.arcmin
+rmin = 0.
+rmax = 10 * utils.arcmin
+rwidth = 1.0 * utils.arcmin
+
+_,_,_,_,_,_,_,_,k2dmap,_ = lensing.kappa_nfw_profiley(mass=M200c,conc=None,z=z,z_s=1100.,background='critical',delta=200,apply_filter=True,lmin=klmin,lmax=klmax,res=res,rstamp=rstamp,rmin=rmin,rmax=rmax,rwidth=rwidth)
+
+#-------------------------------------------------------------------------------
 
 
 """ 
@@ -619,6 +642,20 @@ for task in my_tasks:
     else:
         pstamp, astamp_150, astamp_90 = csim.get_obs(task)
 
+    if args.dr6_lensing:
+        # cut out a stamp from the ACT DR6 reconstructed lensing map 
+        kstamp = reproject.thumbnails(
+            k_map,
+            coords,
+            r=maxr,
+            res=pixel * utils.arcmin,
+            proj="tan",
+            oversample=2,
+            pixwin=False
+        )     
+
+
+
     """ 
     !! COSINE TAPER
     """
@@ -637,50 +674,38 @@ for task in my_tasks:
     act_stamp_150 = astamp_150 * taper
     act_stamp_90 = astamp_90 * taper
 
-    if args.freq_null:
-        act_stamp_fnull = (astamp_150 - astamp_90) * taper
+
+    if args.inpaint:  # gradient leg (Planck-like, single channel)
+        if args.hres_grad: raise NotImplementedError("Inpainting when using high-resolution gradient not supported.")
+
+        s.add_to_stack("grad2d_before", pstamp)
+        binned_grad = bin(pstamp, pstamp.modrmap() * (180 * 60 / np.pi), bin_edges)
+        s.add_to_stats("grad1d_before", binned_grad)
+
+        if j == 0:
+            from inpaint_utils import Inpainter
+            grad_inpainter = Inpainter(
+                fine_shape=pstamp.shape,
+                fine_wcs=pstamp.wcs,
+                hole_radius_arcmin=4.0,
+                theory=theory,
+                beam_fn=lambda x: maps.gauss_beam(5.0, x),
+                noise_uK_arcmin=35.0,
+            )
+        pstamp = grad_inpainter.inpaint(pstamp)
+
+        s.add_to_stack("grad2d_after", pstamp)
+        binned_grad = bin(pstamp, pstamp.modrmap() * (180 * 60 / np.pi), bin_edges)
+        s.add_to_stats("grad1d_after", binned_grad)
 
     if not (args.hres_grad):
         plc_stamp = pstamp * taper
     else:
         gact_stamp_150 = gastamp_150 * taper
         gact_stamp_90 = gastamp_90 * taper
+        
+
     
-    if args.inpaint: # only with hres_grad for now 
-        """
-        If inpainting, we 
-        (1) resample the stamp to 64x64 (2 arcmin pixels)
-        (2) Inpaint a hole of radius 4 arcmin 
-        """
-        rmin = 4 * utils.arcmin
-        crop_pixels = int(16.  / args.pwidth) # 16 arcminutes wide
-        act150 = maps.crop_center(gact_stamp_150,cropy=crop_pixels,cropx=crop_pixels,sel=False)
-        act90 = maps.crop_center(gact_stamp_90,cropy=crop_pixels,cropx=crop_pixels,sel=False)
-        act_sel150 = maps.crop_center(gact_stamp_150,cropy=crop_pixels,cropx=crop_pixels,sel=True)
-        act_sel90 = maps.crop_center(gact_stamp_90,cropy=crop_pixels,cropx=crop_pixels,sel=True)
-        Ndown150, Ndown2 = act150.shape[-2:]
-        #print(Ndown150, Ndown2) # 32 32
-        if Ndown150 != Ndown2: raise Exception
-        Ndown90, Ndown2 = act90.shape[-2:]
-        if Ndown90 != Ndown2: raise Exception
-
-        if j==0:
-            from orphics import pixcov
-            pshape = act150.shape
-            pwcs = act150.wcs
-            beam_fn150 = cutils.load_beam("f150")
-            beam_fn90 = cutils.load_beam("f090")
-            ipsizemap = enmap.pixsizemap(pshape, pwcs)
-            pivar = maps.ivar(pshape, pwcs, defaults.highres_fiducial_rms, ipsizemap=ipsizemap)
-            pcov150 = pixcov.tpcov_from_ivar(Ndown150, pivar, theory.lCl, beam_fn150)
-            pcov90 = pixcov.tpcov_from_ivar(Ndown90, pivar, theory.lCl, beam_fn90)            
-            geo150 = pixcov.make_geometry(pshape, pwcs, rmin, n=Ndown150, deproject=True, iau=False, res=None, pcov=pcov150)
-            geo90 = pixcov.make_geometry(pshape, pwcs, rmin, n=Ndown90, deproject=True, iau=False, res=None, pcov=pcov90)
-
-        act150 = pixcov.inpaint_stamp(act150, geo150)
-        act90 = pixcov.inpaint_stamp(act90, geo90)
-        gact_stamp_150[act_sel150] = act150.copy()
-        gact_stamp_90[act_sel90] = act90.copy()
 
     if args.day_null:
         nact_stamp_150 = nastamp_150 * taper
@@ -700,6 +725,8 @@ for task in my_tasks:
         if args.no_filter:
             s.add_to_stack('a150_cmb', astamp_150*sweight)
             s.add_to_stack('a90_cmb', astamp_90*sweight)
+            # s.add_to_stack('a150_cmb', astamp_150)
+            # s.add_to_stack('a90_cmb', astamp_90)
             sz150 = bin(astamp_150, modrmap * (180 * 60 / np.pi), bin_edges)
             sz150w = bin(astamp_150*sweight, modrmap * (180 * 60 / np.pi), bin_edges)
             sz90 = bin(astamp_90, modrmap * (180 * 60 / np.pi), bin_edges)
@@ -777,6 +804,7 @@ for task in my_tasks:
         # j = j + 1                        
         # continue # commented for now 
 
+
     """ 
     !! STAMP FFTs
     """
@@ -787,9 +815,6 @@ for task in my_tasks:
     if args.day_null:
         nk150 = enmap.fft(nact_stamp_150, normalize="phys")
         nk90 = enmap.fft(nact_stamp_90, normalize="phys")
-
-    if args.freq_null:
-        fnk = enmap.fft(act_stamp_fnull, normalize="phys")
  
     if not (args.hres_grad):
         kp = enmap.fft(plc_stamp, normalize="phys")
@@ -854,6 +879,28 @@ for task in my_tasks:
         # map of distances from center
         modrmap = enmap.modrmap(shape, wcs)
 
+        R_2d = None
+        if args.calibration is not None:
+            from cal_utils import load_calibration, check_compatibility, build_R_2d
+            _cal = load_calibration(args.calibration)
+            check_compatibility(
+                _cal["params"],
+                pix_arcmin=args.pwidth,
+                stamp_width_arcmin=args.swidth,
+                taper_percent=args.tap_per, pad_percent=args.pad_per,
+                grad_lmin=xlmin, grad_lmax=xlmax,
+                hres_lmin=ylmin, hres_lmax=ylmax,
+                hres_lxcut=args.hres_lxcut, hres_lycut=args.hres_lycut,
+                kappa_lmin=klmin, kappa_lmax=klmax,
+                grad_beam_fwhm=plc_beam_fwhm,
+                grad_noise_uK_arcmin=defaults.gradient_fiducial_rms,
+                hres_noise_uK_arcmin=defaults.highres_fiducial_rms,
+                inpaint_radius_arcmin=(4.0 if args.inpaint else 0.0),
+            )
+            R_2d = build_R_2d(_cal["R_L"], _cal["ell_centers"], modlmap)
+            if rank == 0:
+                print(f" ::: applying response calibration from {_cal['path']}")
+
     # Fourier map -> PS
     pow = lambda x, y: (x * y.conj()).real 
 
@@ -862,9 +909,6 @@ for task in my_tasks:
     if not (args.no_90):
         act_cents, act_p1d_90 = lbinner.bin(pow(k90, k90) / w2)
         act_cents, act_p1d_150_90 = lbinner.bin(pow(k150, k90) / w2)
-
-    if args.freq_null:
-        act_cents, act_p1d = lbinner.bin(pow(fnk, fnk) / w2)
 
     if not (args.hres_grad):
         plc_cents, plc_p1d = lbinner.bin(pow(kp, kp) / w2)
@@ -912,21 +956,7 @@ for task in my_tasks:
             rms=0,
             lmin=defaults.highres_fit_ellmin,
             lmax=defaults.highres_fit_ellmax,
-        )
-
-    if args.freq_null:
-       tclaa_fn = fit_p1d(
-            l_edges,
-            act_cents,
-            act_p1d,
-            "act",
-            modlmap,
-            bfunc150,
-            bfunc150,
-            rms=defaults.highres_fiducial_rms,
-            lmin=defaults.highres_fit_ellmin,
-            lmax=defaults.highres_fit_ellmax,
-        )            
+        )          
 
     if not (args.hres_grad): 
        tclpp = fit_p1d(
@@ -1024,7 +1054,6 @@ for task in my_tasks:
             act_kmap150 = k150 / act_150_kbeam2d 
             act_kmap90 = k90 / act_90_kbeam2d 
             act_kmap = act_kmap150 - act_kmap90
-            tclaa = tclaa_fn / (act_150_kbeam2d ** 2.0)
             
         if args.no_150:
             act_kmap = k90 / act_90_kbeam2d 
@@ -1097,7 +1126,7 @@ for task in my_tasks:
         assert np.all(np.isfinite(feed_dict[key]))
 
     # ask for reconstruction in Fourier space
-    cqe = symlens.QE(
+    cqe = QE(
         shape,
         wcs,
         feed_dict,
@@ -1111,7 +1140,11 @@ for task in my_tasks:
     )
     # Fourier space lens reconstruction
     krecon = cqe.reconstruct(feed_dict, xname="X_l1", yname="Y_l2", physical_units=True)
-    # not the pixel unit 
+    # not the pixel unit
+
+    if R_2d is not None:
+        from cal_utils import apply_R_2d
+        krecon = apply_R_2d(krecon, R_2d)
 
     # transform to real space for unweighted stack
     kappa = enmap.ifft(krecon, normalize="phys").real
@@ -1141,6 +1174,49 @@ for task in my_tasks:
             )
         continue    
 
+
+
+    #---------------------------------------------------------------------------
+    ktemp = k2dmap # this is tapered and filtered template (in real space)
+
+    template = enmap.fft(ktemp, normalize="phys") 
+    assert np.all(np.isfinite(template))
+
+    p2d_cross_r = (krecon * template.conj()).real 
+    p2d_auto_template = (template * template.conj()).real
+
+    p1d_cross_r = bin(p2d_cross_r, modlmap, ell_edges)
+    p1d_auto_template = bin(p2d_auto_template, modlmap, ell_edges)
+
+    s.add_to_stats("p1d_cross_r", p1d_cross_r)
+    s.add_to_stats("p1d_auto_template", p1d_auto_template)
+
+    s.add_to_stack("temp", k2dmap)    
+    binned_temp = bin(k2dmap, modrmap * (180 * 60 / np.pi), bin_edges)   
+    s.add_to_stats("temp1d", binned_temp) 
+    #---------------------------------------------------------------------------
+
+
+    #---------------------------------------------------------------------------
+    # for DR6 lensing stack
+    if args.dr6_lensing:
+
+        k_stamp = maps.filter_map(kstamp * taper, kmask)  # this is tapered and filtered DR6 kappa (real space)
+
+        ikmap = enmap.fft(k_stamp, normalize="phys") 
+        assert np.all(np.isfinite(ikmap))
+
+        p2d_cross_k = (ikmap * template.conj()).real # cross with template 
+        p1d_cross_k = bin(p2d_cross_k, modlmap, ell_edges)
+        s.add_to_stats("p1d_cross_k", p1d_cross_k)
+
+        s.add_to_stack("kstamp", k_stamp)
+        binned_kappa = bin(k_stamp, modrmap * (180 * 60 / np.pi), bin_edges)   
+        s.add_to_stats("tk1d", binned_kappa)  
+    #---------------------------------------------------------------------------
+
+
+
     # Save power spectra to look at later
     if args.debug_powers:
         s.add_to_stats("n150", lbinner.bin(tclaa_150)[1])
@@ -1160,12 +1236,12 @@ for task in my_tasks:
 
     if args.full_nl:
         # FIXME: The full calculation seems to sometimes be negative
-        Nl = symlens.N_l(shape,wcs,feed_dict,estimator="hdv_curl" if args.curl else "hdv",XY='TT',
+        Nl = N_l(shape,wcs,feed_dict,estimator="hdv_curl" if args.curl else "hdv",XY='TT',
                          xmask=xmask,ymask=ymask,
                          Al=Al,field_names=['P','A'],kmask=kmask,power_name="t") # !!!
     else:
         # Use approximate noise assuming estimator is optimal (Narrator: it isn't)
-        Nl = symlens.N_l_from_A_l_optimal(shape, wcs, Al)
+        Nl = N_l_from_A_l_optimal(shape, wcs, Al)
     cents, bnl = lbinner.bin(Nl)
     nmean = bnl[np.logical_and(cents > defaults.kappa_noise_mean_Lmin, cents < defaults.kappa_noise_mean_Lmax)].mean()
     if args.debug_powers:
@@ -1228,9 +1304,10 @@ for task in my_tasks:
     if not(args.is_meanfield) and not(args.inject_sim):
         s.add_to_stats("data", (z,weight,*[cdata[key][i] for key in sorted(cdata.keys())]))                
         s.add_to_stats("redshift", (z,))
-        #s.add_to_stats("mass", (cdata['mass'][i],))
-        #s.add_to_stats("y0s", (cdata['y0s'][i],))
-        #s.add_to_stats("wmass", (cdata['mass'][i] * weight,))  
+        try:
+            s.add_to_stats("mass", (cdata['mass'][i],))
+        except:
+            pass 
       
     j = j + 1
 
@@ -1356,7 +1433,11 @@ if rank == 0:
         np.savetxt(f"{paths.savedir}/bin_edges.txt", bin_edges)
         if not(args.is_meanfield) and not (args.debug_stack):
             np.savetxt(f"{paths.savedir}/profiles.txt",s.vectors['k1d'])
-            #np.savetxt(f"{paths.savedir}/z_mass_y.txt", np.c_[s.vectors['redshift'], s.vectors['mass'], s.vectors['y0s']])
+            try:
+                np.savetxt(f"{paths.savedir}/z_mass.txt", np.c_[s.vectors['redshift'], s.vectors['mass']])
+                # np.savetxt(f"{paths.savedir}/z_mass_y.txt", np.c_[s.vectors['redshift'], s.vectors['mass'], s.vectors['y0s']])
+            except:
+                pass 
 
     for ctkey in [
         "selected"
@@ -1373,10 +1454,17 @@ if rank == 0:
         assert N_stamp == s.stack_count["kmap"]
         assert N_stamp == s.vectors["kw"].shape[0]
 
-        # if not (args.is_meanfield):
-        #     kappa_w = s.vectors['kw'].sum()
-        #     w_mass = s.vectors['wmass'].sum(axis=0)/kappa_w
-        #     print("weighted SZ mean mass : ", w_mass, "1e14 Msun")   
+    if not (args.is_meanfield) and not (args.debug_stack):
+        print("mean redshift:",  s.vectors['redshift'].sum() / N_stamp)
+        try:
+            print("mean SZ mass [M500c]:", s.vectors['mass'].sum() / N_stamp)
+        except:
+            pass 
+
+    # if not (args.is_meanfield):
+    #     kappa_w = s.vectors['kw'].sum()
+    #     w_mass = s.vectors['wmass'].sum(axis=0)/kappa_w
+    #     print("weighted SZ mean mass : ", w_mass, "1e14 Msun")   
 
     # Some debug plots if requested
     if args.debug_powers:
@@ -1410,4 +1498,3 @@ if rank == 0:
 
     elapsed = time.time() - start_time
     print("\r ::: entire run took %.1f seconds" % elapsed)
-

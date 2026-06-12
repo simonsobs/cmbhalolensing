@@ -1,0 +1,42 @@
+# Calibration preset that mirrors input/defaults.yml + stack.py setup.
+# Pass via:  python cal_response.py --config input/cal_stack.yml ...
+# Override the inpaint radius on the CLI when calibrating different holes.
+
+pix_arcmin: 0.5
+stamp_width_arcmin: 128.0
+
+taper_percent: 12.0
+pad_percent: 3.0
+
+# From defaults.yml: gradient_lmin / gradient_lmax
+grad_lmin: 200
+grad_lmax: 2000
+
+# From defaults.yml: conservative_highres_*  (set to aggressive_* if running
+# stack.py without --conservative; calibrate one per filter).
+hres_lmin: 500
+hres_lmax: 6000
+hres_lxcut: 50
+hres_lycut: 90
+
+# From defaults.yml: kappa_Lmin / kappa_Lmax
+kappa_lmin: 200
+kappa_lmax: 5000
+
+# planck_smica_beam_fwhm: 5.0; gradient_fiducial_rms 40 in defaults.yml --
+# recon_sim.py uses 35; pick what your stack.py actually runs with.
+grad_beam_fwhm: 5.0
+grad_noise_uK_arcmin: 35.0
+
+# stack.py loads real per-frequency beams from disk (cutils.load_beam),
+# but for the response calibration a Gaussian approximation is adequate
+# (the QE filter weights are insensitive to fine beam shape over the
+# ILC ell band).  Change here if you have a better effective fwhm.
+hres_beam_fwhms: [1.5, 2.2]
+hres_noise_uK_arcmin: 20.0       # defaults.yml: highres_fiducial_rms
+
+inpaint_radius_arcmin: 0.0       # override on CLI (e.g. --inpaint-radius-arcmin 6.0)
+inpaint_context_arcmin: 60.0
+inpaint_pcov_res_arcmin: 2.0
+
+qe_estimator: hdv

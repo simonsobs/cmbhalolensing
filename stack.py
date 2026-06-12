@@ -9,7 +9,8 @@ from orphics import maps, mpi, io, stats, cosmology, lensing
 from scipy.optimize import curve_fit
 from numpy import save
 import time
-import symlens
+# import symlens
+from symlens.qe import QE, N_l, N_l_from_A_l_optimal
 import healpy as hp
 import os, sys
 from enlib import bench
@@ -103,7 +104,8 @@ if not (args.inject_sim):
         else:
             if not (args.ilc_maps): 
                 act_map = (paths.act_data + data_choice.hres_150)
-                famap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+                fmap = enmap.read_map(act_map, delayed=False)
+                famap_150 = fmap[0] if fmap.ndim == 3 else fmap
             else:
                 act_map = (paths.act_data + data_choice.hres)
                 famap_150 = enmap.read_map(act_map, delayed=False)
@@ -125,7 +127,8 @@ if not (args.inject_sim):
             amap_90 = enmap.read_map(f'{paths.fullsim_path}/af090_sim_{args.full_sim_index:06d}.fits')
         else:
             act_map = (paths.act_data + data_choice.hres_090)
-            famap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+            fmap = enmap.read_map(act_map, delayed=False)
+            famap_90 = fmap[0] if fmap.ndim == 3 else fmap
 
             # SZ cluster model image subtraction for 90 GHz    
             if args.hres_grad:            
@@ -148,23 +151,20 @@ if not (args.inject_sim):
             act_map = (
                 paths.act_data + data_choice.hres_150_night
             )
-            namap_150 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
+            fmap = enmap.read_map(act_map, delayed=False)
+            namap_150 = fmap[0] if fmap.ndim == 3 else fmap
             act_map = (
                 paths.act_data + data_choice.hres_090_night
             )
-            namap_90 = enmap.read_map(act_map, delayed=False, sel=np.s_[0, ...])
-
+            fmap = enmap.read_map(act_map, delayed=False)
+            namap_90 = fmap[0] if fmap.ndim == 3 else fmap
             null_map_150 = famap_150 - namap_150
             null_map_90 = famap_90 - namap_90
 
         # Inv var map for 90 GHz
         ivar_map = (paths.act_data + data_choice.hres_ivar)
-
-        try:
-            imap_90 = enmap.read_map(ivar_map, delayed=False, sel=np.s_[0, ...]) 
-        except:
-            imap_90 = enmap.read_map(ivar_map, delayed=False)
-
+        fmap = enmap.read_map(ivar_map, delayed=False)
+        imap_90 = fmap[0] if fmap.ndim == 3 else fmap
 
         rms_map = maps.rms_from_ivar(
             imap_90, cylindrical=True, safe=False # safe=False for DR6 maps
@@ -1126,7 +1126,7 @@ for task in my_tasks:
         assert np.all(np.isfinite(feed_dict[key]))
 
     # ask for reconstruction in Fourier space
-    cqe = symlens.QE(
+    cqe = QE(
         shape,
         wcs,
         feed_dict,
@@ -1236,12 +1236,12 @@ for task in my_tasks:
 
     if args.full_nl:
         # FIXME: The full calculation seems to sometimes be negative
-        Nl = symlens.N_l(shape,wcs,feed_dict,estimator="hdv_curl" if args.curl else "hdv",XY='TT',
+        Nl = N_l(shape,wcs,feed_dict,estimator="hdv_curl" if args.curl else "hdv",XY='TT',
                          xmask=xmask,ymask=ymask,
                          Al=Al,field_names=['P','A'],kmask=kmask,power_name="t") # !!!
     else:
         # Use approximate noise assuming estimator is optimal (Narrator: it isn't)
-        Nl = symlens.N_l_from_A_l_optimal(shape, wcs, Al)
+        Nl = N_l_from_A_l_optimal(shape, wcs, Al)
     cents, bnl = lbinner.bin(Nl)
     nmean = bnl[np.logical_and(cents > defaults.kappa_noise_mean_Lmin, cents < defaults.kappa_noise_mean_Lmax)].mean()
     if args.debug_powers:
@@ -1498,4 +1498,3 @@ if rank == 0:
 
     elapsed = time.time() - start_time
     print("\r ::: entire run took %.1f seconds" % elapsed)
-

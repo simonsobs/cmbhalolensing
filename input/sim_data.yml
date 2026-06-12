@@ -7,31 +7,38 @@ sehgal_output_path: /home3/eunseong/cmbhalolensing/sim_results/sehgal
 agora_output_path: /home3/eunseong/cmbhalolensing/sim_results/agora
 simsuite_path: /home3/eunseong/cmbhalolensing/data/simsuite
 cat_path: /home3/eunseong/cmbhalolensing/data/cats
+extra_map_path: /home3/eunseong/cmbhalolensing/data/lensed_sim_map
 
 # nemo sim catalogues 
-websky_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit11/sim-kit_NemoWebSky_CustomLensedCMB_DR5White_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoWebSky_CustomLensedCMB_DR5White_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoWebSky_CustomLensedCMB_DR5White_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles_mass.fits 
-sehgal_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit13/sim-kit_NemoSehgal_CustomLensedCMB_DR5White_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoSehgal_CustomLensedCMB_DR5White_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoSehgal_CustomLensedCMB_DR5White_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles_mass.fits
-agora_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit11/sim-kit_NemoWebSky_CustomLensedCMB_DR5White_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoWebSky_CustomLensedCMB_DR5White_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoWebSky_CustomLensedCMB_DR5White_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles_mass.fits 
+websky_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit54/sim-kit_websky_cmb_tsz_test1/websky_cmb_tsz_test1/websky_cmb_tsz_test1_mass.fits
+sehgal_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit57/sehgal_cmb_tsz/sehgal_cmb_tsz_mass.fits
+# agora_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit48/agora_cmb_tsz/agora_cmb_tsz_mass.fits
+agora_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit61/20260320_cmb_tsz_ksz/20260320_cmb_tsz_ksz/20260320_cmb_tsz_ksz_mass.fits
+# agora_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit62/20260320_cmb_tsz_cib/20260320_cmb_tsz_cib/20260320_cmb_tsz_cib_mass.fits
+# agora_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit63/20260320_cmb_tsz_ksz_cib/20260320_cmb_tsz_ksz_cib/20260320_cmb_tsz_ksz_cib_mass.fits
 
 
-nemosim_version: nemo-sim-kit11
-# nemo-sim-kit3:  websky lensed_alm.fits + dr5white + 1/f  + actbeam
-# nemo-sim-kit4:  websky lensed_alm.fits + flatwhite       + actbeam   
-# nemo-sim-kit5:  websky dlensed.fits    + dr5white + 1/f  + actbeam   
-# nemo-sim-kit7:  websky dlensed.fits    + flatwhite       + actbeam  
-# nemo-sim-kit9:  sehgal                 + flatwhite       + actbeam
-# (nemo updated 2024.07.03)
-# nemo-sim-kit10: websky dlensed.fits    + flatwhite       + gaussbeam 
-# nemo-sim-kit11: websky dlensed.fits    + dr5white        + gaussbeam
-# nemo-sim-kit12: sehgal                 + flatwhite       + gaussbeam
-# nemo-sim-kit13: sehgal                 + dr5white        + gaussbeam
+nemosim_version: nemo-sim-kit61
+# nemo-sim-kit47: agora from Matt (dr5white orphics + gaussbeam)
+# nemo-sim-kit48: agora from Matt (dr5white orphics + gaussbeam) beam corrected - labeled as take2 from Matt
+# nemo-sim-kit61: agora CMB+tSZ+kSZ (from Matt) 2026.03.23
+# nemo-sim-kit62: agora CMB+tSZ+CIB (from Matt) 2026.03.23
+# nemo-sim-kit63: agora CMB+tSZ+kSZ+CIB (from Matt) 2026.03.24
 
-simsuite_version: v0
-# websky_v0 (lensed_alm.fits)
-# websky_v1 (dlensed.fits)    
-# sehgal_v0
-# agora_v0               
 
+
+simsuite_version: v10
+# agora_v0  
+# agora_v1: different noise seed used for ocmb_tsz
+# agora_v2: planck beam and noise for grad (ocmb) 
+# agora_v3: planck beam and noise for grad (ocmb) and noise seeds are updated   
+# agora_v4: tsz map is switched from lensed (bahama78) to unlensed (bahama80)
+# agora_v5: just organising and renaming - nothing changed!
+# agora_v6: cmb only maps without noise and beam for the test 
+# agora_v7: resetting seeds for noise, checking with ksz and cib included 
+# agora_v8: for CMB+tSZ test 
+# agora_v9: copy of v4
+# so far all maps are full sky (later actfoot size maps are added for model subtraction)
 
 # reprojected websky maps
 websky_kappa_reproj: reproj/kap_reproj.fits
@@ -40,7 +47,9 @@ websky_tsz_reproj: reproj/tsz_8192_reproj.fits
 
 websky_kappa4p5_reproj: reproj/kap_lt4.5_reproj.fits
 websky_dlensed_reproj: reproj/dlensed_reproj.fits
-websky_dtsz_reproj: reproj/dtsz_8192_reproj.fits
+# websky_dtsz_reproj: reproj/dtsz_8192_reproj.fits
+websky_dtsz090_reproj: reproj/dtsz090_8192_reproj.fits
+websky_dtsz150_reproj: reproj/dtsz150_8192_reproj.fits
 websky_dksz_reproj: reproj/dksz_reproj.fits
 websky_dcib093_reproj: reproj/dcib_nu0093_reproj.fits
 websky_dcib145_reproj: reproj/dcib_nu0145_reproj.fits
@@ -50,19 +59,19 @@ sehgal_kappa_reproj: reproj/healpix_4096_KappaeffLSStoCMBfullsky_reproj.fits
 sehgal_cmb_reproj: reproj/Sehgalsimparams_healpix_4096_KappaeffLSStoCMBfullsky_phi_SimLens_Tsynfastnopell_fast_lmax8000_nside4096_interp2.5_method1_1_lensed_map_reproj.fits
 sehgal_tsz_reproj: reproj/tSZ_skymap_healpix_nopell_Nside4096_y_tSZrescale0p75_reproj.fits
 
+sehgal_dkappa_reproj: reproj/dhealpix_4096_KappaeffLSStoCMBfullsky_reproj.fits
+sehgal_dlensed_reproj: reproj/dSehgalsimparams_healpix_4096_KappaeffLSStoCMBfullsky_phi_SimLens_Tsynfastnopell_fast_lmax8000_nside4096_interp2.5_method1_1_lensed_map_reproj.fits
+# sehgal_dtsz_reproj: reproj/dtSZ_skymap_healpix_nopell_Nside4096_y_tSZrescale0p75_reproj.fits
+sehgal_dtsz090_reproj: reproj/dtSZ090_skymap_healpix_nopell_Nside4096_y_tSZrescale0p75_reproj.fits
+sehgal_dtsz150_reproj: reproj/dtSZ150_skymap_healpix_nopell_Nside4096_y_tSZrescale0p75_reproj.fits
+
+
 # reprojected agora maps
-agora_kappa_reproj: ../../reproj/kappa_alm_recon_agora_phiNG_phi1_seed1_reproj.fits
+agora_kappa_reproj: ../../es_to_delete/reproj/kappa_alm_recon_agora_phiNG_phi1_seed1_reproj.fits
 agora_cmb_reproj: ../../reproj/agora_tqu1_phiNG_seed1_lmax16000_nside8192_interp1.6_method1_pol_1_lensedmap_reproj.fits
-agora_tsz_reproj: ../../reproj/agora_ltszNG_bahamas78_bnd_unb_1.0e+12_1.0e+18_lensed_reproj.fits
+# agora_tsz_reproj: ../../reproj/agora_ltszNG_bahamas78_bnd_unb_1.0e+12_1.0e+18_lensed_reproj.fits
+# agora_tsz_reproj: ../../reproj/agora_utszNG_bahamas80_bnd_unb_1.0e+12_1.0e+18_reproj.fits # unlensed tSZ
+agora_tsz090_reproj: ../../reproj/agora_utszNG090_bahamas80_bnd_unb_1.0e+12_1.0e+18_reproj.fits # unlensed tSZ
+agora_tsz150_reproj: ../../reproj/agora_utszNG150_bahamas80_bnd_unb_1.0e+12_1.0e+18_reproj.fits # unlensed tSZ
 
 
-
-# websky_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit7/sim-kit_NemoWebSky_CustomLensedCMB_tenToA0Tuned_ACT-DR5-2Pass_2degTiles/NemoWebSky_CustomLensedCMB_tenToA0Tuned_ACT-DR5-2Pass_2degTiles/NemoWebSky_CustomLensedCMB_tenToA0Tuned_ACT-DR5-2Pass_2degTiles_mass.fits 
-# sehgal_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit9/sim-kit_NemoSehgal_CustomLensedCMB_tenToA0Tuned_ACT-DR5-2Pass_2degTiles/NemoSehgal_CustomLensedCMB_tenToA0Tuned_ACT-DR5-2Pass_2degTiles/NemoSehgal_CustomLensedCMB_tenToA0Tuned_ACT-DR5-2Pass_2degTiles_mass.fits
-# sehgal_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit12/sim-kit_NemoSehgal_CustomLensedCMB_flatWhite_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoSehgal_CustomLensedCMB_flatWhite_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoSehgal_CustomLensedCMB_flatWhite_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles_mass.fits
-# agora_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit10/sim-kit_NemoWebSky_CustomLensedCMB_flatWhite_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoWebSky_CustomLensedCMB_flatWhite_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles/NemoWebSky_CustomLensedCMB_flatWhite_tenToA0Tuned_ACT-DR5-2Pass-GaussBeams_2degTiles_mass.fits 
-
-
-# # beams (corresponds to the beam used in NEMO)
-# actbeam_f150: /data5/act/maps/dr5/beams/act_planck_dr5.01_s08s18_f150_daynight_beam.txt
-# actbeam_f090: /data5/act/maps/dr5/beams/act_planck_dr5.01_s08s18_f090_daynight_beam.txt

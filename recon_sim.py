@@ -386,10 +386,12 @@ if args.cmb_cib_tsz:
 
 if args.cmb_ksz_msub:
 
-    cmb_msub090 = f"{simsuite_path}h_ocmb_msub090_ksz_updated.fits" 
-    cmb_msub150 = f"{simsuite_path}h_ocmb_msub150_ksz_updated.fits"    
+    # cmb_msub090 = f"{simsuite_path}h_ocmb_msub090_ksz_updated.fits" 
+    # cmb_msub150 = f"{simsuite_path}h_ocmb_msub150_ksz_updated.fits"      
+    cmb_msub090 = f"{simsuite_path}/../../maps/agora_h_ocmb_tsz_ksz_f090_msub.fits"  # new model subtraction method
+    cmb_msub150 = f"{simsuite_path}/../../maps/agora_h_ocmb_tsz_ksz_f150_msub.fits"            
     g_cmb_ksz = f"{simsuite_path}g_ocmb_ksz.fits"
-
+    
 
     print(" ::: reading the model subtracted maps!", cmb_msub090)
     print(" ::: reading the model subtracted maps!", cmb_msub150)

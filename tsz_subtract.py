@@ -200,7 +200,8 @@ def deltaT_profile(m500c, z, cosmo, nu_ghz, ntheta=256, los_max_r500=5.0, los_np
     pe = p500 * gnfw_pressure(x) / P_TH_TO_PE  # electron pressure [keV cm^-3]
     # y = (sigma_T / m_e c^2) * 2 * int_0^Lmax P_e dl, with dl in cm.
     prefac = SIGMA_T_CM2 / ME_C2_KEV
-    y_theta = prefac * 2.0 * np.trapezoid(pe, los * MPC_CM, axis=1)
+    # y_theta = prefac * 2.0 * np.trapezoid(pe, los * MPC_CM, axis=1)
+    y_theta = prefac * 2.0 * np.trapz(pe, los * MPC_CM, axis=1) # numpy version issue
 
     g_nu = foregrounds.g_tsz(nu_ghz)
     dT = g_nu * foregrounds.TCMB_uK * y_theta  # micro-Kelvin
@@ -236,7 +237,8 @@ def get_beam_fn(beam_arg):
 
         return bfn
     except (TypeError, ValueError):
-        ells, bells = np.loadtxt(beam_arg, unpack=True)
+        # ells, bells = np.loadtxt(beam_arg, unpack=True)
+        ells, bells = np.loadtxt(beam_arg, usecols=[0,1], unpack=True)
         bells = bells / bells[np.argmin(ells)]
         interp = interp1d(ells, bells, bounds_error=False, fill_value=(bells[0], 0.0))
 
@@ -1058,7 +1060,7 @@ def run_pipeline(args):
             "ivar geometries differ."
         )
         return
-
+    
     # --- Subtract into full map and write ------------------------------------
     log("Loading full coadd for subtraction...")
     t_load = time.time()

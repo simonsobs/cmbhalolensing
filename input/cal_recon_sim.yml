@@ -1,0 +1,33 @@
+# Calibration preset that mirrors recon_sim.py's hardcoded settings.
+# Pass via:  python cal_response.py --config input/cal_recon_sim.yml ...
+# Override the inpaint radius on the CLI when calibrating different holes.
+
+pix_arcmin: 0.5
+stamp_width_arcmin: 120.0
+
+taper_percent: 20.0
+pad_percent: 3.0
+
+grad_lmin: 200
+grad_lmax: 2000
+
+hres_lmin: 200
+hres_lmax: 3500
+hres_lxcut: 2
+hres_lycut: 2
+
+kappa_lmin: 200
+kappa_lmax: 3000
+
+grad_beam_fwhm: 5.0
+grad_noise_uK_arcmin: 35.0
+
+# Two-channel ILC; matches ilc_beam_fwhm150 / ilc_beam_fwhm090 in recon_sim.py.
+hres_beam_fwhms: [1.5, 2.2]
+hres_noise_uK_arcmin: 15.0
+
+inpaint_radius_arcmin: 0.0       # override on CLI (e.g. --inpaint-radius-arcmin 6.0)
+inpaint_context_arcmin: 60.0
+inpaint_pcov_res_arcmin: 2.0
+
+qe_estimator: hdv

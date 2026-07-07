@@ -208,15 +208,15 @@ if args.which_cat == "halo":
         
     ras, decs, zs, masses = np.loadtxt(cat, unpack=True)
 
-elif args.which_cat == "tsz_true":
-    if args.full_sample:
-        cat = cat_path + f"{args.which_sim}_tsz_true.txt"
-    elif args.highsnr_sample:
-        cat = cat_path + f"{args.which_sim}_tsz_snr7_true.txt"
-    else:
-        cat = cat_path + f"{args.which_sim}_tsz_snr5p5_true.txt" # M200c, true mass, lensed coordinates for Agora  
+# elif args.which_cat == "tsz_true":
+#     if args.full_sample:
+#         cat = cat_path + f"{args.which_sim}_tsz_true.txt"
+#     elif args.highsnr_sample:
+#         cat = cat_path + f"{args.which_sim}_tsz_snr7_true.txt"
+#     else:
+#         cat = cat_path + f"{args.which_sim}_tsz_snr5p5_true.txt" # M200c, true mass, lensed coordinates for Agora  
 
-    ras, decs, zs, masses = np.loadtxt(cat, unpack=True)    
+#     ras, decs, zs, masses = np.loadtxt(cat, unpack=True)    
 
 elif args.which_cat == "tsz":
     if args.which_sim == "websky":
@@ -229,13 +229,15 @@ elif args.which_cat == "tsz":
         zs = hdu[1].data["redshift"] 
     else:
         if args.which_sim == "sehgal": cat = paths.sehgal_tsz_cat
-        elif args.which_sim == "agora": cat = paths.agora_tsz_cat    
+        elif args.which_sim == "agora": cat = f"{paths.nsk_path}{paths.nemosim_version}/{paths.agora_tsz_cat}"    
+
+        print(cat)
               
         hdu = fits.open(cat)
         ras = hdu[1].data["RADeg"]
         decs = hdu[1].data["DECDeg"]
-        masses = hdu[1].data["M200c"] # 1e14 Msun  #FIXME: make it as an option
-        # masses = hdu[1].data["M200m"] # 1e14 Msun #####
+        masses = hdu[1].data["M200c"] # 1e14 Msun  
+        # masses = hdu[1].data["M200m"] # 1e14 Msun 
         snr = hdu[1].data["SNR"] # fixed_SNR
         zs = hdu[1].data["redshift"] 
 
@@ -263,7 +265,7 @@ if args.is_meanfield:
 
     Nx = 100 * len(ras)
 
-    if args.which_cat == "tsz_true": args.which_cat = "tsz"
+    # if args.which_cat == "tsz_true": args.which_cat = "tsz"
     # load random catalogue - created by mapcat.py + randcat.py
     cat = cat_path + f"{args.which_sim}_{args.which_cat}_randoms.txt"
     ras, decs = np.loadtxt(cat, unpack=True)    
@@ -280,19 +282,8 @@ print(" ::: total number of clusters for stacking =", len(ras))
 
 # READING MAPS -----------------------------------------------------------------
 
-if args.which_sim == "websky":
-    if args.high_accuracy:
-        true = paths.websky_sim_path + paths.websky_kappa4p5_reproj
-    else:
-        true = paths.websky_sim_path + paths.websky_kappa_reproj
-elif args.which_sim == "sehgal":
-    if args.high_accuracy:
-        true = paths.sehgal_sim_path + paths.sehgal_dkappa_reproj
-    else:
-        true = paths.sehgal_sim_path + paths.sehgal_kappa_reproj
-elif args.which_sim == "agora":
-    true = paths.agora_sim_path + paths.agora_kappa_reproj
-
+if args.which_sim == "agora":
+    true = f"{simsuite_path}true_kappa.fits"
     
 
 print(" ::: preparing for OBSERVED maps")
@@ -308,27 +299,30 @@ true_map = enmap.read_map(true, delayed=False)
 h_cmb_map = enmap.read_map(h_cmb, delayed=False)
 g_cmb_map = enmap.read_map(g_cmb, delayed=False)
 
+
 if args.cmb_tsz:
 
-    cmb_tsz150 = f"{simsuite_path}h_ocmb_tsz150.fits"
     cmb_tsz090 = f"{simsuite_path}h_ocmb_tsz090.fits"
+    cmb_tsz150 = f"{simsuite_path}h_ocmb_tsz150.fits"
 
-    print(" ::: reading lensed cmb + tsz map at 150GHz:", cmb_tsz150)
     print(" ::: reading lensed cmb + tsz map at  90GHz:", cmb_tsz090)
+    print(" ::: reading lensed cmb + tsz map at 150GHz:", cmb_tsz150)
 
-    cmb_tsz_map150 = enmap.read_map(cmb_tsz150, delayed=False)
     cmb_tsz_map090 = enmap.read_map(cmb_tsz090, delayed=False)
+    cmb_tsz_map150 = enmap.read_map(cmb_tsz150, delayed=False)
 
-if args.cmb_msub: 
 
-    cmb_msub090 = f"{simsuite_path}h_ocmb_msub090_test.fits" 
-    cmb_msub150 = f"{simsuite_path}h_ocmb_msub150_test.fits"    
+if args.cmb_msub:
+
+    cmb_msub090 = f"{simsuite_path}h_ocmb_tsz090_msub.fits"
+    cmb_msub150 = f"{simsuite_path}h_ocmb_tsz150_msub.fits"    
 
     print(" ::: reading the model subtracted maps!", cmb_msub090)
     print(" ::: reading the model subtracted maps!", cmb_msub150)
 
     cmb_msub_map090 = enmap.read_map(cmb_msub090, delayed=False)
     cmb_msub_map150 = enmap.read_map(cmb_msub150, delayed=False)
+
 
 if args.cmb_ksz:
 
@@ -341,11 +335,12 @@ if args.cmb_ksz:
     h_cmb_ksz_map = enmap.read_map(h_cmb_ksz, delayed=False)
     g_cmb_ksz_map = enmap.read_map(g_cmb_ksz, delayed=False)
 
+
 if args.cmb_cib: 
 
-    h_cmb_cib090 = f"{simsuite_path}h_ocmb_cib090_5.fits"
-    h_cmb_cib150 = f"{simsuite_path}h_ocmb_cib150_5.fits"
-    g_cmb_cib = f"{simsuite_path}g_ocmb_cib5.fits" 
+    h_cmb_cib090 = f"{simsuite_path}h_ocmb_cib090.fits"
+    h_cmb_cib150 = f"{simsuite_path}h_ocmb_cib150.fits"
+    g_cmb_cib = f"{simsuite_path}g_ocmb_cib.fits" 
 
     print(" ::: reading lensed cmb + cib090 map for hres:", h_cmb_cib090)
     print(" ::: reading lensed cmb + cib150 map for hres:", h_cmb_cib150)
@@ -370,11 +365,12 @@ if args.cmb_ksz_tsz:
     h_cmb_ksz_tsz150_map = enmap.read_map(h_cmb_ksz_tsz150, delayed=False)
     g_cmb_ksz_map = enmap.read_map(g_cmb_ksz, delayed=False)
 
+
 if args.cmb_cib_tsz:
 
-    h_cmb_cib_tsz090 = f"{simsuite_path}h_ocmb_tsz090_cib5.fits"
-    h_cmb_cib_tsz150 = f"{simsuite_path}h_ocmb_tsz150_cib5.fits"
-    g_cmb_cib = f"{simsuite_path}g_ocmb_cib5.fits"
+    h_cmb_cib_tsz090 = f"{simsuite_path}h_ocmb_tsz090_cib.fits"
+    h_cmb_cib_tsz150 = f"{simsuite_path}h_ocmb_tsz150_cib.fits"
+    g_cmb_cib = f"{simsuite_path}g_ocmb_cib.fits"
 
     print(" ::: reading lensed cmb + cib + tsz090 map for hres:", h_cmb_cib_tsz090)
     print(" ::: reading lensed cmb + cib + tsz150 map for hres:", h_cmb_cib_tsz150)
@@ -384,14 +380,14 @@ if args.cmb_cib_tsz:
     h_cmb_cib_tsz150_map = enmap.read_map(h_cmb_cib_tsz150, delayed=False)
     g_cmb_cib_map = enmap.read_map(g_cmb_cib, delayed=False)
 
+
 if args.cmb_ksz_msub:
 
-    # cmb_msub090 = f"{simsuite_path}h_ocmb_msub090_ksz_updated.fits" 
-    # cmb_msub150 = f"{simsuite_path}h_ocmb_msub150_ksz_updated.fits"      
-    cmb_msub090 = f"{simsuite_path}/../../maps/agora_h_ocmb_tsz_ksz_f090_msub.fits"  # new model subtraction method
-    cmb_msub150 = f"{simsuite_path}/../../maps/agora_h_ocmb_tsz_ksz_f150_msub.fits"            
+    # initially used the model map from nemo
+    # currently using a new model map generated from tsz_subtract.py
+    cmb_msub090 = f"{simsuite_path}h_ocmb_tsz090_ksz_msub.fits" 
+    cmb_msub150 = f"{simsuite_path}h_ocmb_tsz150_ksz_msub.fits"           
     g_cmb_ksz = f"{simsuite_path}g_ocmb_ksz.fits"
-    
 
     print(" ::: reading the model subtracted maps!", cmb_msub090)
     print(" ::: reading the model subtracted maps!", cmb_msub150)
@@ -402,12 +398,11 @@ if args.cmb_ksz_msub:
     g_cmb_ksz_map = enmap.read_map(g_cmb_ksz, delayed=False)
 
 
-
 if args.cmb_cib_msub:
 
-    cmb_msub090 = f"{simsuite_path}h_ocmb_msub090_cib5_updated.fits" 
-    cmb_msub150 = f"{simsuite_path}h_ocmb_msub150_cib5_updated.fits" 
-    g_cmb_cib = f"{simsuite_path}g_ocmb_cib5.fits"
+    cmb_msub090 = f"{paths.msub_cib_f090}" 
+    cmb_msub150 = f"{paths.msub_cib_f150}" 
+    g_cmb_cib = f"{simsuite_path}g_ocmb_cib.fits"
 
     print(" ::: reading the model subtracted maps!", cmb_msub090)
     print(" ::: reading the model subtracted maps!", cmb_msub150)
@@ -418,13 +413,11 @@ if args.cmb_cib_msub:
     g_cmb_cib_map = enmap.read_map(g_cmb_cib, delayed=False)
 
 
-
-
 if args.cmb_ksz_cib:
 
-    h_cmb_ksz_cib090 = f"{simsuite_path}h_ocmb_ksz_cib090_5.fits"
-    h_cmb_ksz_cib150 = f"{simsuite_path}h_ocmb_ksz_cib150_5.fits"
-    g_cmb_ksz_cib = f"{simsuite_path}g_ocmb_ksz_cib5.fits"
+    h_cmb_ksz_cib090 = f"{simsuite_path}h_ocmb_ksz_cib090.fits"
+    h_cmb_ksz_cib150 = f"{simsuite_path}h_ocmb_ksz_cib150.fits"
+    g_cmb_ksz_cib = f"{simsuite_path}g_ocmb_ksz_cib.fits"
 
     print(" ::: reading lensed cmb + ksz + cib090 map for hres:", h_cmb_ksz_cib090)
     print(" ::: reading lensed cmb + ksz + cib150 map for hres:", h_cmb_ksz_cib150)
@@ -434,11 +427,12 @@ if args.cmb_ksz_cib:
     h_cmb_ksz_cib150_map = enmap.read_map(h_cmb_ksz_cib150, delayed=False)
     g_cmb_ksz_cib_map = enmap.read_map(g_cmb_ksz_cib, delayed=False)
 
+
 if args.cmb_ksz_cib_tsz: 
 
-    h_cmb_tsz_ksz_cib090 = f"{simsuite_path}h_ocmb_tsz090_ksz_cib5.fits"
-    h_cmb_tsz_ksz_cib150 = f"{simsuite_path}h_ocmb_tsz150_ksz_cib5.fits"
-    g_cmb_ksz_cib = f"{simsuite_path}g_ocmb_ksz_cib5.fits"
+    h_cmb_tsz_ksz_cib090 = f"{simsuite_path}h_ocmb_tsz090_ksz_cib.fits"
+    h_cmb_tsz_ksz_cib150 = f"{simsuite_path}h_ocmb_tsz150_ksz_cib.fits"
+    g_cmb_ksz_cib = f"{simsuite_path}g_ocmb_ksz_cib.fits"
 
     print(" ::: reading lensed cmb + tsz090 + ksz + cib090 map for hres:", h_cmb_tsz_ksz_cib090)
     print(" ::: reading lensed cmb + tsz150 + ksz + cib150 map for hres:", h_cmb_tsz_ksz_cib150)
@@ -448,12 +442,12 @@ if args.cmb_ksz_cib_tsz:
     h_cmb_tsz_ksz_cib150_map = enmap.read_map(h_cmb_tsz_ksz_cib150, delayed=False)
     g_cmb_ksz_cib_map = enmap.read_map(g_cmb_ksz_cib, delayed=False)
 
+
 if args.cmb_ksz_cib_msub:
 
-    cmb_msub090 = f"{simsuite_path}h_ocmb_msub090_ksz_cib5_updated.fits" 
-    cmb_msub150 = f"{simsuite_path}h_ocmb_msub150_ksz_cib5_updated.fits" 
-    g_cmb_ksz_cib = f"{simsuite_path}g_ocmb_ksz_cib5.fits"
-
+    cmb_msub090 = f"{paths.msub_ksz_cib_f090}" 
+    cmb_msub150 = f"{paths.msub_ksz_cib_f150}" 
+    g_cmb_ksz_cib = f"{simsuite_path}g_ocmb_ksz_cib.fits"
 
     print(" ::: reading the model subtracted maps!", cmb_msub090)
     print(" ::: reading the model subtracted maps!", cmb_msub150)
@@ -462,7 +456,6 @@ if args.cmb_ksz_cib_msub:
     h_cmb_ksz_cib090_msub_map = enmap.read_map(cmb_msub090, delayed=False)
     h_cmb_ksz_cib150_msub_map = enmap.read_map(cmb_msub150, delayed=False)
     g_cmb_ksz_cib_map = enmap.read_map(g_cmb_ksz_cib, delayed=False)
-
 
 
 print(" ::: maps are ready!")
@@ -598,7 +591,7 @@ for task in my_tasks:
         res=px * utils.arcmin,
         proj="tan",
         oversample=2,
-        pixwin=True if args.high_accuracy else False # only True for maps made natively in CAR
+        pixwin=True if args.high_accuracy else False
     ) # lensed cmb for hres
 
     g_cmb = reproject.thumbnails(
@@ -608,20 +601,10 @@ for task in my_tasks:
         res=px * utils.arcmin,
         proj="tan",
         oversample=2,
-        pixwin=True if args.high_accuracy else False # only True for maps made natively in CAR
+        pixwin=True if args.high_accuracy else False 
     ) # lensed cmb for grad
 
     if args.cmb_tsz:
-        h_cmb_tsz150 = reproject.thumbnails(
-            cmb_tsz_map150,
-            coords,
-            r=maxr,
-            res=px * utils.arcmin,
-            proj="tan",
-            oversample=2,
-            pixwin=False
-        ) # lensed cmb + tsz150
-
         h_cmb_tsz090 = reproject.thumbnails(
             cmb_tsz_map090,
             coords,
@@ -632,7 +615,28 @@ for task in my_tasks:
             pixwin=False
         ) # lensed cmb + tsz090
 
+        h_cmb_tsz150 = reproject.thumbnails(
+            cmb_tsz_map150,
+            coords,
+            r=maxr,
+            res=px * utils.arcmin,
+            proj="tan",
+            oversample=2,
+            pixwin=False
+        ) # lensed cmb + tsz150
+
+
     if args.cmb_msub:
+        h_cmb_msub090 = reproject.thumbnails(
+            cmb_msub_map090,
+            coords,
+            r=maxr,
+            res=px * utils.arcmin,
+            proj="tan",
+            oversample=2,
+            pixwin=False
+        ) # lensed cmb + tsz090 - model090   
+
         h_cmb_msub150 = reproject.thumbnails(
             cmb_msub_map150,
             coords,
@@ -643,15 +647,6 @@ for task in my_tasks:
             pixwin=False
         ) # lensed cmb + tsz150 - model150        
 
-        h_cmb_msub090 = reproject.thumbnails(
-            cmb_msub_map090,
-            coords,
-            r=maxr,
-            res=px * utils.arcmin,
-            proj="tan",
-            oversample=2,
-            pixwin=False
-        ) # lensed cmb + tsz090 - model090   
 
     if args.cmb_ksz:
         h_cmb_ksz = reproject.thumbnails(
@@ -705,9 +700,6 @@ for task in my_tasks:
             pixwin=False
         ) # lensed cmb + cib150 for grad
 
-
-
-
     if args.cmb_ksz_tsz:
         h_cmb_ksz_tsz090 = reproject.thumbnails(
             h_cmb_ksz_tsz090_map,
@@ -748,7 +740,7 @@ for task in my_tasks:
             proj="tan",
             oversample=2,
             pixwin=False
-        ) # lensed cmb + cib + tsz090 for hres
+        ) # lensed cmb + cib090 + tsz090 for hres
 
         h_cmb_cib_tsz150 = reproject.thumbnails(
             h_cmb_cib_tsz150_map,
@@ -758,7 +750,7 @@ for task in my_tasks:
             proj="tan",
             oversample=2,
             pixwin=False
-        ) # lensed cmb + cib + tsz150 for hres
+        ) # lensed cmb + cib150 + tsz150 for hres
 
         g_cmb_cib = reproject.thumbnails(
             g_cmb_cib_map,
@@ -768,7 +760,7 @@ for task in my_tasks:
             proj="tan",
             oversample=2,
             pixwin=False
-        ) # lensed cmb + cib for grad
+        ) # lensed cmb + cib150 for grad
 
     if args.cmb_ksz_msub:
         h_cmb_ksz_msub090 = reproject.thumbnails(
@@ -831,11 +823,6 @@ for task in my_tasks:
             oversample=2,
             pixwin=False
         ) # lensed cmb + cib for grad
-
-
-
-
-
 
     if args.cmb_ksz_cib:
         h_cmb_ksz_cib090 = reproject.thumbnails(
@@ -979,7 +966,6 @@ for task in my_tasks:
             assert wcsutils.equal(kstamp.wcs, h_cmb_cib_msub090.wcs)
             assert wcsutils.equal(kstamp.wcs, g_cmb_cib.wcs) 
 
-
         elif args.cmb_ksz_cib:
             assert wcsutils.equal(kstamp.wcs, h_cmb_ksz_cib150.wcs)
             assert wcsutils.equal(kstamp.wcs, h_cmb_ksz_cib090.wcs)      
@@ -1082,7 +1068,6 @@ for task in my_tasks:
         hres150 = h_cmb_cib150
         hres90 = h_cmb_cib090      
         g_cmb = g_cmb_cib
-
     elif args.cmb_ksz_tsz:
         hres150 = h_cmb_ksz_tsz150
         hres90 = h_cmb_ksz_tsz090      
@@ -1099,8 +1084,6 @@ for task in my_tasks:
         hres150 = h_cmb_cib_msub150
         hres90 = h_cmb_cib_msub090      
         g_cmb = g_cmb_cib
-
-
     elif args.cmb_ksz_cib:
         hres150 = h_cmb_ksz_cib150
         hres90 = h_cmb_ksz_cib090      
@@ -1133,9 +1116,6 @@ for task in my_tasks:
         tapered_hres = hres * taper
 
 
-
-
-
     s.add_to_stack("grad2d_before", g_cmb)
     g_filtered = maps.filter_map(g_cmb, ymask)
     s.add_to_stack("grad2d_before_filtered", g_filtered)
@@ -1157,7 +1137,6 @@ for task in my_tasks:
 
     # taper stamp    
     tapered_grad = g_cmb * taper  
-
 
     s.add_to_stack("grad2d_after", g_cmb)
     g_filtered = maps.filter_map(g_cmb, ymask)

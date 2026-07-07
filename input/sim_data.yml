@@ -7,71 +7,42 @@ sehgal_output_path: /home3/eunseong/cmbhalolensing/sim_results/sehgal
 agora_output_path: /home3/eunseong/cmbhalolensing/sim_results/agora
 simsuite_path: /home3/eunseong/cmbhalolensing/data/simsuite
 cat_path: /home3/eunseong/cmbhalolensing/data/cats
+nsk_path: /home3/eunseong/nemo-sims/
 extra_map_path: /home3/eunseong/cmbhalolensing/data/lensed_sim_map
 
-# nemo sim catalogues 
-websky_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit54/sim-kit_websky_cmb_tsz_test1/websky_cmb_tsz_test1/websky_cmb_tsz_test1_mass.fits
-sehgal_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit57/sehgal_cmb_tsz/sehgal_cmb_tsz_mass.fits
-# agora_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit48/agora_cmb_tsz/agora_cmb_tsz_mass.fits
-agora_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit61/20260320_cmb_tsz_ksz/20260320_cmb_tsz_ksz/20260320_cmb_tsz_ksz_mass.fits
-# agora_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit62/20260320_cmb_tsz_cib/20260320_cmb_tsz_cib/20260320_cmb_tsz_cib_mass.fits
-# agora_tsz_cat: /home3/eunseong/nemo-sims/nemo-sim-kit63/20260320_cmb_tsz_ksz_cib/20260320_cmb_tsz_ksz_cib/20260320_cmb_tsz_ksz_cib_mass.fits
+
+# agora_tsz_cat: agora_cmb_tsz/agora_cmb_tsz_mass.fits
+agora_tsz_cat: 20260320_cmb_tsz_ksz/20260320_cmb_tsz_ksz/20260320_cmb_tsz_ksz_mass.fits
+# agora_tsz_cat: 20260320_cmb_tsz_cib/20260320_cmb_tsz_cib/20260320_cmb_tsz_cib_mass.fits
+# agora_tsz_cat: 20260320_cmb_tsz_ksz_cib/20260320_cmb_tsz_ksz_cib/20260320_cmb_tsz_ksz_cib_mass.fits
 
 
 nemosim_version: nemo-sim-kit61
-# nemo-sim-kit47: agora from Matt (dr5white orphics + gaussbeam)
-# nemo-sim-kit48: agora from Matt (dr5white orphics + gaussbeam) beam corrected - labeled as take2 from Matt
-# nemo-sim-kit61: agora CMB+tSZ+kSZ (from Matt) 2026.03.23
-# nemo-sim-kit62: agora CMB+tSZ+CIB (from Matt) 2026.03.23
-# nemo-sim-kit63: agora CMB+tSZ+kSZ+CIB (from Matt) 2026.03.24
+# nemo-sim-kit48: agora CMB+tSZ         [2025.02] take2 -- RA and DEC are unlensed
+# nemo-sim-kit61: agora CMB+tSZ+kSZ     [2026.03]
+# nemo-sim-kit62: agora CMB+tSZ+CIB     [2026.03]
+# nemo-sim-kit63: agora CMB+tSZ+kSZ+CIB [2026.03]
+
+simsuite_version: v11
+# v11: scripts are tidied and merged [2026.06]
+
+ivar090: /data5/act/maps/dr5/act_planck_dr5.01_s08s18_AA_f090_night_ivar.fits
+ivar150: /data5/act/maps/dr5/act_planck_dr5.01_s08s18_AA_f150_night_ivar.fits
 
 
-
-simsuite_version: v10
-# agora_v0  
-# agora_v1: different noise seed used for ocmb_tsz
-# agora_v2: planck beam and noise for grad (ocmb) 
-# agora_v3: planck beam and noise for grad (ocmb) and noise seeds are updated   
-# agora_v4: tsz map is switched from lensed (bahama78) to unlensed (bahama80)
-# agora_v5: just organising and renaming - nothing changed!
-# agora_v6: cmb only maps without noise and beam for the test 
-# agora_v7: resetting seeds for noise, checking with ksz and cib included 
-# agora_v8: for CMB+tSZ test 
-# agora_v9: copy of v4
-# so far all maps are full sky (later actfoot size maps are added for model subtraction)
-
-# reprojected websky maps
-websky_kappa_reproj: reproj/kap_reproj.fits
-websky_cmb_reproj: reproj/lensed_alm_reproj.fits
-websky_tsz_reproj: reproj/tsz_8192_reproj.fits
-
-websky_kappa4p5_reproj: reproj/kap_lt4.5_reproj.fits
-websky_dlensed_reproj: reproj/dlensed_reproj.fits
-# websky_dtsz_reproj: reproj/dtsz_8192_reproj.fits
-websky_dtsz090_reproj: reproj/dtsz090_8192_reproj.fits
-websky_dtsz150_reproj: reproj/dtsz150_8192_reproj.fits
-websky_dksz_reproj: reproj/dksz_reproj.fits
-websky_dcib093_reproj: reproj/dcib_nu0093_reproj.fits
-websky_dcib145_reproj: reproj/dcib_nu0145_reproj.fits
-
-# reprojected sehgal maps
-sehgal_kappa_reproj: reproj/healpix_4096_KappaeffLSStoCMBfullsky_reproj.fits
-sehgal_cmb_reproj: reproj/Sehgalsimparams_healpix_4096_KappaeffLSStoCMBfullsky_phi_SimLens_Tsynfastnopell_fast_lmax8000_nside4096_interp2.5_method1_1_lensed_map_reproj.fits
-sehgal_tsz_reproj: reproj/tSZ_skymap_healpix_nopell_Nside4096_y_tSZrescale0p75_reproj.fits
-
-sehgal_dkappa_reproj: reproj/dhealpix_4096_KappaeffLSStoCMBfullsky_reproj.fits
-sehgal_dlensed_reproj: reproj/dSehgalsimparams_healpix_4096_KappaeffLSStoCMBfullsky_phi_SimLens_Tsynfastnopell_fast_lmax8000_nside4096_interp2.5_method1_1_lensed_map_reproj.fits
-# sehgal_dtsz_reproj: reproj/dtSZ_skymap_healpix_nopell_Nside4096_y_tSZrescale0p75_reproj.fits
-sehgal_dtsz090_reproj: reproj/dtSZ090_skymap_healpix_nopell_Nside4096_y_tSZrescale0p75_reproj.fits
-sehgal_dtsz150_reproj: reproj/dtSZ150_skymap_healpix_nopell_Nside4096_y_tSZrescale0p75_reproj.fits
+agora_true_kappa: kappa/kappa_alm_recon_agora_phiNG_phi1_seed1.fits
+agora_lensed_cmb: cmb/len/tqu1/agora_tqu1_phiNG_seed1_lmax16000_nside8192_interp1.6_method1_pol_1_lensedmap.fits
+agora_tsz: tsz/unl/agora_utszNG_bahamas80_bnd_unb_1.0e+12_1.0e+18.fits
+agora_ksz: ksz/unl/agora_ukszNG_bahamas80_bnd_unb_1.0e+12_1.0e+18.fits
+agora_cib090: cib/uK/len/act/agora_len_mag_cibmap_act_90ghz_uk.fits
+agora_cib150: cib/uK/len/act/agora_len_mag_cibmap_act_150ghz_uk.fits
 
 
-# reprojected agora maps
-agora_kappa_reproj: ../../es_to_delete/reproj/kappa_alm_recon_agora_phiNG_phi1_seed1_reproj.fits
-agora_cmb_reproj: ../../reproj/agora_tqu1_phiNG_seed1_lmax16000_nside8192_interp1.6_method1_pol_1_lensedmap_reproj.fits
-# agora_tsz_reproj: ../../reproj/agora_ltszNG_bahamas78_bnd_unb_1.0e+12_1.0e+18_lensed_reproj.fits
-# agora_tsz_reproj: ../../reproj/agora_utszNG_bahamas80_bnd_unb_1.0e+12_1.0e+18_reproj.fits # unlensed tSZ
-agora_tsz090_reproj: ../../reproj/agora_utszNG090_bahamas80_bnd_unb_1.0e+12_1.0e+18_reproj.fits # unlensed tSZ
-agora_tsz150_reproj: ../../reproj/agora_utszNG150_bahamas80_bnd_unb_1.0e+12_1.0e+18_reproj.fits # unlensed tSZ
-
-
+# model_f090: nemo-sim-kit48/agora_cmb_tsz/clusterModelMaps/clusterModelMap_f090.fits
+# model_f150: nemo-sim-kit48/agora_cmb_tsz/clusterModelMaps/clusterModelMap_f150.fits
+# model_ksz_f090: nemo-sim-kit61/20260320_cmb_tsz_ksz/20260320_cmb_tsz_ksz/clusterModelMaps/clusterModelMap_f090.fits
+# model_ksz_f150: nemo-sim-kit61/20260320_cmb_tsz_ksz/20260320_cmb_tsz_ksz/clusterModelMaps/clusterModelMap_f150.fits
+# model_cib_f090: nemo-sim-kit62/20260320_cmb_tsz_cib/20260320_cmb_tsz_cib/clusterModelMaps/clusterModelMap_f090.fits
+# model_cib_f150: nemo-sim-kit62/20260320_cmb_tsz_cib/20260320_cmb_tsz_cib/clusterModelMaps/clusterModelMap_f150.fits
+# model_ksz_cib_f090: nemo-sim-kit63/20260320_cmb_tsz_ksz_cib/20260320_cmb_tsz_ksz_cib/clusterModelMaps/clusterModelMap_f090.fits
+# model_ksz_cib_f150: nemo-sim-kit63/20260320_cmb_tsz_ksz_cib/20260320_cmb_tsz_ksz_cib/clusterModelMaps/clusterModelMap_f150.fits

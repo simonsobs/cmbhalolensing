@@ -163,7 +163,8 @@ for task in my_tasks:
 s.get_stacks()
 s.get_stats()
 
-savedir=f"{paths.savedir}/../{args.cat_type}_dr6_lensing/"
+savedir=f"{paths.scratch}/{args.cat_type}_dr6_lensing_{args.version}"
+io.mkdir(savedir)
 
 if rank == 0:
     with bench.show("dump"):

@@ -4,7 +4,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import utils as cutils
-from pixell import enmap, reproject, utils, wcsutils, curvedsky
+from pixell import enmap, reproject, utils, wcsutils, curvedsky, bunch
 from orphics import maps, mpi, io, stats, cosmology, lensing
 from scipy.optimize import curve_fit
 from numpy import save
@@ -18,13 +18,10 @@ import warnings
 """
 Stacking on public ACT lensing maps: NO STAMP RECONSTRUCTION!!
 Same procedure as using the --dr6-lensing flag in stack.py.
-Uses default ell cuts from lensing map. 
-
-!! Run
-python stack_lensing_map.py -h 
-!! to see options
+Uses default ell cuts from lensing map. (2 <= L <= 3000)
 """
 
+defaults = bunch.Bunch(io.config_from_yaml("input/defaults.yml"))
 start_time,paths,defaults,args,tags,rank,data_choice = cutils.initialize_pipeline_config()
 if rank==0:
     print("Paths: ",paths)
@@ -47,6 +44,8 @@ ras, decs, zs, ws, cdata = cutils.catalog_interface(
     y0max=args.y0max, 
     decmin=args.decmin
 )
+
+klmin = args.dr6_Lmin; klmax = args.dr6_Lmax
 
 # Load the map
 kappa_map = paths.act_data + "release/dr6_lensing_v1/maps/baseline/kappa_alm_data_act_dr6_lensing_v1_baseline.fits"
@@ -143,17 +142,24 @@ for task in my_tasks:
     """ 
     !! CUT OUT STAMP
     """       
-    kstamp = reproject.thumbnails(
+    stamp = reproject.thumbnails(
         k_map,
         coords,
         r=maxr,
         res=pixel * utils.arcmin,
         proj="tan",
         oversample=2,
-        pixwin=False
-    )     
-    shape, wcs = kstamp.shape, kstamp.wcs
-    modrmap = enmap.modrmap(shape, wcs)
+        pixwin=False,
+        order=args.spline_order
+    )
+
+    if j==0:
+        shape, wcs = stamp.shape, stamp.wcs
+        modrmap = enmap.modrmap(shape, wcs)
+        kmask = maps.mask_kspace(shape, wcs, lmin=klmin, lmax=klmax)
+        
+    kstamp = maps.filter_map(stamp, kmask)
+
     s.add_to_stack("kstamp", kstamp)
     binned_kappa = bin(kstamp, modrmap * (180 * 60 / np.pi), bin_edges)
     s.add_to_stats("tk1d", binned_kappa)
@@ -164,6 +170,7 @@ s.get_stacks()
 s.get_stats()
 
 savedir=f"{paths.scratch}/{args.cat_type}_dr6_lensing_{args.version}"
+if args.is_meanfield: savedir+="_meanfield"
 io.mkdir(savedir)
 
 if rank == 0:

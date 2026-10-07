@@ -243,6 +243,19 @@ def initialize_pipeline_config():
         action="store_true", 
         help="Stack dr6 reconstructed lensing (no reconstruction only stacking!)."
     )
+    parser.add_argument(
+        "--dr6_Lmin", type=int, default=d.dr6_Lmin, 
+        help="Minimum multipole for DR6 lensing map stack (no recon)."
+    )
+    parser.add_argument(
+        "--dr6_Lmax", type=int, default=d.dr6_Lmax, 
+        help="Maximum multipole for DR6 lensing map stack (no recon)."
+    )
+
+    parser.add_argument(
+        "--spline_order", type=int, default=3,
+        help="Order of spline to use for pixell.reproject.thumbnails when extracting stamps."
+    )
     args = parser.parse_args()
 
     if args.hres_lmin is None:
@@ -615,9 +628,9 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
         decs = decs[:nmax]
         ws = ras*0 + 1
 
-    elif cat_type == 'desi_lrg':
+    elif cat_type == 'desi_lrg_dr1':
         if is_meanfield:
-            desi_files =  [paths.desi_lrg_data+f"LRG_{x}_full_HPmapcut.ran.fits" for x in range(17)]
+            desi_files =  [paths.desi_lrg_dr1_data+f"LRG_{x}_full_HPmapcut.ran.fits" for x in range(17)]
             ras=np.array([])
             decs=np.array([])
             for i, file_i in enumerate(desi_files):
@@ -647,6 +660,53 @@ def catalog_interface(cat_type,is_meanfield,nmax=None,zmin=None,zmax=None,bcg=Fa
             decs = decs[inds]
             ws = ws[inds]
             zs = zs[inds]
+
+    elif cat_type=='desi_main_lrg_legacy':
+        if is_meanfield:
+            desi_file = paths.desi_legacy_dr9 + "dr9_randoms.fits"
+            desi_data = catalogs.load_fits(desi_file,["ra", "dec"])
+            ras = desi_data["ra"]
+            decs = desi_data["dec"]
+            zs = ras*0
+
+        else:
+            desi_file = paths.desi_legacy_dr9 + "dr9_lrg_pzbins.fits"
+            desi_data = catalogs.load_fits(desi_file,["ra", "dec", "z_phot_median", "lrg_mask", "pz_bin"])
+            ras = desi_data["ra"]
+            decs = desi_data["dec"]
+            zs = desi_data["z_phot_median"]
+    
+            sel = np.logical_and(desi_data["pz_bin"]>-1,desi_data["lrg_mask"]==0) #keep "clean" objects that are in tomographic bins
+            # sel = np.logical_and(zs[clean]>=zmin,zs[clean]<zmax)
+            ras = ras[sel]
+            decs = decs[sel]
+            zs = zs[sel]
+
+        ws = ras*0 + 1
+
+        if nmax is not None:
+            Ntot = len(ras)
+            np.random.seed(100)
+            inds = np.random.choice(Ntot,size=nmax,replace=False)
+            ras = ras[inds]
+            decs = decs[inds]
+            ws = ws[inds]
+            zs = zs[inds]
+
+    elif cat_type=='desi_extended_lrg_legacy':
+        desi_file = paths.desi_legacy_dr9 + "dr9_extended_lrg_pzbins.fits"
+        desi_data = catalogs.load_fits(desi_file,["ra", "dec", "z_phot_median", "lrg_mask", "pz_bin"])
+        ras = desi_data["ra"]
+        decs = desi_data["dec"]
+        zs = desi_data["z_phot_median"]
+    
+        sel = np.logical_and(desi_data["pz_bin"]>-1,desi_data["lrg_mask"]==0) #keep "clean" objects that are in tomographic bins
+        # sel = np.logical_and(zs[clean]>=zmin,zs[clean]<zmax)
+        ras = ras[sel]
+        decs = decs[sel]
+        zs = zs[sel]
+
+        ws = ras*0 + 1
 
 
     elif cat_type=='madcows_photz':
@@ -749,7 +809,7 @@ def load_dumped_stats(mvstr,get_extra=False):
         except:
             data = None
         try:
-            profs = np.loadtxt(f"{savedir}/profiles.txt")
+            profs = np.load(f"{savedir}/mstats_dump_vectors_k1d.npy")
         except:
             profs = None
         return s, shape, wcs, kmask, modrmap, bin_edges,data,profs

@@ -1292,16 +1292,18 @@ for task in my_tasks:
     binned = bin(kappa, modrmap * (180 * 60 / np.pi), bin_edges)
     s.add_to_stats("wk1d", wbinned)
     s.add_to_stats("k1d", binned)
-    s.add_to_stats("kw", (weight,))
-    s.add_to_stats("kw2", (weight ** 2,))
+    s.add_to_cat("kw", (weight,))
+    s.add_to_cat("kw2", (weight ** 2,))
 
-    # check how many stamps are cut out of given map
-    s.add_to_stats("ct_selected", (1,))
+    s.add_to_cat("coords", (coords))
+
+    ###TODO: BETTER FILE NAMES
     if not(args.is_meanfield) and not(args.inject_sim):
-        s.add_to_stats("data", (z,weight,*[cdata[key][i] for key in sorted(cdata.keys())]))                
-        s.add_to_stats("redshift", (z,))
+#         s.add_to_stats("data", (z,weight,*[cdata[key][i] for key in sorted(cdata.keys())]))                
+        s.add_to_cat("redshift", (z,))
+        
         try:
-            s.add_to_stats("mass", (cdata['mass'][i],))
+            s.add_to_cat("mass", (cdata['mass'][i],))
         except:
             pass 
       
@@ -1428,10 +1430,9 @@ if rank == 0:
         enmap.write_map(f"{paths.savedir}/modrmap.fits", modrmap)
         np.savetxt(f"{paths.savedir}/bin_edges.txt", bin_edges)
         if not(args.is_meanfield) and not (args.debug_stack):
-            if args.kappa_and_curl:
-                np.savetxt(f"{paths.savedir}/profiles_curl.txt",s.vectors['curl'])
+#             if args.kappa_and_curl:
+#                 np.savetxt(f"{paths.savedir}/profiles_curl.txt",s.vectors['curl'])
 
-            np.savetxt(f"{paths.savedir}/profiles.txt",s.vectors['k1d'])
             try:
                 np.savetxt(f"{paths.savedir}/z_mass.txt", np.c_[s.vectors['redshift'], s.vectors['mass']])
                 # np.savetxt(f"{paths.savedir}/z_mass_y.txt", np.c_[s.vectors['redshift'], s.vectors['mass'], s.vectors['y0s']])

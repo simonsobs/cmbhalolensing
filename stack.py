@@ -483,12 +483,15 @@ for task in my_tasks:
         """
         if ivar_90 is None:
             print(f"{task} has no ivar 90 stamp")
+            s.add_to_cat("ct_high_noise", (coords))
             continue
         if np.all(ivar_90 < 1e-10):
             print(f"{task} has empty ivar 90 stamp")
+            s.add_to_cat("ct_high_noise", (coords))
             continue
         if np.any(ivar_90 < 1e-10):
             print(f"{task} has high 90 noise")
+            s.add_to_cat("ct_high_noise", (coords))
             if args.debug_anomalies:
                 io.plot_img(
                     ivar_90,
@@ -549,6 +552,7 @@ for task in my_tasks:
         ##### temporary 1: avoid weird noisy ACT stamps
         if np.any(astamp_150 >= 1e3) or np.any(astamp_90 >= 1e3):
             print(f"{task} has anomalously high ACT 150 or 90")
+            s.add_to_cat("ct_high_stamp", (coords))
             if args.debug_anomalies:
                 io.plot_img(
                     astamp_150,
@@ -573,6 +577,7 @@ for task in my_tasks:
                 raise ValueError
         except:
             print(f"{task} has anomalous stamp")
+            s.add_to_cat("ct_anomalous", (coords))
             if args.debug_anomalies:
                 io.plot_img(
                     astamp_150,
@@ -610,9 +615,12 @@ for task in my_tasks:
             """
             if pstamp is None:
                 print(f"{task} has no planck stamp")
+                s.add_to_cat("ct_no_stamp", (coords))
+                
                 continue
             if not (np.all(np.isfinite(pstamp))):
                 print(f"{task} has anomalous planck stamp; not finite")
+                s.add_to_cat("ct_anomalous", (coords))
                 if args.debug_anomalies:
                     io.plot_img(
                         pstamp,
@@ -1195,6 +1203,7 @@ for task in my_tasks:
     ##### temporary 3: to get rid of stamps with tSZ cluster in random locations
     if np.any(np.abs(kappa) > 15):
         print(f"{task} has large kappa")
+        s.add_to_cat("ct_large_kappa", (coords))
         if args.debug_anomalies:
             io.plot_img(
                 kappa,
@@ -1296,10 +1305,10 @@ for task in my_tasks:
     s.add_to_cat("kw2", (weight ** 2,))
 
     s.add_to_cat("coords", (coords))
+#     s.add_to_cat("ct_selected", (z,))
 
-    ###TODO: BETTER FILE NAMES
     if not(args.is_meanfield) and not(args.inject_sim):
-#         s.add_to_stats("data", (z,weight,*[cdata[key][i] for key in sorted(cdata.keys())]))                
+        s.add_to_stats("data", (z,weight,*[cdata[key][i] for key in sorted(cdata.keys())]))                
         s.add_to_cat("redshift", (z,))
         
         try:
@@ -1439,20 +1448,20 @@ if rank == 0:
             except:
                 pass 
 
-    for ctkey in [
-        "selected"
-    ]:  # ,'large_kappa','no_stamp','high_noise','high_stamp','anomalous']:
+    for ctkey in ['large_kappa','no_stamp','high_noise','high_stamp','anomalous']:
         try:
-            N = s.vectors[f"ct_{ctkey}"].sum()
+            N = s.vectors[f"ct_{ctkey}"].shape[0]
             print(f"Number {ctkey} : {N}")
+            np.savetxt(f"{paths.savedir}/ct_{ctkey}.txt", s.vectors[f"ct_{ctkey}"])
         except:
             pass
 
     if not (args.debug_stack):
 	    # Sanity checks
-        N_stamp = s.vectors[f"ct_{ctkey}"].sum()
+        N_stamp = s.vectors[f"coords"].shape[0]
         assert N_stamp == s.stack_count["kmap"]
         assert N_stamp == s.vectors["kw"].shape[0]
+        print(f"Number SELECTED : {N_stamp}")
 
     if not (args.is_meanfield) and not (args.debug_stack):
         print("mean redshift:",  s.vectors['redshift'].sum() / N_stamp)

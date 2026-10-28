@@ -163,6 +163,15 @@ for task in my_tasks:
     s.add_to_stack("kstamp", kstamp)
     binned_kappa = bin(kstamp, modrmap * (180 * 60 / np.pi), bin_edges)
     s.add_to_stats("tk1d", binned_kappa)
+    s.add_to_cat("coords", (coords))
+    
+    if not(args.is_meanfield):
+        s.add_to_cat("redshift", (z,))
+        try:
+            s.add_to_cat("mass", (cdata['mass'][i],))
+        except:
+            pass 
+
     j+=1
 
 # collect from all MPI cores and calculate stacks

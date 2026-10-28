@@ -1,4 +1,5 @@
 from __future__ import print_function
+import healpy as hp
 from orphics import maps,io,cosmology,stats,catalogs
 from pixell import enmap,utils,bunch
 import numpy as np
@@ -28,6 +29,7 @@ meanfield = True
 # cat_type = "sdss_redmapper"
 # meanfield = True
 
+io.mkdir(paths.scratch)
 shape,wcs = enmap.fullsky_geometry(res=1 * utils.degree)
 if cat_type == "websky_cmass":
     cat = "/home3/nehajo/projects/cmbhalolensing/data/sim_cats/websky_cmasslike_deccut.npy"
@@ -45,24 +47,23 @@ elif cat_type == "agora_cmass":
 
 else: ras,decs,zs,ws,data = cutils.catalog_interface(cat_type,is_meanfield=meanfield)
 cmapper = catalogs.CatMapper(ras,decs,shape=shape,wcs=wcs)
-cmap = maps.binary_mask(enmap.smooth_gauss(cmapper.counts,2 * utils.degree),1e-3)
-io.hplot(cmap,f'{paths.scratch}{cat_type}_cat_counts')
+cmap = maps.binary_mask(enmap.smooth_gauss(cmapper.counts,2 * utils.degree))
+io.plot_img(cmap,f'{paths.scratch}{cat_type}_cat_mask.png')
 
-### get ivar map to make binary mask and grow mask to account for stamp radius
-ivar = enmap.read_map(paths.act_data + data_choice.hres_ivar)
-ivar_mask = maps.get_masked_ivar(ivar, 
-                                 grow_arcmin=defaults.stamp_width_arcmin/2)
-io.plot_img(ivar_mask,f'{paths.scratch}{cat_type}_ivar')
+
+### get act mask
+act_mask = enmap.read_map(paths.act_data + "DR6_lensing/masks/act_mask_20220316_GAL060_rms_70.00_d2sk.fits") 
+io.plot_img(act_mask, f'{paths.scratch}act_mask.png')
 
 ### project catalog mask to ACT geometry
-shape, wcs = ivar.shape, ivar.wcs
-omap = enmap.project(cmap,shape,wcs,order=0)
-io.plot_img(omap,f'{paths.scratch}{cat_type}_counts')
+shape, wcs = act_mask.shape, act_mask.wcs
+omap = enmap.project(cmap,shape,wcs,order=1)
 
 ### get intersection of catalog and ACT masks
-imask = np.logical_and(omap, ivar_mask)
+imask = np.logical_and(omap, act_mask)
 imask = imask.astype(np.int8)
 imap = enmap.enmap(imask, wcs=wcs)
-io.plot_img(imap, f'{paths.scratch}{cat_type}_mask')
-enmap.write_map(f'{paths.scratch}{cat_type}_mask.fits', imap)
+
+io.plot_img(imap, f'{paths.scratch}{cat_type}_act_mask.png')
+enmap.write_map(f'{paths.scratch}{cat_type}_act_mask.fits', imap)
 
